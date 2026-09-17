@@ -124,10 +124,10 @@
 ### Ітерація 4.2: Компонент інвентаря (`InventoryComponent.gd`)
 * **Мета:** Створити універсальний компонент для зберігання предметів (підходить як для гравця, так і для скринь і колоністів).
 * **Чекліст:**
-  - [ ] Створити `src/systems/inventory/InventoryComponent.gd`.
-  - [ ] Структура слота: `item: ItemData`, `count: int`.
-  - [ ] Методи: `add_item(item, count) -> int` (повертає залишок, який не вмістився), `remove_item(item_id, count) -> bool`, `has_item(item_id, count) -> bool`, `get_all_items() -> Array`.
-  - [ ] Сигнал `inventory_updated()`.
+  - [X] Створити `src/systems/inventory/InventoryComponent.gd`.
+  - [X] Структура слота: `item: ItemData`, `count: int`.
+  - [X] Методи: `add_item(item, count) -> int` (повертає залишок, який не вмістився), `remove_item(item_id, count) -> bool`, `has_item(item_id, count) -> bool`, `get_all_items() -> Array`.
+  - [X] Сигнал `inventory_updated()`.
 * **Промпт для генерації:**
   > "Реалізуй універсальний типізований компонент `InventoryComponent.gd` з обмеженою кількістю слотів, підтримкою стакування предметів за `item.max_stack`, методами додавання/видалення та сигналом `inventory_updated`."
 * **Критерій готовності:** Юніт-тест: додавання 70 одиниць дерева зі стаком 64 коректно займає 2 слоти (64 і 6).

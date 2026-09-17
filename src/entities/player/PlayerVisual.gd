@@ -4,12 +4,18 @@ extends Node2D
 ## Малює тіло, голову, напрямок погляду та тінь.
 ## Анімує невелике погойдування (breathe/walk bobbing) при пересуванні.
 
-@onready var player: CharacterBody2D = get_parent() as CharacterBody2D
+@onready var player: Node = get_parent()
 
 var _anim_time: float = 0.0
 
 func _process(delta: float) -> void:
-	if player != null and player.is_moving:
+	var is_moving: bool = false
+	if player != null:
+		var moving_val: Variant = player.get("is_moving")
+		if moving_val is bool:
+			is_moving = moving_val
+
+	if is_moving:
 		_anim_time += delta * 12.0
 	else:
 		_anim_time += delta * 2.0
@@ -18,10 +24,16 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	var facing: Vector2 = Vector2.DOWN
+	var is_moving: bool = false
 	if player != null:
-		facing = player.facing_direction
+		var facing_val: Variant = player.get("facing_direction")
+		if facing_val is Vector2:
+			facing = facing_val
+		var moving_val: Variant = player.get("is_moving")
+		if moving_val is bool:
+			is_moving = moving_val
 
-	var bob_offset: float = sin(_anim_time) * (1.5 if (player != null and player.is_moving) else 0.5)
+	var bob_offset: float = sin(_anim_time) * (1.5 if is_moving else 0.5)
 
 	# 1. Тінь під персонажем
 	draw_ellipse(Vector2(0.0, 6.0), 10.0, 5.0, Color(0.0, 0.0, 0.0, 0.3))

@@ -38,7 +38,7 @@ saecula_2/
 │   │   └── player/          # Персонаж гравця (Player.tscn, Player.gd)
 │   ├── systems/             # Підсистеми колонії
 │   │   ├── building/        # Будівельні майданчики та креслення
-│   │   ├── inventory/       # Компонент інвентаря
+│   │   ├── inventory/       # Компонент інвентаря (InventoryComponent.gd, InventorySlot.gd)
 │   │   ├── jobs/            # JobManager та черга замовлень
 │   │   └── logistics/       # Склади та доставка
 │   ├── ui/                  # Інтерфейс користувача (Control вузли)
@@ -96,6 +96,7 @@ saecula_2/
   - Швидкість ходьби: 140 px/s з прискоренням (1200 px/s²) та тертям зупинки (1400 px/s²).
   - Напрямок погляду: `facing_direction` (Vector2).
   - Взаємодія з сіткою: `get_current_cell() -> Vector2i`, `get_interaction_cell() -> Vector2i`.
+  - Інвентар: дочірній вузол `InventoryComponent` (24 слоти).
 - **Колізія `CollisionShape2D`:** `CircleShape2D` з радіусом 8 пікселів (оптимально для 32x32 тайлів, не застряє в кутах).
 - **Візуал `PlayerVisual.gd`:** Процедурний рендер персонажа (тіло, голова, капюшон, тінь, напрямок очей, процедурне погойдування тіла при ходьбі).
 
@@ -115,3 +116,15 @@ saecula_2/
   - `data/items/stone.tres` (Камінь)
   - `data/items/flint.tres` (Кремінь)
   - `data/items/berries.tres` (Дикі ягоди)
+
+## 10. Компонент інвентаря (`InventoryComponent.gd`)
+- **Призначення:** Модульний контейнер зберігання предметів для гравця, жителів, скринь, будівельних складів.
+- **Слоти (`InventorySlot.gd`):** Зберігають `item: Resource` та `count: int`.
+- **Сигнали:** `inventory_updated`, `slot_changed(slot_index)`, `item_added(item, amount)`, `item_removed(item_id, amount)`.
+- **API:**
+  - `add_item(item: Resource, amount: int) -> int` — додає предмети зі стакуванням до `max_stack`, повертає залишок.
+  - `add_item_by_id(item_id: StringName, amount: int) -> int` — додає предмет напряму через `ItemDatabase`.
+  - `remove_item(item_id: StringName, amount: int, allow_partial: bool = false) -> bool` — видаляє вказану кількість.
+  - `has_item(item_id: StringName, amount: int = 1) -> bool` — перевіряє наявність предметів.
+  - `get_item_count(item_id: StringName) -> int` — повертає загальну кількість предметів у всіх слотах.
+  - `get_all_items() -> Array[Dictionary]` — повертає всі непорожні слоти для UI та збереження.

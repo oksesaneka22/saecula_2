@@ -2,7 +2,8 @@ extends CharacterBody2D
 
 ## Player: Основний контролер персонажа гравця під прямим керуванням.
 ## Підтримує плавний 8-напрямний рух (WASD), визначення вектора погляду,
-## реакцію на стан гри (GameManager.GameState) та роботу з тайловою сіткою.
+## реакцію на стан гри (GameManager.GameState), роботу з тайловою сіткою
+## та компонент інвентаря гравця.
 
 # ------------------------------------------------------------------------------
 # Константи та експортні змінні
@@ -10,6 +11,8 @@ extends CharacterBody2D
 @export var move_speed: float = 140.0
 @export var acceleration: float = 1200.0
 @export var friction: float = 1400.0
+
+@onready var inventory: Node = $InventoryComponent
 
 var facing_direction: Vector2 = Vector2.DOWN:
 	get:

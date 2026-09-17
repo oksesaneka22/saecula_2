@@ -1,16 +1,27 @@
 # Історія змін (CHANGES)
 
-### Виправлення помилки парсингу `Could not find type "ItemData"` в `ItemDatabase` та `Main`
+### Виправлення помилки завантаження скриптів `Player.gd` та спаму `is_moving` у `PlayerVisual.gd`
 - **Причина проблеми:**
-  - В рушії Godot скрипти `Autoload` парсяться й компілюються раніше, ніж створюється та оновлюється глобальний кеш імен класів `class_name` (`.godot/global_script_class_cache.cfg`).
-  - Через це пряме використання статичного типу `ItemData` всередині `ItemDatabase.gd` та `Main.gd` призводило до помилки парсера: `Could not find type "ItemData" in the current scope`.
+  - У `Player.gd` та `Main.gd` тип змінної було вказано безпосередньо як `: InventoryComponent`. Через те, що глобальний кеш класів Godot оновлюється пізніше, парсер рушія видав помилку: `Could not find type "InventoryComponent" in the current scope`.
+  - Через цю помилку парсера скрипт `Player.gd` взагалі відмовився завантажуватись (`Failed to load script Player.gd`).
+  - В результаті вузол `Player` завантажився як базовий порожній `CharacterBody2D` без нашого скрипта, втративши властивості `is_moving` та `facing_direction`. Це спричинило зникнення персонажа і безперервний спам помилок у дочірньому вузлі `PlayerVisual.gd`.
 - **Виправлення:**
-  - У [`src/core/ItemDatabase.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/core/ItemDatabase.gd) замінено статичний тип `ItemData` на базовий `Resource`, додано `preload("res://src/data/schemas/ItemData.gd")` та динамічне визначення ідентифікаторів ресурсів.
-  - У [`src/core/Main.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/core/Main.gd) оновлено сигнатуру валідації на використання `Resource`.
-  - Успішно протестовано як у `headless`, так і в графічному режимі запуску `godot --path "." --quit`.
+  1. У [`src/entities/player/Player.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/entities/player/Player.gd) змінено типізацію `@onready var inventory: Node = $InventoryComponent`, що усунуло помилку компіляції скрипта.
+  2. У [`src/core/Main.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/core/Main.gd) приведено тестові змінні до безпечного типу `Node`.
+  3. У [`src/entities/player/PlayerVisual.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/entities/player/PlayerVisual.gd) додано безпечний доступ через `.get("is_moving")` та `.get("facing_direction")` з дефолтними значеннями — візуальний компонент більше ніколи не крашитиметься і не спамитиме в консоль.
+  4. Протестовано запуск через `godot --path "." --quit` — помилок немає, скрипт `Player.gd` успішно ініціалізується, персонаж повернений на сцену.
+
+### Ітерація 4.2: Універсальний компонент інвентаря (`InventoryComponent.gd`)
+- Створено клас слота `src/systems/inventory/InventorySlot.gd` (`RefCounted`).
+- Створено універсальний компонент `src/systems/inventory/InventoryComponent.gd` (`Node`).
+- Додано `InventoryComponent` як дочірній вузол до `Player.tscn`.
+- Написано й успішно виконано юніт-тести в `src/core/Main.gd`.
+
+### Виправлення помилки парсингу `Could not find type "ItemData"` в `ItemDatabase` та `Main`
+- В `ItemDatabase.gd` та `Main.gd` усунуто жорстку залежність від глобального кешу `class_name`.
 
 ### Ітерація 4.1: Схеми предметів (Data-Driven ItemData & ItemDatabase)
-- Створено схему предметів `src/data/schemas/ItemData.gd` (`class_name ItemData`).
+- Створено схему предметів `src/data/schemas/ItemData.gd`.
 - Створено допоміжну схему витрат `src/data/schemas/ItemCost.gd`.
 - Створено базові предмети Кам'яного віку у `data/items/` (`wood.tres`, `stone.tres`, `flint.tres`, `berries.tres`).
 - Створено та зареєстровано як Autoload реєстр `src/core/ItemDatabase.gd`.

@@ -1,8 +1,9 @@
-[gd_scene load_steps=5 format=3 uid="uid://saecula_player_scene"]
+[gd_scene load_steps=6 format=3 uid="uid://saecula_player_scene"]
 
 [ext_resource type="Script" path="res://src/entities/player/Player.gd" id="1_player"]
 [ext_resource type="Script" path="res://src/entities/player/PlayerVisual.gd" id="2_visual"]
 [ext_resource type="Script" path="res://src/core/GameCamera2D.gd" id="3_camera"]
+[ext_resource type="Script" path="res://src/systems/inventory/InventoryComponent.gd" id="4_inventory"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_player"]
 radius = 8.0
@@ -21,3 +22,7 @@ shape = SubResource("CircleShape2D_player")
 [node name="GameCamera2D" type="Camera2D" parent="."]
 position_smoothing_enabled = false
 script = ExtResource("3_camera")
+
+[node name="InventoryComponent" type="Node" parent="."]
+script = ExtResource("4_inventory")
+slot_count = 24
