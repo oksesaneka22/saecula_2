@@ -1,22 +1,30 @@
 # Історія змін (CHANGES)
 
+### Виправлення вібрації/джиттеру камери (`position_smoothing`)
+- **Аналіз причини на основі відеозапису:**
+  - Коли `Camera2D` є дочірнім вузлом `CharacterBody2D`, увімкнений параметр `position_smoothing_enabled = true` намагається розраховувати лаг відносно локальних координат вузла.
+  - На моніторах з частотою оновлення понад 60Hz (144Hz / 165Hz / 240Hz) фізичний такт рушія (60 fps) і частота рендерингу не збігаються, через що виникає фазове биття (стробоскопічний джиттер — камера запізнюється на випадкову частку кадру і ривком наздоганяє персонажа).
+- **Виправлення:**
+  - Вимкнено `position_smoothing_enabled = false` у [`src/core/GameCamera2D.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/core/GameCamera2D.gd) та [`src/entities/player/Player.tscn`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/entities/player/Player.tscn).
+  - Тепер камера жорстко та миттєво прив'язана до персонажа: координати камери ідеально відповідають позиції гравця кожен кадр без фазових розривів.
+  - Зум коліщатком миші продовжує працювати плавно через `Tween`.
+
+### Виправлення тремтіння (джиттеру/вібрації) при русі персонажа та камери
+- Вимкнено `snap_2d_transforms_to_pixel = false` та `snap_2d_vertices_to_pixel = false` у `project.godot`.
+- Перенесено `GameCamera2D` всередину `Player.tscn`.
+
+### Ітерація 3.2: Плавна камера з зумом (GameCamera2D)
+- Створено контролер камери `src/core/GameCamera2D.gd` (`Camera2D`).
+- Плавне масштабування коліщатком миші (`zoom_in` / `zoom_out`) в діапазоні від 0.5x до 2.5x через інтерполяцію `Tween`.
+
 ### Гарячі клавіші F11 (Повний екран) та F12 (Вихід)
-- Додано дії `toggle_fullscreen` на клавішу **F11** та `quit_game` на клавішу **F12** у [`project.godot`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/project.godot).
-- У [`src/core/GameManager.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/core/GameManager.gd) реалізовано:
-  - `toggle_fullscreen()` — плавне перемикання між віконним режимом та нативним повноекранним режимом через `DisplayServer.window_set_mode()`.
-  - `quit_game()` — швидке та безпечне закриття гри через `get_tree().quit()`.
-  - Обробка дій відбувається в `_unhandled_input()` із пріоритетом (працює навіть під час паузи, оскільки `GameManager.process_mode = PROCESS_MODE_ALWAYS`).
-- Оновлено таблиці керування в [README.md](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/README.md) та [Documentation.md](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/Documentation.md).
+- Додано дії `toggle_fullscreen` на клавішу **F11** та `quit_game` на клавішу **F12** у `project.godot`.
+- У `GameManager.gd` реалізовано методи перемикання повного екрану та швидкого виходу.
 
 ### Ітерація 3.1: Рух персонажа та візуал гравця
-- Створено контролер персонажа `src/entities/player/Player.gd` (`CharacterBody2D`):
-  - 8-напрямний плавний рух через `Input.get_vector("move_left", "move_right", "move_up", "move_down")`.
-  - Нормалізація діагональної швидкості.
-  - Налаштовано швидкість (140 px/s), прискорення (1200 px/s²) та тертя (1400 px/s²).
-  - Вектор погляду `facing_direction` (Vector2).
-  - Інтеграція з `GridManager`: додано `get_current_cell()` та `get_interaction_cell()`.
+- Створено контролер персонажа `src/entities/player/Player.gd` (`CharacterBody2D`).
 - Створено візуальний процедурний компонент `src/entities/player/PlayerVisual.gd`.
-- Створено сцену `src/entities/player/Player.tscn` з колізією `CircleShape2D` (радіус 8 пікселів).
+- Створено сцену `src/entities/player/Player.tscn` з колізією `CircleShape2D`.
 - Інстанційовано `Player.tscn` у сцену світу `World.tscn`.
 
 ### Адаптація розміру карти світу під 1080p та 1440p
