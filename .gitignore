@@ -1,1 +1,10 @@
+# Godot 4 engine files
+.godot/
+*.translation
+
+# System and export files
+.import/
+export_presets.cfg
+
+# Documentation / obsidian
 .obsidian/

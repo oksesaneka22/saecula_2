@@ -32,9 +32,9 @@
 ### Ітерація 1.1: Ініціалізація структури папок та конфігурації Godot 4
 * **Мета:** Створити правильну модульну структуру директорій та базовий `project.godot` з обов'язковою підтримкою 1920x1080 та 2560x1440.
 * **Чекліст:**
-  - [ ] Створити структуру папок: `assets/`, `data/schemas/`, `src/core/`, `src/world/`, `src/entities/`, `src/systems/`, `src/ui/`.
-  - [ ] Створити `project.godot` з налаштуваннями: роздільна здатність вікна з обов'язковою та точною підтримкою 1920x1080 (Full HD) та 2560x1440 (2K QHD) (базовий viewport 1920x1080, stretch mode: `canvas_items`, aspect: `keep`), рендерер `gl_compatibility` (максимальна сумісність і стабільність).
-  - [ ] Налаштувати базові дії введення (Input Map): `move_up` (W/Up), `move_down` (S/Down), `move_left` (A/Left), `move_right` (D/Right), `interact` (E), `cancel` (Escape), `hotbar_1`..`hotbar_9`.
+  - [x] Створити структуру папок: `assets/`, `data/schemas/`, `src/core/`, `src/world/`, `src/entities/`, `src/systems/`, `src/ui/`.
+  - [x] Створити `project.godot` з налаштуваннями: роздільна здатність вікна з обов'язковою та точною підтримкою 1920x1080 (Full HD) та 2560x1440 (2K QHD) (базовий viewport 1920x1080, stretch mode: `canvas_items`, aspect: `keep`), рендерер `gl_compatibility` (максимальна сумісність і стабільність).
+  - [x] Налаштувати базові дії введення (Input Map): `move_up` (W/Up), `move_down` (S/Down), `move_left` (A/Left), `move_right` (D/Right), `interact` (E), `cancel` (Escape), `hotbar_1`..`hotbar_9`.
 * **Промпт для генерації:**
   > "Створи базову конфігурацію проекту Godot 4: згенеруй `project.godot` з обов'язковою та точною підтримкою роздільних здатностей 1920x1080 та 2560x1440 (viewport 1920x1080, stretch mode canvas_items, aspect keep), pixel snap для 2D, налаштованою мапою клавіш (WASD, Interact 'E', Cancel 'Escape') та структуру порожніх модульних директорій згідно з [DESCRIPTION.md](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/DESCRIPTION.md)."
 * **Критерій готовності:** Проект відкривається або запускається у Godot 4 без помилок конфігурації, коректно масштабується і чітко відображається як у 1920x1080, так і у 2560x1440.
@@ -44,9 +44,9 @@
 ### Ітерація 1.2: EventBus та базовий GameManager
 * **Мета:** Створити глобальну шину подій для усунення жорстких зв'язків між підсистемами.
 * **Чекліст:**
-  - [ ] Створити `src/core/EventBus.gd` з основними сигналами гри.
-  - [ ] Створити `src/core/GameManager.gd` для контролю стану гри (PLAYING, PAUSED, BUILDING_MODE).
-  - [ ] Зареєструвати `EventBus` та `GameManager` як Autoload у `project.godot`.
+  - [x] Створити `src/core/EventBus.gd` з основними сигналами гри.
+  - [x] Створити `src/core/GameManager.gd` для контролю стану гри (PLAYING, PAUSED, BUILDING_MODE).
+  - [x] Зареєструвати `EventBus` та `GameManager` як Autoload у `project.godot`.
 * **Промпт для генерації:**
   > "Реалізуй глобальну шину сигналів `EventBus.gd` (сигнали зміни дня, створення завдань, підбору предметів, розміщення будівель) та `GameManager.gd` зі строгою статичною типізацією GDScript 2.0. Додай їх реєстрацію в Autoload."
 * **Критерій готовності:** Автолоади завантажуються в рантаймі, `EventBus` доступний з будь-якого скрипту.
