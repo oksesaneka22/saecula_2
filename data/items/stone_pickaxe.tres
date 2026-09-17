@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ItemData" load_steps=2 format=3 uid="uid://saecula_item_stone_pickaxe"]
+
+[ext_resource type="Script" path="res://src/data/schemas/ItemData.gd" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+id = &"stone_pickaxe"
+display_name = "Кам'яна кирка"
+description = "Проста кирка для дроблення каміння та видобутку кременю чи руди."
+category = 2
+max_stack = 1
+tool_type = 2
+tier = 1
+tool_efficiency = 2.0

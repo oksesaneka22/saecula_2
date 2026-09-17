@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="RecipeData" load_steps=6 format=3 uid="uid://saecula_recipe_stone_axe"]
+
+[ext_resource type="Script" path="res://src/data/schemas/RecipeData.gd" id="1_recipe"]
+[ext_resource type="Script" path="res://src/data/schemas/ItemCost.gd" id="2_cost"]
+[ext_resource type="Resource" path="res://data/items/wood.tres" id="3_wood"]
+[ext_resource type="Resource" path="res://data/items/flint.tres" id="4_flint"]
+[ext_resource type="Resource" path="res://data/items/stone_axe.tres" id="5_axe"]
+
+[sub_resource type="Resource" id="Cost_wood"]
+script = ExtResource("2_cost")
+item = ExtResource("3_wood")
+amount = 2
+
+[sub_resource type="Resource" id="Cost_flint"]
+script = ExtResource("2_cost")
+item = ExtResource("4_flint")
+amount = 2
+
+[resource]
+script = ExtResource("1_recipe")
+id = &"craft_stone_axe"
+display_name = "Кам'яна сокира"
+description = "Виготовлення кам'яної сокири з двох гілок дерева та двох уламків кременю."
+ingredients = [SubResource("Cost_wood"), SubResource("Cost_flint")]
+required_era = 0
+craft_time = 0.0
+result_item = ExtResource("5_axe")
+result_amount = 1

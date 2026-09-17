@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ItemData" load_steps=2 format=3 uid="uid://saecula_item_campfire"]
+
+[ext_resource type="Script" path="res://src/data/schemas/ItemData.gd" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+id = &"campfire"
+display_name = "Багаття"
+description = "Джерело тепла, світла та затишку для перших поселенців."
+category = 1
+max_stack = 16
+tool_type = 0
+tier = 0
+tool_efficiency = 1.0

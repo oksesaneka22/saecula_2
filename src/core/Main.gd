@@ -27,6 +27,9 @@ func _ready() -> void:
 	# 4. Валідація збору ресурсів та дропу (Ітерація 4.3)
 	_test_harvest_and_drop()
 
+	# 5. Валідація CraftingManager (Ітерація 5.1)
+	_test_crafting_manager()
+
 
 func _test_inventory_component(wood: Resource) -> void:
 	var test_inv: Node = InventoryComponentScript.new()
@@ -71,6 +74,36 @@ func _test_harvest_and_drop() -> void:
 	node.harvest(1.0, 0)
 	assert(GridManager.is_cell_walkable(test_cell) == true, "Destroyed node must free cell in GridManager")
 	print("[Main] Harvest and drop mechanics unit tests passed successfully!")
+
+
+func _test_crafting_manager() -> void:
+	assert(CraftingManager != null, "CraftingManager autoload must be available")
+	var axe_recipe = CraftingManager.get_recipe(&"craft_stone_axe")
+	assert(axe_recipe != null, "craft_stone_axe recipe must be loaded")
+
+	var test_inv: Node = InventoryComponentScript.new()
+	test_inv.set("slot_count", 6)
+	add_child(test_inv)
+
+	# 1. Порожній інвентар — не може скрафтити
+	assert(CraftingManager.can_craft(axe_recipe, test_inv) == false, "Cannot craft with empty inventory")
+
+	# 2. Додаємо 2 дерева та 2 кременю
+	test_inv.add_item_by_id(&"wood", 2)
+	test_inv.add_item_by_id(&"flint", 2)
+	assert(CraftingManager.can_craft(axe_recipe, test_inv) == true, "Must be able to craft stone axe with 2 wood + 2 flint")
+
+	# 3. Виконуємо крафт
+	var success: bool = CraftingManager.craft_item(axe_recipe, test_inv)
+	assert(success == true, "craft_item must return true")
+
+	# 4. Перевіряємо списання інгредієнтів та наявність сокири
+	assert(test_inv.get_item_count(&"wood") == 0, "Wood must be consumed")
+	assert(test_inv.get_item_count(&"flint") == 0, "Flint must be consumed")
+	assert(test_inv.has_item(&"stone_axe", 1) == true, "Inventory must contain 1 stone_axe")
+
+	test_inv.queue_free()
+	print("[Main] CraftingManager unit tests passed successfully!")
 
 
 func _on_game_state_changed(new_state: int, old_state: int) -> void:

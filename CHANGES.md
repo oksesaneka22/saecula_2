@@ -1,19 +1,39 @@
 # Історія змін (CHANGES)
 
+### Додано інтерфейс крафту (CraftingUI)
+- Створено контролер інтерфейсу [`src/ui/hud/CraftingUI.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/ui/hud/CraftingUI.gd) та інтегровано в [`HUD.tscn`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/ui/hud/HUD.tscn).
+- Додано гарячу клавішу **`C`** (`crafting_toggle`) у [`project.godot`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/project.godot).
+- Вікно автоматично відображає всі доступні рецепти:
+  - Кам'яна сокира (2 дерева + 2 кременю)
+  - Кам'яна кирка (2 дерева + 3 каменю)
+  - Багаття (4 дерева + 4 каменю)
+- Динамічний підрахунок ресурсів гравця у форматі: `Назва: наявна_кількість / потрібна_кількість` (підсвічується зеленим, коли вистачає, або червоним, коли недостатньо).
+- Кнопка «Скрафтити» активується автоматично лише при достатній кількості інгредієнтів.
+
+### Ітерація 5.1: Схема рецептів та менеджер крафту (CraftingManager)
+- Створено схему даних рецептів [`src/data/schemas/RecipeData.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/data/schemas/RecipeData.gd):
+  - Підтримка списку інгредієнтів (`ItemCost`), результату крафту, кількості, часу виготовлення та вимоги до епохи (`required_era`).
+- Створено нові предмети інструментів у `data/items/`:
+  - `stone_axe.tres` (Кам'яна сокира, ефективність 2.0x проти дерев).
+  - `stone_pickaxe.tres` (Кам'яна кирка, ефективність 2.0x проти каменю).
+  - `campfire.tres` (Багаття).
+- Створено базові рецепти у `data/recipes/`:
+  - `craft_stone_axe.tres`: 2 дерева + 2 кременю $\to$ 1 `stone_axe`.
+  - `craft_stone_pickaxe.tres`: 2 дерева + 3 каменю $\to$ 1 `stone_pickaxe`.
+  - `craft_campfire.tres`: 4 дерева + 4 каменю $\to$ 1 `campfire`.
+- Створено та зареєстровано як Autoload [`src/systems/crafting/CraftingManager.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/systems/crafting/CraftingManager.gd):
+  - Автоматичне сканування папки рецептів `res://data/recipes/`.
+  - Методи `get_recipe()`, `get_all_recipes()`, `get_recipes_for_era()`.
+  - Метод валідації `can_craft(recipe, inventory) -> bool`.
+  - Метод виконання `craft_item(recipe, inventory) -> bool`: списання матеріалів, видача результату та емісія сигналу `recipe_crafted`.
+- Додано автоматичний юніт-тест повного циклу крафту сокири в [`src/core/Main.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/core/Main.gd).
+- Оновлено `Documentation.md` (додано Розділ 13 "Система крафту").
+
 ### Ітерація 4.4: UI швидкого доступу (Hotbar) та Інвентар гравця
-- Створено компонент слота інтерфейсу [`src/ui/hud/ItemSlotUI.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/ui/hud/ItemSlotUI.gd):
-  - Розмір 52x52 px, процедурне малювання фону, рамок, кольорів предметів, кількості в стаку та гарячих клавіш 1–8.
-  - Золота рамка для активного слота.
-- Створено панель швидкого доступу [`src/ui/hud/HotbarUI.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/ui/hud/HotbarUI.gd):
-  - 8 слотів по центру внизу екрана (Preset Bottom Center).
-  - Підтримка вибору активного слота цифрами 1–8 або кліком миші.
-  - Автоматична синхронізація з першими 8 слотами інвентаря гравця.
-- Створено вікно повного інвентаря [`src/ui/hud/InventoryUI.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/ui/hud/InventoryUI.gd):
-  - Сітка 6x4 (24 слоти), затемнення фону, заголовок та підказка керування.
-  - Відкриття/закриття за клавішею `I` (або `Escape` для закриття).
-  - Центрування за допомогою відносних якорів (Anchor Presets) для адаптивності під 1080p та 1440p.
-- Створено сцену [`src/ui/hud/HUD.tscn`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/ui/hud/HUD.tscn) (`CanvasLayer`) та підключено до [`Main.tscn`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/core/Main.tscn).
-- Оновлено `Documentation.md` (додано Розділ 12 "Користувацький інтерфейс: Hotbar та Інвентар").
+- Створено компонент слота інтерфейсу `ItemSlotUI.gd`.
+- Створено панель швидкого доступу `HotbarUI.gd` (8 слотів).
+- Створено вікно повного інвентаря `InventoryUI.gd` (24 слоти на клавішу `I` / `Tab`).
+- Створено сцену `HUD.tscn` (`CanvasLayer`) та підключено до `Main.tscn`.
 
 ### Виправлення помилки виклику `is_cell_solid` у `GridManager.gd`
 - Додано метод `is_cell_solid(map_pos: Vector2i) -> bool` до `GridManager.gd`.
@@ -31,9 +51,3 @@
 ### Ітерація 4.1: Схеми предметів (Data-Driven ItemData & ItemDatabase)
 - Створено схему предметів `ItemData.gd`, `ItemCost.gd`, базові предмети в `data/items/`.
 - Створено Autoload реєстр `ItemDatabase.gd`.
-
-### Ітерація 3.2: Плавна камера з зумом (GameCamera2D)
-- Створено контролер камери з зумом через `Tween`.
-
-### Ітерація 3.1: Рух персонажа та візуал гравця
-- Створено контролер персонажа `Player.gd` та процедурний візуал `PlayerVisual.gd`.

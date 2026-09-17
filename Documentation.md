@@ -27,9 +27,9 @@ saecula_2/
 ├── data/                    # Data-Driven ресурси (.tres)
 │   ├── buildings/           # Схеми та параметри будівель
 │   ├── eras/                # Дерева епох та умови переходу
-│   ├── items/               # Визначення предметів (wood.tres, stone.tres, flint.tres, berries.tres)
-│   ├── recipes/             # Рецепти крафту
-│   └── schemas/             # GDScript схеми даних (ItemData.gd, ItemCost.gd)
+│   ├── items/               # Визначення предметів (wood, stone, flint, berries, stone_axe, stone_pickaxe, campfire)
+│   ├── recipes/             # Рецепти крафту (craft_stone_axe.tres, craft_stone_pickaxe.tres, craft_campfire.tres)
+│   └── schemas/             # GDScript схеми даних (ItemData.gd, ItemCost.gd, RecipeData.gd)
 ├── src/                     # Вихідний код логіки гри
 │   ├── core/                # Глобальні Autoloads (EventBus, GameManager, ItemDatabase)
 │   ├── entities/            # Ігрові сутності
@@ -39,6 +39,7 @@ saecula_2/
 │   │   └── player/          # Персонаж гравця (Player.tscn, Player.gd)
 │   ├── systems/             # Підсистеми колонії
 │   │   ├── building/        # Будівельні майданчики та креслення
+│   │   ├── crafting/        # Менеджер крафту (CraftingManager.gd)
 │   │   ├── inventory/       # Компонент інвентаря (InventoryComponent.gd, InventorySlot.gd)
 │   │   ├── jobs/            # JobManager та черга замовлень
 │   │   └── logistics/       # Склади та доставка
@@ -69,8 +70,6 @@ saecula_2/
 | `secondary_action`| Додаткова дія (скасування/меню)| `Right Mouse Button` |
 | `hotbar_1`..`hotbar_9` | Швидкий вибір предметів | Цифри `1`–`9` |
 
-Усі клавіші прив'язані через `physical_keycode`, завдяки чому керування WASD працює коректно незалежно від мовної розкладки клавіатури гравця.
-
 ## 5. Глобальні сінглтони (Autoloads)
 
 ### 5.1. `EventBus` (`res://src/core/EventBus.gd`)
@@ -84,6 +83,9 @@ saecula_2/
 
 ### 5.4. `ItemDatabase` (`res://src/core/ItemDatabase.gd`)
 Глобальний реєстр даних предметів гри. Сканує директорію `res://data/items/`, кешує знайдені `.tres` ресурси та надає миттєвий доступ через `ItemDatabase.get_item(&"id")`.
+
+### 5.5. `CraftingManager` (`res://src/systems/crafting/CraftingManager.gd`)
+Центральний менеджер крафту. Сканує `res://data/recipes/`, кешує рецепти, перевіряє доступність за епохою та наявністю матеріалів в інвентарі, списує ресурси та створює новий предмет.
 
 ## 6. Світ та тайлова поверхня (`World.tscn`)
 - **Вузол `World` (`src/world/World.gd`):** Керує генерацією та розмірами карти (80x50 тайлів, 2560x1600 px), спавнить природні ресурси (дерева, каміння, кущі) за межами зони появи гравця.
@@ -118,6 +120,9 @@ saecula_2/
   - `data/items/stone.tres` (Камінь)
   - `data/items/flint.tres` (Кремінь)
   - `data/items/berries.tres` (Дикі ягоди)
+  - `data/items/stone_axe.tres` (Кам'яна сокира)
+  - `data/items/stone_pickaxe.tres` (Кам'яна кирка)
+  - `data/items/campfire.tres` (Багаття)
 
 ## 10. Компонент інвентаря (`InventoryComponent.gd`)
 - **Призначення:** Модульний контейнер зберігання предметів для гравця, жителів, скринь, будівельних складів.
@@ -155,3 +160,20 @@ saecula_2/
   - Відкривається/закривається натисканням клавіші `I` або `Tab`.
   - Може бути закрите клавішею `Escape`.
   - Центрується відносно екрана через `CenterContainer` (повна адаптивність під 1080p та 1440p).
+
+## 13. Система крафту (`RecipeData.gd`, `CraftingManager.gd`)
+- **Схема `RecipeData`:**
+  - `id`: унікальний ідентифікатор рецепту (`StringName`).
+  - `ingredients`: масив ресурсів `ItemCost` (предмет + необхідна кількість).
+  - `result_item`: створений предмет (`ItemData`).
+  - `result_amount`: кількість одержаних предметів.
+  - `required_era`: мінімальна епоха для доступу до рецепту.
+- **Менеджер `CraftingManager` (Autoload):**
+  - Автоматично сканує директорію `res://data/recipes/`.
+  - Метод `can_craft(recipe, inventory) -> bool`: перевіряє наявність усіх складових.
+  - Метод `craft_item(recipe, inventory) -> bool`: списує витрачені матеріали та поміщає створений інструмент/предмет в інвентар.
+  - Сигнали: `recipe_crafted(recipe, result_item, amount)`, `crafting_failed(recipe, reason)`.
+- **Базові рецепти:**
+  - `craft_stone_axe.tres`: 2 дерева + 2 кременю $\to$ 1 `stone_axe`.
+  - `craft_stone_pickaxe.tres`: 2 дерева + 3 каменю $\to$ 1 `stone_pickaxe`.
+  - `craft_campfire.tres`: 4 дерева + 4 каменю $\to$ 1 `campfire`.
