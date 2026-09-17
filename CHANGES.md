@@ -1,30 +1,42 @@
 # Історія змін (CHANGES)
 
+### Гарячі клавіші F11 (Повний екран) та F12 (Вихід)
+- Додано дії `toggle_fullscreen` на клавішу **F11** та `quit_game` на клавішу **F12** у [`project.godot`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/project.godot).
+- У [`src/core/GameManager.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/core/GameManager.gd) реалізовано:
+  - `toggle_fullscreen()` — плавне перемикання між віконним режимом та нативним повноекранним режимом через `DisplayServer.window_set_mode()`.
+  - `quit_game()` — швидке та безпечне закриття гри через `get_tree().quit()`.
+  - Обробка дій відбувається в `_unhandled_input()` із пріоритетом (працює навіть під час паузи, оскільки `GameManager.process_mode = PROCESS_MODE_ALWAYS`).
+- Оновлено таблиці керування в [README.md](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/README.md) та [Documentation.md](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/Documentation.md).
+
+### Ітерація 3.1: Рух персонажа та візуал гравця
+- Створено контролер персонажа `src/entities/player/Player.gd` (`CharacterBody2D`):
+  - 8-напрямний плавний рух через `Input.get_vector("move_left", "move_right", "move_up", "move_down")`.
+  - Нормалізація діагональної швидкості.
+  - Налаштовано швидкість (140 px/s), прискорення (1200 px/s²) та тертя (1400 px/s²).
+  - Вектор погляду `facing_direction` (Vector2).
+  - Інтеграція з `GridManager`: додано `get_current_cell()` та `get_interaction_cell()`.
+- Створено візуальний процедурний компонент `src/entities/player/PlayerVisual.gd`.
+- Створено сцену `src/entities/player/Player.tscn` з колізією `CircleShape2D` (радіус 8 пікселів).
+- Інстанційовано `Player.tscn` у сцену світу `World.tscn`.
+
 ### Адаптація розміру карти світу під 1080p та 1440p
-- **Причина:** Раніше карта генерувалася розміром 40x40 тайлів ($40 \times 32 = 1280$ пікселів у ширину). На екрані 1920x1080 праворуч залишалася порожня смуга завширшки 640 пікселів ($1920 - 1280$).
-- **Виправлення:** У [`src/world/World.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/world/World.gd) розмір карти оновлено до **80x50 тайлів** ($80 \times 32 = 2560$ px, $50 \times 32 = 1600$ px). Тепер тайлове поле повністю покриває як 1920x1080, так і 2560x1440 на весь екран без сірих порожніх зон.
+- У `World.gd` розмір карти оновлено до 80x50 тайлів (2560x1600 px).
 
 ### Виправлення завантаження текстур тайлів (Ітерація 2.2)
-- **Причина помилки:** Рушій Godot при прямому запуску через `load("res://...svg")` вимагав попереднього бінарного імпорту у `.godot/imported`.
-- **Виправлення:** Переписано `src/world/GroundLayer.gd` на використання процедурного `Image` та `ImageTexture.create_from_image()`. Тепер текстури тайлів (трава та земля з варіативними пікселями) генеруються на 100% автономно в коді без залежності від імпорту ресурсів.
-- **Покращення відладки:** У `World.gd` додано золотисту контурну рамку меж карти у режимі F3 (`toggle_debug_grid`).
+- Переписано `src/world/GroundLayer.gd` на процедурну генерацію `ImageTexture` в рантаймі.
 
 ### Ітерація 2.2: Базова тестова сцена світу з TileMapLayer
-- Створено тайлсет-плейсхолдер `assets/sprites/tiles_placeholder.svg`.
-- Створено шар поверхні `src/world/GroundLayer.gd` (`TileMapLayer`) та сцену світу `src/world/World.tscn`.
-- Додано відладочну сітку на клавішу **F3** (`toggle_debug_grid`).
-- Сцену `World.tscn` додано в кореневу сцену `Main.tscn`.
+- Створено тайлсет-плейсхолдер, шар поверхні `GroundLayer.gd`, сцену `World.tscn` та відладку на `F3`.
 
 ### Ітерація 2.1: Реалізація GridManager та AStarGrid2D
-- Створено `src/world/GridManager.gd` згідно з вимогами `skill-grid-pathfinding.md`.
-- Зареєстровано `GridManager` як глобальний Autoload у `project.godot`.
+- Створено `GridManager.gd` з `AStarGrid2D` та зареєстровано як Autoload.
 
 ### Покращення та аудит Ітерацій 1.1 та 1.2
 - Розділено конфліктуючі дії введення (`Tab` для `colony_mode_toggle`, `I` для `inventory_toggle`, додано `zoom_in`/`zoom_out`).
 - Покращено поведінку повернення станів у `GameManager.gd` при натисканні `Escape`.
 
 ### Ітерація 1.2: Реалізація EventBus та GameManager (Autoloads)
-- Створено шину подій `src/core/EventBus.gd` та менеджер станів `src/core/GameManager.gd`.
+- Створено шину подій `EventBus.gd` та менеджер станів `GameManager.gd`.
 
 ### Ітерація 1.1: Ініціалізація структури папок та конфігурації Godot 4
 - Створено структуру папок, `project.godot` (1920x1080 / 2560x1440), кореневу сцену `Main.tscn`.

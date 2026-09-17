@@ -64,7 +64,19 @@ func _process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	# 1. Обробка кнопки Cancel (Escape)
+	# 1. Повноекранний режим за клавішею F11
+	if event.is_action_pressed("toggle_fullscreen"):
+		toggle_fullscreen()
+		get_viewport().set_input_as_handled()
+		return
+
+	# 2. Швидкий вихід з гри за клавішею F12
+	if event.is_action_pressed("quit_game"):
+		quit_game()
+		get_viewport().set_input_as_handled()
+		return
+
+	# 3. Обробка кнопки Cancel (Escape)
 	if event.is_action_pressed("cancel"):
 		match current_state:
 			GameState.BUILDING_MODE:
@@ -88,7 +100,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				toggle_pause()
 				get_viewport().set_input_as_handled()
 
-	# 2. Перемикання режиму керування поселенням за клавішею Tab (colony_mode_toggle)
+	# 4. Перемикання режиму керування поселенням за клавішею Tab (colony_mode_toggle)
 	if event.is_action_pressed("colony_mode_toggle"):
 		if current_state == GameState.PLAYING:
 			change_state(GameState.COLONY_MODE)
@@ -97,11 +109,26 @@ func _unhandled_input(event: InputEvent) -> void:
 			change_state(GameState.PLAYING)
 			get_viewport().set_input_as_handled()
 
-	# 3. Відкриття / закриття вікна інвентаря за клавішею I (inventory_toggle)
+	# 5. Відкриття / закриття вікна інвентаря за клавішею I (inventory_toggle)
 	if event.is_action_pressed("inventory_toggle"):
 		if current_state == GameState.PLAYING or current_state == GameState.COLONY_MODE:
 			EventBus.inventory_window_toggle_requested.emit()
 			get_viewport().set_input_as_handled()
+
+
+# ------------------------------------------------------------------------------
+# Керування вікном та додатком (Window & Application Control)
+# ------------------------------------------------------------------------------
+func toggle_fullscreen() -> void:
+	var current_mode: DisplayServer.WindowMode = DisplayServer.window_get_mode()
+	if current_mode == DisplayServer.WINDOW_MODE_FULLSCREEN or current_mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+	else:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+
+
+func quit_game() -> void:
+	get_tree().quit()
 
 
 # ------------------------------------------------------------------------------
