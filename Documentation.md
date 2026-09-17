@@ -94,3 +94,20 @@ saecula_2/
   - `toggle_pause() -> void`
   - `set_time_scale(new_scale: float) -> void`
   - `get_current_hour() -> int`, `get_current_minute() -> int`, `get_time_string() -> String`
+
+### 5.3. `GridManager` (`res://src/world/GridManager.gd`)
+Центральний менеджер тайлової сітки та навігації юнітів:
+- **Константи:** `TILE_SIZE = 32`.
+- **Пошук шляхів:** Внутрішній екземпляр `AStarGrid2D` (розмір за замовчуванням 128x128 тайлів, `HEURISTIC_MANHATTAN`, `DIAGONAL_MODE_NEVER` для унеможливлення зрізання кутів стін).
+- **Методи:**
+  - `world_to_map(world_pos: Vector2) -> Vector2i`: переведення світових пікселів у тайловий індекс клітинки.
+  - `map_to_world(map_pos: Vector2i) -> Vector2`: отримання світових координат центру тайла.
+  - `is_within_bounds(map_pos: Vector2i) -> bool`: перевірка знаходження клітинки в межах сітки.
+  - `is_cell_walkable(map_pos: Vector2i) -> bool`: перевірка прохідності клітинки.
+  - `set_cell_solid(map_pos: Vector2i, solid: bool) -> void`: позначення перешкоди чи проходу.
+  - `set_cell_weight(map_pos: Vector2i, weight: float) -> void`: зміна вартості руху через клітинку (дороги/болото).
+  - `register_occupant(map_pos: Vector2i, occupant: Node, is_solid: bool) -> bool`: прив'язка об'єкта до клітинки.
+  - `unregister_occupant(map_pos: Vector2i, set_walkable: bool) -> void`: звільнення клітинки.
+  - `get_world_path(from_world: Vector2, to_world: Vector2) -> PackedVector2Array`: отримання масиву точок шляху. Якщо кінцева точка зайнята (дерево, стіна), функція автоматично перенаправляє шлях на найближчого вільного сусіда.
+  - `get_closest_walkable_neighbor(from_cell: Vector2i, target_cell: Vector2i) -> Vector2i`: знаходження найближчої прохідної клітинки з 4 сусідніх сторін.
+  - `is_area_clear(origin_cell: Vector2i, size_in_tiles: Vector2i) -> bool`: перевірка доступності площі для розміщення споруд.

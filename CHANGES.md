@@ -1,17 +1,22 @@
 # Історія змін (CHANGES)
 
+### Ітерація 2.1: Реалізація GridManager та AStarGrid2D
+- Створено [`src/world/GridManager.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/world/GridManager.gd) згідно з вимогами `skill-grid-pathfinding.md`:
+  - Розмір тайла за замовчуванням `TILE_SIZE = 32`.
+  - Ініціалізація `AStarGrid2D` на 128x128 тайлів, режим руху `DIAGONAL_MODE_NEVER` для чистого 4-напрямного переміщення та запобігання зрізанню кутів будівель, `HEURISTIC_MANHATTAN`.
+  - Методи конвертації координат `world_to_map()` та `map_to_world()` (повертає центр клітинки).
+  - Методи керування прохідністю: `is_cell_walkable()`, `set_cell_solid()`, `set_cell_weight()`.
+  - Реєстрація сутностей та об'єктів на сітці: `register_occupant()`, `unregister_occupant()`, `get_occupant()`.
+  - Алгоритм пошуку найближчого прохідного сусіда: `get_closest_walkable_neighbor()` для збору ресурсів і підходу до непрохідних об'єктів.
+  - Отримання світового шляху: `get_world_path()` з автоматичним підходом до об'єкта, якщо кінцева точка є твердою.
+  - Перевірка чистоти зони під будівлі `is_area_clear()`.
+- Зареєстровано `GridManager` як глобальний Autoload у `project.godot`.
+- Оновлено `Documentation.md`, додано опис функціоналу `GridManager`.
+- Проведено валідацію через запуск у консолі рушія `godot --headless`.
+
 ### Покращення та аудит Ітерацій 1.1 та 1.2
-- **Розділено конфліктуючі дії введення:**
-  - `colony_mode_toggle` виділено на окрему клавішу `Tab` (режим симулятора колонії зі сповільненим часом за `docs/UI.md`).
-  - `inventory_toggle` виділено на клавішу `I` (відкриття/закриття інтерфейсу інвентаря).
-  - Додано дії `zoom_in` та `zoom_out` на коліщатко миші (Wheel Up / Wheel Down) для плавної роботи камери в Етапі 3.
-- **Оновлено `GameManager.gd`:**
-  - `Escape` тепер акуратно повертає з `BUILDING_MODE` у попередній стан, з `COLONY_MODE` у звичайний режим `PLAYING`, або ставить/знімає системну паузу без циклічних багів.
-  - Додано еміт сигналу `EventBus.inventory_window_toggle_requested` при натисканні `I`.
-- **Оновлено документацію:**
-  - Оновлено таблиці керування в [README.md](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/README.md) та [Documentation.md](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/Documentation.md).
-- **Валідація:**
-  - Проект повторно протестовано через консоль Godot 4 у безголовому режимі: 0 помилок, 0 попереджень.
+- Розділено конфліктуючі дії введення (`Tab` для `colony_mode_toggle`, `I` для `inventory_toggle`, додано `zoom_in`/`zoom_out`).
+- Покращено поведінку повернення станів у `GameManager.gd` при натисканні `Escape`.
 
 ### Ітерація 1.2: Реалізація EventBus та GameManager (Autoloads)
 - Створено глобальну шину подій `src/core/EventBus.gd` з основними сигналами гри.
