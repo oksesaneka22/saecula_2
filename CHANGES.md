@@ -1,21 +1,39 @@
 # Історія змін (CHANGES)
 
-### Виправлення помилки завантаження скриптів `Player.gd` та спаму `is_moving` у `PlayerVisual.gd`
+### Виправлення помилки виклику `is_cell_solid` у `GridManager.gd`
 - **Причина проблеми:**
-  - У `Player.gd` та `Main.gd` тип змінної було вказано безпосередньо як `: InventoryComponent`. Через те, що глобальний кеш класів Godot оновлюється пізніше, парсер рушія видав помилку: `Could not find type "InventoryComponent" in the current scope`.
-  - Через цю помилку парсера скрипт `Player.gd` взагалі відмовився завантажуватись (`Failed to load script Player.gd`).
-  - В результаті вузол `Player` завантажився як базовий порожній `CharacterBody2D` без нашого скрипта, втративши властивості `is_moving` та `facing_direction`. Це спричинило зникнення персонажа і безперервний спам помилок у дочірньому вузлі `PlayerVisual.gd`.
+  - В автотесті [`src/core/Main.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/core/Main.gd) викликався метод `GridManager.is_cell_solid(cell)`, але в `GridManager.gd` була лише зворотна перевірка `is_cell_walkable(cell)`.
 - **Виправлення:**
-  1. У [`src/entities/player/Player.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/entities/player/Player.gd) змінено типізацію `@onready var inventory: Node = $InventoryComponent`, що усунуло помилку компіляції скрипта.
-  2. У [`src/core/Main.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/core/Main.gd) приведено тестові змінні до безпечного типу `Node`.
-  3. У [`src/entities/player/PlayerVisual.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/entities/player/PlayerVisual.gd) додано безпечний доступ через `.get("is_moving")` та `.get("facing_direction")` з дефолтними значеннями — візуальний компонент більше ніколи не крашитиметься і не спамитиме в консоль.
-  4. Протестовано запуск через `godot --path "." --quit` — помилок немає, скрипт `Player.gd` успішно ініціалізується, персонаж повернений на сцену.
+  - Додано метод `is_cell_solid(map_pos: Vector2i) -> bool` до [`src/world/GridManager.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/world/GridManager.gd).
+  - Тест у `Main.gd` тепер проходить успішно, запуск гри відбувається без жодних повідомлень про помилки.
+
+### Ітерація 4.3: Природні об'єкти на карті (Дерево, Камінь, Кущ) та дроп
+- Створено сутність ресурсу [`src/world/WorldResourceNode.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/world/WorldResourceNode.gd) та сцену [`WorldResourceNode.tscn`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/world/WorldResourceNode.tscn) (`StaticBody2D`):
+  - Типи `ResourceType`: `TREE` (Дерево), `ROCK` (Камінь), `BUSH` (Кущ ягід).
+  - При спавні реєструє свою клітинку в `GridManager.register_occupant(cell, self, true)`.
+  - Метод `harvest(damage, tool_type)` з бонусом для відповідних інструментів (сокира/кирка) та процедурним тремтінням спрайта (Tween shake).
+  - При руйнуванні звільняє клітинку в `GridManager` і спавнить випадіння предметів.
+  - Процедурне відмалювання через `_draw()` (стовбур, листяні шари крони, валуни та ягідні кущі).
+- Створено сутність дропу [`src/entities/items/DroppedItem.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/entities/items/DroppedItem.gd) та сцену [`DroppedItem.tscn`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/entities/items/DroppedItem.tscn) (`Area2D`):
+  - Анімація погойдування над землею.
+  - Магнітне притягання до гравця на швидкості 380 px/s при наближенні та автоматичне додавання до інвентаря гравця.
+- Оновлено керування в [`src/entities/player/Player.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/entities/player/Player.gd):
+  - Додано взаємодію на клавішу `E` (збір об'єкта перед собою).
+  - Додано взаємодію лівим кліком миші (`primary_action`) у радіусі до 2.5 клітинок від гравця.
+- Процедурний спавн ресурсів у [`src/world/World.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/world/World.gd):
+  - Карта генерує дерева, валуни та ягідні кущі за межами стартової позиції гравця.
+- Додано юніт-тест видобутку та звільнення клітинки сітки в [`src/core/Main.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/core/Main.gd).
+- Оновлено `Documentation.md` (додано Розділ 11 "Природні ресурси та дроп предметів").
 
 ### Ітерація 4.2: Універсальний компонент інвентаря (`InventoryComponent.gd`)
 - Створено клас слота `src/systems/inventory/InventorySlot.gd` (`RefCounted`).
 - Створено універсальний компонент `src/systems/inventory/InventoryComponent.gd` (`Node`).
 - Додано `InventoryComponent` як дочірній вузол до `Player.tscn`.
 - Написано й успішно виконано юніт-тести в `src/core/Main.gd`.
+
+### Виправлення помилки завантаження скриптів `Player.gd` та спаму `is_moving` у `PlayerVisual.gd`
+- У `Player.gd` типізацію змінено на безпечний `Node`.
+- У `PlayerVisual.gd` додано безпечні гетери властивостей через `.get()`.
 
 ### Виправлення помилки парсингу `Could not find type "ItemData"` в `ItemDatabase` та `Main`
 - В `ItemDatabase.gd` та `Main.gd` усунуто жорстку залежність від глобального кешу `class_name`.

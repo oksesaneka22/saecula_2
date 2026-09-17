@@ -82,6 +82,13 @@ func is_cell_walkable(map_pos: Vector2i) -> bool:
 	return not astar_grid.is_point_solid(map_pos)
 
 
+## Перевіряє, чи є клітинка твердою непрохідною перешкодою
+func is_cell_solid(map_pos: Vector2i) -> bool:
+	if not is_within_bounds(map_pos):
+		return true
+	return astar_grid.is_point_solid(map_pos)
+
+
 ## Встановлює клітинку як тверду перешкоду (стіна, дерево, будівля) або вільну
 func set_cell_solid(map_pos: Vector2i, solid: bool) -> void:
 	if not is_within_bounds(map_pos):

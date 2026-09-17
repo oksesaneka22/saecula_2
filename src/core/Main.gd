@@ -2,6 +2,8 @@ extends Node2D
 
 const ItemDataScript = preload("res://src/data/schemas/ItemData.gd")
 const InventoryComponentScript = preload("res://src/systems/inventory/InventoryComponent.gd")
+const WorldResourceNodeScript = preload("res://src/world/WorldResourceNode.gd")
+const DroppedItemScene = preload("res://src/entities/items/DroppedItem.tscn")
 
 func _ready() -> void:
 	# Підписуємося на сигнали EventBus для валідації шини
@@ -21,6 +23,9 @@ func _ready() -> void:
 
 	# 3. Валідація InventoryComponent (Ітерація 4.2)
 	_test_inventory_component(wood)
+
+	# 4. Валідація збору ресурсів та дропу (Ітерація 4.3)
+	_test_harvest_and_drop()
 
 
 func _test_inventory_component(wood: Resource) -> void:
@@ -43,6 +48,29 @@ func _test_inventory_component(wood: Resource) -> void:
 
 	test_inv.queue_free()
 	print("[Main] InventoryComponent unit tests passed successfully!")
+
+
+func _test_harvest_and_drop() -> void:
+	# Тестова перевірка реєстрації, знищення та очищення сітки
+	var test_cell = Vector2i(70, 40)
+	assert(GridManager.is_cell_walkable(test_cell) == true, "Cell must be initially walkable")
+
+	var node: StaticBody2D = WorldResourceNodeScript.new()
+	node.global_position = GridManager.map_to_world(test_cell)
+	node.resource_type = 0 # TREE
+	node.max_health = 1.0
+	node.current_health = 1.0
+	node.drop_item_id = &"wood"
+	add_child(node)
+
+	# Клітинка стає зайнятою
+	assert(GridManager.is_cell_solid(test_cell) == true, "ResourceNode must block cell")
+	assert(GridManager.get_occupant(test_cell) == node, "GridManager occupant must be node")
+
+	# Удар (harvest) призводить до знищення та звільнення клітинки
+	node.harvest(1.0, 0)
+	assert(GridManager.is_cell_walkable(test_cell) == true, "Destroyed node must free cell in GridManager")
+	print("[Main] Harvest and drop mechanics unit tests passed successfully!")
 
 
 func _on_game_state_changed(new_state: int, old_state: int) -> void:

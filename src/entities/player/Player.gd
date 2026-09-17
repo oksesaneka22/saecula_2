@@ -2,6 +2,7 @@ extends CharacterBody2D
 
 ## Player: Основний контролер персонажа гравця під прямим керуванням.
 ## Підтримує плавний 8-напрямний рух (WASD), визначення вектора погляду,
+## взаємодію з ресурсами у світі ('E' або лівий клік миші),
 ## реакцію на стан гри (GameManager.GameState), роботу з тайловою сіткою
 ## та компонент інвентаря гравця.
 
@@ -27,6 +28,23 @@ var is_moving: bool = false:
 # ------------------------------------------------------------------------------
 func _ready() -> void:
 	add_to_group("player")
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if GameManager.current_state != GameManager.GameState.PLAYING:
+		return
+
+	# Взаємодія з ресурсом перед гравцем через клавішу 'E'
+	if event.is_action_pressed("interact"):
+		interact_with_target_cell(get_interaction_cell())
+	# Взаємодія кліком миші (первинна дія)
+	elif event.is_action_pressed("primary_action"):
+		var mouse_world: Vector2 = get_global_mouse_position()
+		var mouse_cell: Vector2i = GridManager.world_to_map(mouse_world)
+		var player_cell: Vector2i = get_current_cell()
+		# Дозволяємо збір у радіусі 2 тайлів від гравця
+		if Vector2(player_cell).distance_to(Vector2(mouse_cell)) <= 2.5:
+			interact_with_target_cell(mouse_cell)
 
 
 func _physics_process(delta: float) -> void:
@@ -56,6 +74,15 @@ func _handle_movement(delta: float) -> void:
 		velocity = velocity.move_toward(Vector2.ZERO, friction * delta)
 
 	move_and_slide()
+
+
+# ------------------------------------------------------------------------------
+# Взаємодія з об'єктами світу (Harvesting / Interaction)
+# ------------------------------------------------------------------------------
+func interact_with_target_cell(target_cell: Vector2i) -> void:
+	var occupant: Node = GridManager.get_occupant(target_cell)
+	if occupant != null and occupant.has_method("harvest"):
+		occupant.harvest(1.0, 0) # Базовий удар руками / інструментом
 
 
 # ------------------------------------------------------------------------------

@@ -35,6 +35,7 @@ saecula_2/
 │   ├── entities/            # Ігрові сутності
 │   │   ├── colonist/        # Логіка жителів
 │   │   ├── fsm/             # Скінченний автомат станів (State Machine)
+│   │   ├── items/           # Дроп предметів (DroppedItem.tscn, DroppedItem.gd)
 │   │   └── player/          # Персонаж гравця (Player.tscn, Player.gd)
 │   ├── systems/             # Підсистеми колонії
 │   │   ├── building/        # Будівельні майданчики та креслення
@@ -45,7 +46,7 @@ saecula_2/
 │   │   ├── colony_ui/       # Панель поселення та робітників
 │   │   ├── hud/             # Гарячі клавіші, індикатори
 │   │   └── tech_tree_ui/    # Дерево досліджень
-│   └── world/               # Тайлова сітка (GridManager, World.tscn, GroundLayer)
+│   └── world/               # Тайлова сітка (GridManager, World.tscn, GroundLayer, WorldResourceNode)
 ```
 
 ## 4. Мапа клавіш введення (Input Map)
@@ -55,7 +56,8 @@ saecula_2/
 | `move_down` | Рух вниз | `S`, `Down Arrow` |
 | `move_left` | Рух ліворуч | `A`, `Left Arrow` |
 | `move_right` | Рух праворуч | `D`, `Right Arrow` |
-| `interact` | Взаємодія / Збір | `E` |
+| `interact` | Взаємодія / Збір перед собою | `E` |
+| `primary_action` | Основна дія / Видобуток кліком | `Left Mouse Button` |
 | `cancel` | Скасування / Меню / Пауза | `Escape` |
 | `colony_mode_toggle` | Перемикання в режим колонії | `Tab` |
 | `inventory_toggle` | Відкрити/закрити інвентар | `I` |
@@ -64,7 +66,6 @@ saecula_2/
 | `toggle_debug_grid` | Увімкнути/вимкнути відладочну сітку | `F3` |
 | `zoom_in` | Наближення камери | `Mouse Wheel Up` |
 | `zoom_out` | Віддалення камери | `Mouse Wheel Down` |
-| `primary_action` | Основна дія (удар/вибір) | `Left Mouse Button` |
 | `secondary_action`| Додаткова дія (скасування/меню)| `Right Mouse Button` |
 | `hotbar_1`..`hotbar_9` | Швидкий вибір предметів | Цифри `1`–`9` |
 
@@ -79,13 +80,13 @@ saecula_2/
 Керує загальним станом гри, вікном програми (`toggle_fullscreen`, `quit_game`) та симуляцією часу доби.
 
 ### 5.3. `GridManager` (`res://src/world/GridManager.gd`)
-Центральний менеджер тайлової сітки (32x32) та навігації юнітів на базі `AStarGrid2D`.
+Центральний менеджер тайлової сітки (32x32) та навігації юнітів на базі `AStarGrid2D`. Підтримує реєстрацію та відслідковування об'єктів `occupants`.
 
 ### 5.4. `ItemDatabase` (`res://src/core/ItemDatabase.gd`)
 Глобальний реєстр даних предметів гри. Сканує директорію `res://data/items/`, кешує знайдені `.tres` ресурси та надає миттєвий доступ через `ItemDatabase.get_item(&"id")`.
 
 ## 6. Світ та тайлова поверхня (`World.tscn`)
-- **Вузол `World` (`src/world/World.gd`):** Керує генерацією та розмірами карти (за замовчуванням 80x50 тайлів, 2560x1600 px), синхронізує межі з `GridManager`.
+- **Вузол `World` (`src/world/World.gd`):** Керує генерацією та розмірами карти (80x50 тайлів, 2560x1600 px), спавнить природні ресурси (дерева, каміння, кущі) за межами зони появи гравця.
 - **Вузол `GroundLayer` (`TileMapLayer`, `src/world/GroundLayer.gd`):** Рендерить базові тайли поверхні за допомогою процедурного рантайм-атласу `ImageTexture`.
 - **Відладка (`F3`):** Натискання `F3` перемикає функцію `_draw()`, яка малює напівпрозорі лінії сітки 32x32 поверх карти та контур меж.
 
@@ -96,6 +97,7 @@ saecula_2/
   - Швидкість ходьби: 140 px/s з прискоренням (1200 px/s²) та тертям зупинки (1400 px/s²).
   - Напрямок погляду: `facing_direction` (Vector2).
   - Взаємодія з сіткою: `get_current_cell() -> Vector2i`, `get_interaction_cell() -> Vector2i`.
+  - Взаємодія: натискання `E` (збір тайла перед собою) або клік лівою кнопкою миші у радіусі до 2.5 тайлів.
   - Інвентар: дочірній вузол `InventoryComponent` (24 слоти).
 - **Колізія `CollisionShape2D`:** `CircleShape2D` з радіусом 8 пікселів (оптимально для 32x32 тайлів, не застряє в кутах).
 - **Візуал `PlayerVisual.gd`:** Процедурний рендер персонажа (тіло, голова, капюшон, тінь, напрямок очей, процедурне погойдування тіла при ходьбі).
@@ -128,3 +130,13 @@ saecula_2/
   - `has_item(item_id: StringName, amount: int = 1) -> bool` — перевіряє наявність предметів.
   - `get_item_count(item_id: StringName) -> int` — повертає загальну кількість предметів у всіх слотах.
   - `get_all_items() -> Array[Dictionary]` — повертає всі непорожні слоти для UI та збереження.
+
+## 11. Природні ресурси та дроп предметів (`WorldResourceNode.gd`, `DroppedItem.gd`)
+- **`WorldResourceNode` (`StaticBody2D`):**
+  - Типи: `TREE` (Дерево), `ROCK` (Камінь/Валун), `BUSH` (Кущ диких ягід).
+  - Автоматично блокує свою клітинку в `GridManager.register_occupant(cell, self, true)`.
+  - Має запас міцності `health`, процедурну анімацію тремтіння при ударі через `Tween`.
+  - При вичерпанні міцності звільняє клітинку в `GridManager` та спавнить `DroppedItem`.
+- **`DroppedItem` (`Area2D`):**
+  - Плаває/погойдується над землею.
+  - При появі гравця в зоні дії автоматично магнітиться на швидкості 380 px/s і додається в інвентар гравця через `add_item_by_id`.
