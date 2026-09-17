@@ -1,13 +1,23 @@
 # Історія змін (CHANGES)
 
-### Виправлення вібрації/джиттеру камери (`position_smoothing`)
-- **Аналіз причини на основі відеозапису:**
-  - Коли `Camera2D` є дочірнім вузлом `CharacterBody2D`, увімкнений параметр `position_smoothing_enabled = true` намагається розраховувати лаг відносно локальних координат вузла.
-  - На моніторах з частотою оновлення понад 60Hz (144Hz / 165Hz / 240Hz) фізичний такт рушія (60 fps) і частота рендерингу не збігаються, через що виникає фазове биття (стробоскопічний джиттер — камера запізнюється на випадкову частку кадру і ривком наздоганяє персонажа).
+### Виправлення помилки парсингу `Could not find type "ItemData"` в `ItemDatabase` та `Main`
+- **Причина проблеми:**
+  - В рушії Godot скрипти `Autoload` парсяться й компілюються раніше, ніж створюється та оновлюється глобальний кеш імен класів `class_name` (`.godot/global_script_class_cache.cfg`).
+  - Через це пряме використання статичного типу `ItemData` всередині `ItemDatabase.gd` та `Main.gd` призводило до помилки парсера: `Could not find type "ItemData" in the current scope`.
 - **Виправлення:**
-  - Вимкнено `position_smoothing_enabled = false` у [`src/core/GameCamera2D.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/core/GameCamera2D.gd) та [`src/entities/player/Player.tscn`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/entities/player/Player.tscn).
-  - Тепер камера жорстко та миттєво прив'язана до персонажа: координати камери ідеально відповідають позиції гравця кожен кадр без фазових розривів.
-  - Зум коліщатком миші продовжує працювати плавно через `Tween`.
+  - У [`src/core/ItemDatabase.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/core/ItemDatabase.gd) замінено статичний тип `ItemData` на базовий `Resource`, додано `preload("res://src/data/schemas/ItemData.gd")` та динамічне визначення ідентифікаторів ресурсів.
+  - У [`src/core/Main.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/core/Main.gd) оновлено сигнатуру валідації на використання `Resource`.
+  - Успішно протестовано як у `headless`, так і в графічному режимі запуску `godot --path "." --quit`.
+
+### Ітерація 4.1: Схеми предметів (Data-Driven ItemData & ItemDatabase)
+- Створено схему предметів `src/data/schemas/ItemData.gd` (`class_name ItemData`).
+- Створено допоміжну схему витрат `src/data/schemas/ItemCost.gd`.
+- Створено базові предмети Кам'яного віку у `data/items/` (`wood.tres`, `stone.tres`, `flint.tres`, `berries.tres`).
+- Створено та зареєстровано як Autoload реєстр `src/core/ItemDatabase.gd`.
+- Оновлено `Documentation.md` (додано Розділ 9 "Data-Driven схеми предметів").
+
+### Виправлення вібрації/джиттеру камери (`position_smoothing`)
+- Вимкнено `position_smoothing_enabled = false` у `GameCamera2D.gd` та `Player.tscn`.
 
 ### Виправлення тремтіння (джиттеру/вібрації) при русі персонажа та камери
 - Вимкнено `snap_2d_transforms_to_pixel = false` та `snap_2d_vertices_to_pixel = false` у `project.godot`.

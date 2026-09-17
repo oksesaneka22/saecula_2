@@ -71,12 +71,11 @@
 ### Ітерація 2.2: Базова тестова сцена світу з TileMapLayer
 * **Мета:** Візуалізувати сітку землі та перевірити координати.
 * **Чекліст:**
-  - [x] Створити сцену `src/world/World.tscn` з вузлом `TileMapLayer` для поверхні (трава/земля).
-  - [x] Створити простий процедурний скрипт заповнення підлоги тестовими тайлами.
-  - [x] Опціонально: додати режим відладочного відмалювання ліній сітки (Debug Grid Draw).
-* **Промпт для генерації:**
-  > "Створи сцену `World.tscn` та скрипт `World.gd`, який ініціалізує тестове поле 40x40 тайлів, з'єднує розміри з `GridManager` та має кнопку F3 для увімкнення/вимкнення відображення сітки."
-* **Критерій готовності:** При запуску сцени на екрані видно тайлове поле, натискання F3 показує лінії тайлів 32x32.
+  - [x] Створити сцену `src/world/World.tscn` з вузлом `TileMapLayer`.
+  - [x] Створити базовий тайлсет-плейсхолдер (трава/земля 32x32).
+  - [x] Заповнити тестову область тайлами.
+  - [x] Додати візуальний режим відладки сітки (Debug Grid Draw, `F3`).
+* **Критерій готовності:** Запуск гри відображає тайлове поле, натискання `F3` показує/ховає сітку.
 
 ---
 
@@ -112,10 +111,10 @@
 ### Ітерація 4.1: Схеми предметів (Data-Driven)
 * **Мета:** Реалізувати базу даних предметів згідно з `skill-resource-schema.md`.
 * **Чекліст:**
-  - [ ] Створити `src/data/schemas/ItemData.gd` (`id`, `display_name`, `category`, `tool_type`, `tier`, `max_stack`, `icon`).
-  - [ ] Створити `src/data/schemas/ItemCost.gd`.
-  - [ ] Створити базові предмети Кам'яного віку у `data/items/`: `wood.tres`, `stone.tres`, `flint.tres`, `berries.tres`.
-  - [ ] Створити `src/core/ItemDatabase.gd` для кешування предметів за ID.
+  - [x] Створити `src/data/schemas/ItemData.gd` (`id`, `display_name`, `category`, `tool_type`, `tier`, `max_stack`, `icon`).
+  - [x] Створити `src/data/schemas/ItemCost.gd`.
+  - [x] Створити базові предмети Кам'яного віку у `data/items/`: `wood.tres`, `stone.tres`, `flint.tres`, `berries.tres`.
+  - [x] Створити `src/core/ItemDatabase.gd` для кешування предметів за ID.
 * **Промпт для генерації:**
   > "Створи ресурси даних предметів `ItemData.gd` та `ItemCost.gd` спираючись на [skill-resource-schema.md](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/.agents/skills/skill-resource-schema.md). Створи базові `.tres` предмети Кам'яного віку (дерево, камінь, кремінь, ягоди) та реєстр `ItemDatabase.gd`."
 * **Критерій готовності:** `ItemDatabase.get_item(&"wood")` повертає коректний об'єкт `ItemData`.

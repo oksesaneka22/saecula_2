@@ -4,8 +4,8 @@
 - **Версія конфігурації:** `config_version=5` (Godot 4.x).
 - **Рендерер:** `gl_compatibility` (OpenGL 3 / WebGL 2 сумісний рендерер) для найвищої сумісності та плавної продуктивності без оверхеду важких шейдерів.
 - **Піксельна точність (Pixel Snap):**
-  - `snap_2d_transforms_to_pixel = true`
-  - `snap_2d_vertices_to_pixel = true`
+  - `snap_2d_transforms_to_pixel = false` (вимкнено для безвібраційної субпіксельної інтерполяції камери).
+  - `snap_2d_vertices_to_pixel = false`
   - `default_texture_filter = 0` (Nearest) для чіткого відмалювання піксель-арту та тайлів.
 
 ## 2. Підтримка роздільної здатності (Resolution & Stretch Mode)
@@ -27,11 +27,11 @@ saecula_2/
 ├── data/                    # Data-Driven ресурси (.tres)
 │   ├── buildings/           # Схеми та параметри будівель
 │   ├── eras/                # Дерева епох та умови переходу
-│   ├── items/               # Визначення предметів
+│   ├── items/               # Визначення предметів (wood.tres, stone.tres, flint.tres, berries.tres)
 │   ├── recipes/             # Рецепти крафту
-│   └── schemas/             # GDScript схеми даних (Custom Resources)
+│   └── schemas/             # GDScript схеми даних (ItemData.gd, ItemCost.gd)
 ├── src/                     # Вихідний код логіки гри
-│   ├── core/                # Глобальні Autoloads та базові менеджери
+│   ├── core/                # Глобальні Autoloads (EventBus, GameManager, ItemDatabase)
 │   ├── entities/            # Ігрові сутності
 │   │   ├── colonist/        # Логіка жителів
 │   │   ├── fsm/             # Скінченний автомат станів (State Machine)
@@ -81,6 +81,9 @@ saecula_2/
 ### 5.3. `GridManager` (`res://src/world/GridManager.gd`)
 Центральний менеджер тайлової сітки (32x32) та навігації юнітів на базі `AStarGrid2D`.
 
+### 5.4. `ItemDatabase` (`res://src/core/ItemDatabase.gd`)
+Глобальний реєстр даних предметів гри. Сканує директорію `res://data/items/`, кешує знайдені `.tres` ресурси та надає миттєвий доступ через `ItemDatabase.get_item(&"id")`.
+
 ## 6. Світ та тайлова поверхня (`World.tscn`)
 - **Вузол `World` (`src/world/World.gd`):** Керує генерацією та розмірами карти (за замовчуванням 80x50 тайлів, 2560x1600 px), синхронізує межі з `GridManager`.
 - **Вузол `GroundLayer` (`TileMapLayer`, `src/world/GroundLayer.gd`):** Рендерить базові тайли поверхні за допомогою процедурного рантайм-атласу `ImageTexture`.
@@ -97,7 +100,18 @@ saecula_2/
 - **Візуал `PlayerVisual.gd`:** Процедурний рендер персонажа (тіло, голова, капюшон, тінь, напрямок очей, процедурне погойдування тіла при ходьбі).
 
 ## 8. Камера гри (`GameCamera2D.gd`)
-- **Тип вузла:** `Camera2D` всередині `World.tscn`.
-- **Згладжування позиції:** `position_smoothing_enabled = true` (швидкість згладжування 8.0).
-- **Слідування:** Автоматично фокусується на першому вузлі з групи `"player"` або заданому `target`.
-- **Плавний зум:** Обробка `zoom_in` (Mouse Wheel Up) та `zoom_out` (Mouse Wheel Down) в діапазоні від `0.5x` до `2.5x` з використанням плавного `Tween` (TRANS_SINE, EASE_OUT). Забезпечує чітке сприйняття світу на 1080p та 1440p моніторах.
+- **Тип вузла:** `Camera2D` безпосередньо всередині `Player.tscn`.
+- **Згладжування позиції:** Вимкнено для усунення розриву кадрів і вібрації на високогерцових екранах (144Hz+).
+- **Плавний зум:** Обробка дій `zoom_in` та `zoom_out` (коліщатко миші) в діапазоні від `0.5x` до `2.5x` з використанням плавного `Tween`.
+
+## 9. Data-Driven схеми предметів
+- **`ItemCost` (`src/data/schemas/ItemCost.gd`):** Зв'язка предмет + кількість.
+- **`ItemData` (`src/data/schemas/ItemData.gd`):**
+  - Категорії: `RESOURCE`, `MATERIAL`, `TOOL`, `FOOD`, `WEAPON`.
+  - Типи інструментів: `NONE`, `AXE`, `PICKAXE`, `HAMMER`, `SWORD`.
+  - Рівні технологій (Tier 0-3), ефективність, розмір стаку.
+- **Базові предмети Кам'яного віку:**
+  - `data/items/wood.tres` (Деревина)
+  - `data/items/stone.tres` (Камінь)
+  - `data/items/flint.tres` (Кремінь)
+  - `data/items/berries.tres` (Дикі ягоди)
