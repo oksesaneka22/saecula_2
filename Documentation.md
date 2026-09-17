@@ -45,7 +45,7 @@ saecula_2/
 │   │   ├── colony_ui/       # Панель поселення та робітників
 │   │   ├── hud/             # Гарячі клавіші, індикатори
 │   │   └── tech_tree_ui/    # Дерево досліджень
-│   └── world/               # Тайлова сітка (GridManager, світ)
+│   └── world/               # Тайлова сітка (GridManager, World.tscn, GroundLayer)
 ```
 
 ## 4. Мапа клавіш введення (Input Map)
@@ -59,6 +59,7 @@ saecula_2/
 | `cancel` | Скасування / Меню / Пауза | `Escape` |
 | `colony_mode_toggle` | Перемикання в режим колонії | `Tab` |
 | `inventory_toggle` | Відкрити/закрити інвентар | `I` |
+| `toggle_debug_grid` | Увімкнути/вимкнути відладочну сітку | `F3` |
 | `zoom_in` | Наближення камери | `Mouse Wheel Up` |
 | `zoom_out` | Віддалення камери | `Mouse Wheel Down` |
 | `primary_action` | Основна дія (удар/вибір) | `Left Mouse Button` |
@@ -70,44 +71,15 @@ saecula_2/
 ## 5. Глобальні сінглтони (Autoloads)
 
 ### 5.1. `EventBus` (`res://src/core/EventBus.gd`)
-Слугує центральною шиною сигналів. Підсистеми не викликають методи один одного напряму, а підписуються на події:
-- **Життєвий цикл та час:** `game_state_changed(new_state, old_state)`, `game_speed_changed(new_speed)`, `day_time_updated(hour, minute)`, `day_passed(day_number)`.
-- **Гравець:** `player_stats_changed`, `player_interacted_with_world`, `player_died`.
-- **Інвентар та ресурси:** `inventory_window_toggle_requested`, `inventory_changed`, `item_picked_up`, `item_dropped`, `resource_harvested`.
-- **Будівництво:** `building_placement_requested`, `building_placement_canceled`, `construction_site_placed`, `building_completed`, `building_demolished`.
-- **Система замовлень (Jobs):** `job_created`, `job_assigned`, `job_completed`, `job_canceled`.
-- **Колоністи:** `colonist_spawned`, `colonist_died`, `colonist_profession_changed`, `colonist_state_changed`.
-- **Епохи:** `era_advanced(new_era_id, previous_era_id)`, `technology_unlocked(tech_id)`.
-- **UI:** `floating_text_requested`, `notification_posted`, `hotbar_slot_selected`.
+Слугує центральною шиною сигналів. Підсистеми не викликають методи один одного напряму, а підписуються на події.
 
 ### 5.2. `GameManager` (`res://src/core/GameManager.gd`)
-Керує загальним станом гри та симуляцією часу доби:
-- **Стани гри (`GameState`):**
-  - `INITIALIZING` — завантаження ресурсів і світу.
-  - `PLAYING` — стандартний режим керування персонажем у реальному часі (`time_scale = 1.0`).
-  - `COLONY_MODE` — режим огляду/менеджменту колонії на клавішу `Tab` зі сповільненим часом (`time_scale = 0.5`).
-  - `BUILDING_MODE` — активний вибір точки будівництва (при натисканні `Escape` повертає у гру та скасовує привид споруди).
-  - `PAUSED` — системна пауза (`get_tree().paused = true`).
-  - `GAME_OVER` — завершення гри.
-- **Методи:**
-  - `change_state(new_state: GameState) -> void`
-  - `toggle_pause() -> void`
-  - `set_time_scale(new_scale: float) -> void`
-  - `get_current_hour() -> int`, `get_current_minute() -> int`, `get_time_string() -> String`
+Керує загальним станом гри та симуляцією часу доби.
 
 ### 5.3. `GridManager` (`res://src/world/GridManager.gd`)
-Центральний менеджер тайлової сітки та навігації юнітів:
-- **Константи:** `TILE_SIZE = 32`.
-- **Пошук шляхів:** Внутрішній екземпляр `AStarGrid2D` (розмір за замовчуванням 128x128 тайлів, `HEURISTIC_MANHATTAN`, `DIAGONAL_MODE_NEVER` для унеможливлення зрізання кутів стін).
-- **Методи:**
-  - `world_to_map(world_pos: Vector2) -> Vector2i`: переведення світових пікселів у тайловий індекс клітинки.
-  - `map_to_world(map_pos: Vector2i) -> Vector2`: отримання світових координат центру тайла.
-  - `is_within_bounds(map_pos: Vector2i) -> bool`: перевірка знаходження клітинки в межах сітки.
-  - `is_cell_walkable(map_pos: Vector2i) -> bool`: перевірка прохідності клітинки.
-  - `set_cell_solid(map_pos: Vector2i, solid: bool) -> void`: позначення перешкоди чи проходу.
-  - `set_cell_weight(map_pos: Vector2i, weight: float) -> void`: зміна вартості руху через клітинку (дороги/болото).
-  - `register_occupant(map_pos: Vector2i, occupant: Node, is_solid: bool) -> bool`: прив'язка об'єкта до клітинки.
-  - `unregister_occupant(map_pos: Vector2i, set_walkable: bool) -> void`: звільнення клітинки.
-  - `get_world_path(from_world: Vector2, to_world: Vector2) -> PackedVector2Array`: отримання масиву точок шляху. Якщо кінцева точка зайнята (дерево, стіна), функція автоматично перенаправляє шлях на найближчого вільного сусіда.
-  - `get_closest_walkable_neighbor(from_cell: Vector2i, target_cell: Vector2i) -> Vector2i`: знаходження найближчої прохідної клітинки з 4 сусідніх сторін.
-  - `is_area_clear(origin_cell: Vector2i, size_in_tiles: Vector2i) -> bool`: перевірка доступності площі для розміщення споруд.
+Центральний менеджер тайлової сітки (32x32) та навігації юнітів на базі `AStarGrid2D`.
+
+## 6. Світ та тайлова поверхня (`World.tscn`)
+- **Вузол `World` (`src/world/World.gd`):** Керує генерацією та розмірами карти (за замовчуванням 40x40 тайлів), синронізує межі з `GridManager`.
+- **Вузол `GroundLayer` (`TileMapLayer`, `src/world/GroundLayer.gd`):** Рендерить базові тайли поверхні (трава та земля з плейсхолдера `res://assets/sprites/tiles_placeholder.svg`).
+- **Відладка (`F3`):** Натискання `F3` перемикає функцію `_draw()`, яка малює напівпрозорі лінії сітки 32x32 поверх карти.
