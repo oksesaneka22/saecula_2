@@ -1,8 +1,7 @@
 extends CharacterBody3D
 
-## Player3D: Персонаж гравця від першої особи (First-Person Mode).
-## Підтримує рух WASD, стрибки, огляд мишею, збір ресурсів через RayCast
-## та містить модульний InventoryComponent (24 слоти).
+## Player3D: Контролер гравця у 3D світі гри з видом від 1-ї особи (First-Person).
+## Керується за допомогою WASD, огляд мишею через Head/Camera3D, взаємодія та збір ресурсів через RayCast3D.
 
 signal active_slot_changed(slot_index: int)
 signal player_interacted(target: Node)
@@ -29,6 +28,14 @@ func _ready() -> void:
 	add_to_group("player")
 	set_active(true)
 	interact_ray.target_position = Vector3(0, 0, -reach_distance)
+
+	# Надаємо гравцю стартовий комплект інструментів та матеріалів для швидкого тестування будівництва
+	if inventory != null:
+		if inventory.get_item_count(&"wood") == 0:
+			inventory.add_item_by_id(&"stone_axe", 1)
+			inventory.add_item_by_id(&"stone_pickaxe", 1)
+			inventory.add_item_by_id(&"wood", 12)
+			inventory.add_item_by_id(&"stone", 8)
 
 
 func set_active(active: bool) -> void:
@@ -62,11 +69,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 
-	# Взаємодія / Удар по ресурсу від першої особи
+	# Взаємодія / Збір ресурсів / Будівництво (ЛКМ або E)
 	if event.is_action_pressed("primary_action") or event.is_action_pressed("interact"):
 		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 			_try_interact_or_harvest()
 			get_viewport().set_input_as_handled()
+			return
 
 
 func _physics_process(delta: float) -> void:
@@ -96,6 +104,13 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 
+func select_hotbar_slot(slot_index: int) -> void:
+	if slot_index >= 0 and slot_index < 8:
+		active_hotbar_slot = slot_index
+		active_slot_changed.emit(active_hotbar_slot)
+		EventBus.hotbar_slot_selected.emit(active_hotbar_slot)
+
+
 func _try_interact_or_harvest() -> void:
 	# Анімація помаху головою/камерою
 	_play_swing_animation()
@@ -109,10 +124,17 @@ func _try_interact_or_harvest() -> void:
 
 	player_interacted.emit(collider)
 
+	# 1. Якщо це будівельний майданчик (ConstructionSite3D) — взаємодія з доставкою/роботою
+	if collider.has_method("interact_construct"):
+		collider.interact_construct(inventory)
+		return
+
+	# 2. Якщо це природний ресурс (WorldResourceNode3D)
 	if collider.has_method("harvest"):
 		var equipped_tool_type: int = _get_active_tool_type()
 		var tool_damage: float = _get_active_tool_damage()
 		collider.harvest(tool_damage, equipped_tool_type)
+		return
 
 
 func _play_swing_animation() -> void:
@@ -124,12 +146,6 @@ func _play_swing_animation() -> void:
 	_swing_tween = create_tween()
 	_swing_tween.tween_property(fps_camera, "rotation_degrees:x", -2.5, 0.04)
 	_swing_tween.tween_property(fps_camera, "rotation_degrees:x", 0.0, 0.08)
-
-
-func select_hotbar_slot(slot_index: int) -> void:
-	if slot_index >= 0 and slot_index < 8:
-		active_hotbar_slot = slot_index
-		active_slot_changed.emit(active_hotbar_slot)
 
 
 func _get_active_tool_type() -> int:

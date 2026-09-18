@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://d8e9kxspjh742"]
+
+[ext_resource type="Script" path="res://src/world3d/BuildingEntity3D.gd" id="1_be3d"]
+
+[node name="BuildingEntity3D" type="StaticBody3D" groups=["buildings", "interactable"]]
+script = ExtResource("1_be3d")

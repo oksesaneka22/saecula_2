@@ -1,39 +1,34 @@
 # Історія змін (CHANGES)
 
-### Масштабування споруд (>= 8x8) та стабілізація юніт-тестів розміщення
-- **Масштабування габаритів споруд колонії:**
-  - На вимогу користувача всі споруди оновлені до розміру не менше 8x8 тайлів (16м x 16м):
-    - [`campfire.tres`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/data/buildings/campfire.tres): Табірне вогнище збільшено до **8x8** тайлів (64 клітинки, 16x16м).
-    - [`stockpile.tres`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/data/buildings/stockpile.tres): Склад ресурсів збільшено до **10x10** тайлів (100 клітинок, 20x20м, 32 слоти зберігання).
-    - [`wooden_hut.tres`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/data/buildings/wooden_hut.tres): Дерев'яна хатина колоністів збільшена до **12x12** тайлів (144 клітинки, 24x24м).
-- **Оновлення світу та камери ([`World3D.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/world3d/World3D.gd), [`RTSCamera3D.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/core3d/RTSCamera3D.gd)):**
-  - Розширено розмір карти до 80x80 тайлів (160м x 160м).
-  - Збільшено гарантовану вільну галявину появи гравця (`clear_radius = 16`), щоб природні дерева та каміння не перекривали зону для великих будівель.
-  - Збільшено максимальний зум висоти RTS камери з 35м до 65м (`max_zoom_height = 65.0`, `default_zoom_height = 26.0`) для огляду будівельних комплексів.
-  - Оновлено геометрію та 3D Billboard шрифти у [`BuildingGhost3D.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/world3d/BuildingGhost3D.gd).
-- **Виправлення та ізоляція юніт-тестів розміщення ([`Main.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/core/Main.gd)):**
-  - Усунено `Assertion failed: Empty lawn must be valid for stockpile placement`, яка виникала через випадковий спавн дерева або каменю на тестових координатах (20, 20).
-  - Тепер тест використовує виділену ділянку (34, 34) із тимчасовим збереженням та відновленням стану клітинок у `GridManager`, що забезпечує 100% стабільність і незалежність від генератора псевдовипадкових чисел.
+### Виправлення зависання при завершенні будівництва вогнища та помилки сигналів часу
+- **Усунено критичну невідповідність аргументів сигналу `day_time_updated` ([`Main.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/core/Main.gd)):**
+  - Виправлено сигнатуру обробника `_on_day_time_updated(hour: int, minute: int)` відповідно до визначення в [`EventBus.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/core/EventBus.gd) та виклику в [`GameManager.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/core/GameManager.gd) (2 аргументи замість 3).
+  - Припинено безперервне генерування помилок рушія в консоль щохвилини ігрового часу (`Method expected 3 argument(s), but called with 2`), що спричиняло постійні перехоплення стеку зневаджувачем рушія.
+- **Усунено зависання/фріз (hitch) при спавні вогнища ([`BuildingEntity3D.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/world3d/BuildingEntity3D.gd)):**
+  - Вимкнено `_fire_light.shadow_enabled = false` у джерелі світла вогню (`OmniLight3D`). У рушії Godot 4 динамічне увімкнення тіней для всенаправлених точкових джерел світла змушує рушій синхронно в головному потоці виділяти Shadow Atlas та компілювати кубічні шейдери глибини тіней, що спричиняло різке падіння кадрів (зависання) у момент появи готового вогнища.
+  - Оптимізовано процедурну генерацію геометрії вогнища та складу: переведено на спільне використання ресурсів `BoxMesh` та `CylinderMesh` замість масового створення окремих мешів для кожного камінця та колоди.
+- **Виправлено юніт-тест видобутку та замикання ([`WorldResourceNode3D.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/world3d/WorldResourceNode3D.gd), [`Main.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/core/Main.gd)):**
+  - Додано емісію сигналу `EventBus.item_dropped` та `EventBus.resource_harvested` при знищенні ноди ресурсу.
+  - У юніт-тесті `_test_harvest_and_drop` використано типізований масив-обгортку для коректного захоплення змінної за посиланням у лямбда-функції GDScript.
+  - Усі 8 комплексних тестів проходять зі 100% успіхом без жодної помилки або попередження рушія.
 
-### Ітерація 6.1: Схема будівлі та система Blueprint Preview (Етап 6)
-- **Створено Data-Driven схему будівлі ([`BuildingData.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/data/schemas/BuildingData.gd)):**
-  - Опис розмірів у тайлах сітки (`size_in_tiles: Vector2i`), твердості/прохідності (`is_solid: bool`), епохи (`required_era: int`), часу зведення (`build_time: float`), вартості матеріалів (`construction_cost: Array[Resource]`), професії робітника (`job_type_provided: StringName`) та слотів сховища (`storage_slots: int`).
-- **Створено початкові конфігурації будівель:**
-  - [`campfire.tres`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/data/buildings/campfire.tres): Багаття.
-  - [`stockpile.tres`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/data/buildings/stockpile.tres): Склад ресурсів.
-  - [`wooden_hut.tres`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/data/buildings/wooden_hut.tres): Дерев'яна хатина.
-- **Створено контролер розміщення споруд ([`BuildingPlacementController.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/systems/building/BuildingPlacementController.gd)):**
-  - Зареєстровано в `project.godot` як глобальний Autoload `BuildingPlacementController`.
-  - Автоматично сканує `res://data/buildings/` та реєструє всі споруди.
-  - Методи: `get_building(id)`, `get_all_buildings()`, `start_placement(building)`, `cancel_placement()`, `update_hover(origin_cell)`, `can_place_at(building, origin_cell)`, `confirm_placement()`.
-  - Розраховує займану площу будь-якого розміру (`get_occupied_cells`) та перевіряє межі карти, прохідність клітинок та наявність перешкод через `GridManager`.
-- **Створено 3D прев'ю креслення ([`BuildingGhost3D.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/world3d/BuildingGhost3D.gd) та [`BuildingGhost3D.tscn`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/world3d/BuildingGhost3D.tscn)):**
-  - Напівпрозорий динамічний меш, що масштабується під розмір будівлі та точно прив'язується до 3D сітки тайлів (крок 2.0м).
-  - Динамічне підсвічування: **смарагдово-зелений** при вільній галявині, **яскравo-червоний** при наведенні на дерева, скелі, воду або за межі карти.
-  - 3D Billboard текст над спорудою з назвою, габаритами та підказками керування.
-- **Інтерфейс вибору креслень ([`BuildMenuUI.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/ui/hud/BuildMenuUI.gd) та [`BuildMenuUI.tscn`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/ui/hud/BuildMenuUI.tscn)):**
-  - Відкривається/закривається клавішею **`B`** (`build_mode_toggle`) або кнопкою інтерфейсу.
-  - Відображає картки всіх будівель, вартість, розмір, опис та кнопку "Розмістити".
-- **Інтеграція керування в RTSCamera3D та World3D:**
-  - У режимі розміщення миша вільно пересуває привид по 3D поверхні.
-  - Натискання `ЛКМ` підтверджує встановлення креслення (`placement_confirmed`), а `ПКМ` або `Esc` скасовує режим та повертає попередній стан гри.
+### Зміна габаритів будівель (Campfire 2x2, Stockpile 6x6, Hut 8x8) та повернення стартового майданчика будівлі на спавні
+- **Оновлено конфігураційні ресурси споруд у `data/buildings/`:**
+  - [`campfire.tres`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/data/buildings/campfire.tres): Змінено розмір `size_in_tiles` на **2x2** (4 клітинки, 4х4м). Час зведення встановлено на 4.0 сек.
+  - [`stockpile.tres`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/data/buildings/stockpile.tres): Змінено розмір `size_in_tiles` на **6x6** (36 клітинок, 12х12м). Зберігає 32 слоти, час зведення 6.0 сек.
+  - [`wooden_hut.tres`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/data/buildings/wooden_hut.tres): Змінено розмір `size_in_tiles` на **8x8** (64 клітинки, 16х16м). Час зведення 10.0 сек.
+- **Адаптовано процедурні 3D моделі ([`BuildingEntity3D.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/world3d/BuildingEntity3D.gd)):**
+  - Вогнище: пропорційно відмасштабовано радіус кам'яного кола (1.4м), зменшено валуни (0.5м x 0.35м x 0.5м), адаптовано конус полум'я (1.5м) та світло `OmniLight3D` (висота 1.0м).
+  - Склад: оновлено платформу під 12м x 12м, кутові стовпчики та декоративні ящики з товарами.
+  - Хатина: оновлено стіни зрубу 16м x 16м, двосхилий дах-призму, дубові двері та настінний ліхтар.
+  - Динамічна висота 3D Billboard (`Label3D`) під кожен розмір будівлі.
+- **Відновлено стартовий будівельний майданчик на спавні ([`World3D.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/world3d/World3D.gd)):**
+  - Додано метод `_spawn_starter_construction_site()` в `_ready()`.
+  - Автоматично інстанціює 2x2 майданчик вогнища безпосередньо перед гравцем (`spawn_cell + Vector2i(-1, -4)`).
+  - Майданчик коректно займає 4 клітинки в `GridManager`, відображає список необхідних матеріалів і готовий до взаємодії через `E` / `ЛКМ`.
+- **Стартовий набір інструментів та ресурсів для гравця ([`Player3D.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/entities3d/player/Player3D.gd)):**
+  - При старті гри гравець автоматично отримує кам'яну сокиру, кам'яне кайло, 12 деревини та 8 каменю для миттєвого тестування будівництва та збору.
+- **Стабілізовано та оновлено юніт-тести ([`Main.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/core/Main.gd)):**
+  - Перевірка габаритів 2x2 для вогнища, 6x6 для складу, 8x8 для хатини.
+  - Тестування повного життєвого циклу будівництва на 4 клітинках для 2x2 майданчика.
+  - Усі 8 юніт-тестів проходять бездоганно з кодом завершення 0 та 0 помилок.

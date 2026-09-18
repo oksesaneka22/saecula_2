@@ -141,6 +141,13 @@ func get_occupied_cells(origin_cell: Vector2i, size_in_tiles: Vector2i) -> Array
 	return cells
 
 
+## Розраховує 3D світовий центр будівлі за її тайловою прив'язкою та розмірами
+func get_building_world_center(origin_cell: Vector2i, size_in_tiles: Vector2i) -> Vector3:
+	var center_x: float = (float(origin_cell.x) + float(size_in_tiles.x) * 0.5) * GridManager.TILE_SIZE_3D
+	var center_z: float = (float(origin_cell.y) + float(size_in_tiles.y) * 0.5) * GridManager.TILE_SIZE_3D
+	return Vector3(center_x, 0.0, center_z)
+
+
 ## Перевіряє, чи можна розмістити споруду на вказаних координатах (origin)
 func can_place_at(building: BuildingData, origin_cell: Vector2i) -> bool:
 	if building == null:

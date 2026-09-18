@@ -226,9 +226,13 @@ func _destroy_and_drop() -> void:
 	GridManager.unregister_occupant(_cell, true)
 
 	var drop_count: int = randi_range(drop_min_amount, drop_max_amount)
-	var drop = DroppedItem3DScene.instantiate()
-	drop.position = position + Vector3(0, 0.3, 0)
-	drop.set_item(drop_item_id, drop_count)
-	get_parent().add_child(drop)
+	if get_parent() != null and DroppedItem3DScene != null:
+		var drop = DroppedItem3DScene.instantiate()
+		drop.position = position + Vector3(0, 0.3, 0)
+		drop.set_item(drop_item_id, drop_count)
+		get_parent().add_child(drop)
+
+	EventBus.item_dropped.emit(drop_item_id, drop_count, Vector2(position.x, position.z))
+	EventBus.resource_harvested.emit(self, drop_item_id, drop_count, Vector2(position.x, position.z))
 
 	queue_free()

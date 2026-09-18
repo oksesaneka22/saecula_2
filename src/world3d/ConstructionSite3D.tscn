@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://b7cqnxskjh821"]
+
+[ext_resource type="Script" path="res://src/world3d/ConstructionSite3D.gd" id="1_c7s3d"]
+
+[node name="ConstructionSite3D" type="StaticBody3D" groups=["construction_sites", "interactable"]]
+script = ExtResource("1_c7s3d")
