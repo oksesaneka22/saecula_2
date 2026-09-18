@@ -1,8 +1,11 @@
+class_name DroppedItem3D
 extends Area3D
 
 ## DroppedItem3D: 3D сутність підбирального предмета на карті.
 ## Плаває та обертається над землею, магнітиться до гравця у 3D просторі
 ## та автоматично поміщається в його InventoryComponent.
+
+const TextureHelper = preload("res://src/core3d/TextureHelper.gd")
 
 @export var item_id: StringName = &"wood"
 @export var amount: int = 1
@@ -39,8 +42,8 @@ func _setup_visual() -> void:
 		child.queue_free()
 
 	var mesh_instance: MeshInstance3D = MeshInstance3D.new()
-	var mat: StandardMaterial3D = StandardMaterial3D.new()
-	mat.roughness = 0.6
+	var tex_path: String = TextureHelper.get_item_texture_path(item_id)
+	var fallback_color: Color = Color("F1C40F")
 
 	match item_id:
 		&"wood":
@@ -50,39 +53,39 @@ func _setup_visual() -> void:
 			cyl.height = 0.45
 			mesh_instance.mesh = cyl
 			mesh_instance.rotation_degrees = Vector3(0, 0, 90)
-			mat.albedo_color = Color("8B5A2B") # Коричневе дерево
+			fallback_color = Color("8B5A2B")
 
 		&"stone":
 			var sphere: SphereMesh = SphereMesh.new()
 			sphere.radius = 0.18
 			sphere.height = 0.28
 			mesh_instance.mesh = sphere
-			mat.albedo_color = Color("7F8C8D") # Сірий камінь
+			fallback_color = Color("7F8C8D")
 
 		&"flint":
 			var prism: PrismMesh = PrismMesh.new()
 			prism.size = Vector3(0.22, 0.3, 0.18)
 			mesh_instance.mesh = prism
-			mat.albedo_color = Color("2C3E50") # Темно-сірий кремінь
+			fallback_color = Color("2C3E50")
 
 		&"berries":
 			var sphere: SphereMesh = SphereMesh.new()
 			sphere.radius = 0.16
 			sphere.height = 0.26
 			mesh_instance.mesh = sphere
-			mat.albedo_color = Color("E74C3C") # Червоні ягоди
+			fallback_color = Color("E74C3C")
 
 		&"stone_axe":
 			var box: BoxMesh = BoxMesh.new()
 			box.size = Vector3(0.2, 0.45, 0.1)
 			mesh_instance.mesh = box
-			mat.albedo_color = Color("95A5A6")
+			fallback_color = Color("95A5A6")
 
 		&"stone_pickaxe":
 			var box: BoxMesh = BoxMesh.new()
 			box.size = Vector3(0.35, 0.35, 0.1)
 			mesh_instance.mesh = box
-			mat.albedo_color = Color("BDC3C7")
+			fallback_color = Color("BDC3C7")
 
 		&"campfire":
 			var cyl: CylinderMesh = CylinderMesh.new()
@@ -90,14 +93,19 @@ func _setup_visual() -> void:
 			cyl.bottom_radius = 0.3
 			cyl.height = 0.2
 			mesh_instance.mesh = cyl
-			mat.albedo_color = Color("E67E22")
+			fallback_color = Color("E67E22")
 
 		_:
 			var box: BoxMesh = BoxMesh.new()
 			box.size = Vector3(0.25, 0.25, 0.25)
 			mesh_instance.mesh = box
-			mat.albedo_color = Color("F1C40F")
+			fallback_color = Color("F1C40F")
 
+	var mat: StandardMaterial3D = TextureHelper.create_material(
+		tex_path,
+		fallback_color,
+		0.6
+	)
 	mesh_instance.material_override = mat
 	visual_root.add_child(mesh_instance)
 

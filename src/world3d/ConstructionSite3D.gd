@@ -13,6 +13,7 @@ signal construction_progress_updated(progress_ratio: float, current_progress: fl
 signal construction_completed(building_data: BuildingData, origin_cell: Vector2i, building_instance: Node3D)
 signal construction_canceled
 
+const TextureHelper = preload("res://src/core3d/TextureHelper.gd")
 const DroppedItem3DScene = preload("res://src/entities3d/items/DroppedItem3D.tscn")
 const BuildingEntity3DScript = preload("res://src/world3d/BuildingEntity3D.gd")
 
@@ -45,7 +46,7 @@ func setup_site(p_building_data: BuildingData, p_origin_cell: Vector2i) -> void:
 	# 1. Розрахунок зайнятих клітинок
 	occupied_cells = BuildingPlacementController.get_occupied_cells(origin_cell, building_data.size_in_tiles)
 
-	# 2. Позиціонування у світових 3D координатах
+	# 2. Позиціонування у світових координатах за центром будівлі
 	var center_m: Vector3 = BuildingPlacementController.get_building_world_center(origin_cell, building_data.size_in_tiles)
 	global_position = center_m
 
@@ -99,9 +100,12 @@ func _setup_visual() -> void:
 	var size_m: Vector2 = Vector2(building_data.size_in_tiles) * GridManager.TILE_SIZE_3D
 
 	# 1. Земляна/піщана основа майданчика
-	var base_mat := StandardMaterial3D.new()
-	base_mat.albedo_color = Color(0.38, 0.3, 0.2)
-	base_mat.roughness = 0.95
+	var base_mat: StandardMaterial3D = TextureHelper.create_material(
+		TextureHelper.PATH_BLD_SITE_GROUND,
+		Color(0.38, 0.3, 0.2),
+		0.95,
+		Vector3(size_m.x * 0.5, size_m.y * 0.5, 1.0)
+	)
 
 	var base_mesh := BoxMesh.new()
 	base_mesh.size = Vector3(size_m.x - 0.1, 0.08, size_m.y - 0.1)
@@ -112,8 +116,11 @@ func _setup_visual() -> void:
 	_visual_root.add_child(base_inst)
 
 	# 2. Кутові дерев'яні палі та сигнальні позначки
-	var stake_mat := StandardMaterial3D.new()
-	stake_mat.albedo_color = Color(0.55, 0.4, 0.25)
+	var stake_mat: StandardMaterial3D = TextureHelper.create_material(
+		TextureHelper.PATH_BLD_WOOD_POST,
+		Color(0.55, 0.4, 0.25),
+		0.85
+	)
 
 	var hx: float = size_m.x * 0.5 - 0.4
 	var hz: float = size_m.y * 0.5 - 0.4
@@ -130,8 +137,11 @@ func _setup_visual() -> void:
 		_visual_root.add_child(stake_inst)
 
 	# 3. Периметральна мотузка / балки огорожі
-	var rope_mat := StandardMaterial3D.new()
-	rope_mat.albedo_color = Color(0.8, 0.7, 0.4)
+	var rope_mat: StandardMaterial3D = TextureHelper.create_material(
+		TextureHelper.PATH_BLD_ROPE,
+		Color(0.8, 0.7, 0.4),
+		0.8
+	)
 
 	var rope_x_mesh := BoxMesh.new()
 	rope_x_mesh.size = Vector3(size_m.x - 0.8, 0.08, 0.08)
@@ -173,74 +183,44 @@ func _setup_label(size_m: Vector2) -> void:
 		_label_3d.font_size = 28
 		_label_3d.outline_size = 8
 		_label_3d.outline_modulate = Color(0, 0, 0, 0.95)
-		_label_3d.modulate = Color(1.0, 0.9, 0.4, 1.0)
+		_label_3d.modulate = Color(1, 0.9, 0.4, 1.0)
 		add_child(_label_3d)
 
-	_label_3d.position = Vector3(0, 3.2, 0)
+	var height: float = 2.4
+	_label_3d.position = Vector3(0, height + 0.5, 0)
 
 
 func _update_display() -> void:
 	if _label_3d == null or building_data == null:
 		return
 
-	var title: String = "🏗 БУДІВНИЦТВО: %s (%dx%d)" % [
+	var text: String = "🏗 %s [%dx%d]\n" % [
 		building_data.display_name,
 		building_data.size_in_tiles.x,
 		building_data.size_in_tiles.y
 	]
 
-	var materials_text: String = ""
-	var all_ready: bool = is_materials_ready()
-
-	if required_materials.is_empty():
-		materials_text = "Безкоштовно"
-	else:
-		var items_info: Array[String] = []
+	if not is_materials_ready():
+		text += "Ресурси:\n"
 		for id in required_materials.keys():
-			var needed: int = required_materials[id]
-			var delivered: int = delivered_materials.get(id, 0)
-			var item_name: String = String(id).capitalize()
-			if ItemDatabase != null:
-				var item_data: ItemData = ItemDatabase.get_item(id)
-				if item_data != null:
-					item_name = item_data.display_name
-
-			var status_mark: String = "✓" if delivered >= needed else "%d/%d" % [delivered, needed]
-			items_info.append("%s: %s" % [item_name, status_mark])
-		materials_text = "Матеріали: " + ", ".join(items_info)
-
-	var progress_ratio: float = 0.0
-	if building_data.build_time > 0.0:
-		progress_ratio = clampf(build_progress / building_data.build_time, 0.0, 1.0)
-	var percent: int = int(round(progress_ratio * 100.0))
-
-	var bar: String = _make_progress_bar_string(progress_ratio)
-	var work_status: String = ""
-
-	if not all_ready:
-		work_status = "⚠️ Очікування матеріалів\n[E / Клік] Доставити ресурси"
-		_label_3d.modulate = Color(1.0, 0.85, 0.3, 1.0)
+			var item_name: String = String(id)
+			var item_res = ItemDatabase.get_item(id)
+			if item_res != null and not item_res.display_name.is_empty():
+				item_name = item_res.display_name
+			var cur: int = delivered_materials.get(id, 0)
+			var req: int = required_materials[id]
+			var check: String = "✓" if cur >= req else "⏳"
+			text += "%s %s: %d/%d\n" % [check, item_name, cur, req]
+		text += "(Підійдіть і натисніть [E], щоб внести)"
 	else:
-		work_status = "🔨 Готово до роботи: %s %d%%\n[E / Клік] Будувати споруду" % [bar, percent]
-		_label_3d.modulate = Color(0.4, 0.95, 0.4, 1.0)
+		var pct: int = int((build_progress / maxf(0.001, building_data.build_time)) * 100.0)
+		text += "Прогрес робіт: %d%%\n" % pct
+		text += "🔨 Затисніть [E] для будівництва"
 
-	_label_3d.text = "%s\n%s\n%s" % [title, materials_text, work_status]
-
-
-func _make_progress_bar_string(ratio: float) -> String:
-	var total_blocks: int = 10
-	var filled_blocks: int = int(round(ratio * total_blocks))
-	var s: String = "["
-	for i in range(total_blocks):
-		if i < filled_blocks:
-			s += "■"
-		else:
-			s += "□"
-	s += "]"
-	return s
+	_label_3d.text = text.strip_edges()
 
 
-## Чи потребує майданчик ще вказаного матеріалу
+## Перевірка чи може майданчик прийняти даний предмет
 func can_accept_material(item_id: StringName) -> bool:
 	if not required_materials.has(item_id):
 		return false
@@ -390,7 +370,7 @@ func interact_construct(player_inventory: InventoryComponent = null) -> bool:
 	return false
 
 
-func _play_wobble_animation(flash_color: Color = Color.WHITE) -> void:
+func _play_wobble_animation(_flash_color: Color = Color.WHITE) -> void:
 	if _visual_root == null:
 		return
 	if _wobble_tween != null and _wobble_tween.is_valid():

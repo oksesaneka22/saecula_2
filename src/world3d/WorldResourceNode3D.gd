@@ -1,3 +1,4 @@
+class_name WorldResourceNode3D
 extends StaticBody3D
 
 ## WorldResourceNode3D: 3D природний ресурс на карті (Дерево, Валун, Кущ ягід).
@@ -11,6 +12,7 @@ enum ResourceType {
 	BUSH        ## Кущ диких ягід -> спавнить berries
 }
 
+const TextureHelper = preload("res://src/core3d/TextureHelper.gd")
 const DroppedItem3DScene = preload("res://src/entities3d/items/DroppedItem3D.tscn")
 
 @export var resource_type: ResourceType = ResourceType.TREE
@@ -84,9 +86,11 @@ func _build_tree_mesh() -> void:
 	trunk.mesh = trunk_mesh
 	trunk.position.y = 0.9
 
-	var trunk_mat: StandardMaterial3D = StandardMaterial3D.new()
-	trunk_mat.albedo_color = Color("5C3A21")
-	trunk_mat.roughness = 0.9
+	var trunk_mat: StandardMaterial3D = TextureHelper.create_material(
+		TextureHelper.PATH_RES_WOOD_BARK,
+		Color("5C3A21"),
+		0.9
+	)
 	trunk.material_override = trunk_mat
 	visual_root.add_child(trunk)
 
@@ -97,6 +101,12 @@ func _build_tree_mesh() -> void:
 		{"y": 3.5, "radius": 0.7, "height": 1.1, "color": Color("35975D")}
 	]
 
+	var fol_mat: StandardMaterial3D = TextureHelper.create_material(
+		TextureHelper.PATH_RES_FOLIAGE,
+		Color("277748"),
+		0.8
+	)
+
 	for layer in foliage_data:
 		var fol: MeshInstance3D = MeshInstance3D.new()
 		var cone: CylinderMesh = CylinderMesh.new()
@@ -105,10 +115,6 @@ func _build_tree_mesh() -> void:
 		cone.height = layer["height"]
 		fol.mesh = cone
 		fol.position.y = layer["y"]
-
-		var fol_mat: StandardMaterial3D = StandardMaterial3D.new()
-		fol_mat.albedo_color = layer["color"]
-		fol_mat.roughness = 0.8
 		fol.material_override = fol_mat
 		visual_root.add_child(fol)
 
@@ -128,9 +134,11 @@ func _build_rock_mesh() -> void:
 	boulder.position.y = 0.45
 	boulder.rotation_degrees = Vector3(5, 25, -8)
 
-	var rock_mat: StandardMaterial3D = StandardMaterial3D.new()
-	rock_mat.albedo_color = Color("6C7A89")
-	rock_mat.roughness = 0.7
+	var rock_mat: StandardMaterial3D = TextureHelper.create_material(
+		TextureHelper.PATH_RES_ROCK,
+		Color("6C7A89"),
+		0.7
+	)
 	boulder.material_override = rock_mat
 	visual_root.add_child(boulder)
 
@@ -141,9 +149,11 @@ func _build_rock_mesh() -> void:
 	side_rock.position = Vector3(0.5, 0.3, 0.3)
 	side_rock.rotation_degrees = Vector3(-12, 45, 10)
 
-	var side_mat: StandardMaterial3D = StandardMaterial3D.new()
-	side_mat.albedo_color = Color("4D5656")
-	side_mat.roughness = 0.75
+	var side_mat: StandardMaterial3D = TextureHelper.create_material(
+		TextureHelper.PATH_RES_ROCK_DARK,
+		Color("4D5656"),
+		0.75
+	)
 	side_rock.material_override = side_mat
 	visual_root.add_child(side_rock)
 
@@ -162,9 +172,11 @@ func _build_bush_mesh() -> void:
 	bush.mesh = sphere
 	bush.position.y = 0.4
 
-	var bush_mat: StandardMaterial3D = StandardMaterial3D.new()
-	bush_mat.albedo_color = Color("27AE60")
-	bush_mat.roughness = 0.85
+	var bush_mat: StandardMaterial3D = TextureHelper.create_material(
+		TextureHelper.PATH_RES_BUSH,
+		Color("27AE60"),
+		0.85
+	)
 	bush.material_override = bush_mat
 	visual_root.add_child(bush)
 
@@ -176,9 +188,11 @@ func _build_bush_mesh() -> void:
 		Vector3(0.4, 0.45, -0.15)
 	]
 
-	var berry_mat: StandardMaterial3D = StandardMaterial3D.new()
-	berry_mat.albedo_color = Color("E74C3C")
-	berry_mat.roughness = 0.3
+	var berry_mat: StandardMaterial3D = TextureHelper.create_material(
+		TextureHelper.PATH_RES_BERRIES,
+		Color("E74C3C"),
+		0.3
+	)
 
 	for offset in berry_offsets:
 		var berry: MeshInstance3D = MeshInstance3D.new()

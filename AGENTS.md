@@ -29,3 +29,5 @@ DO NOT Generate all of the things at once, many features will be added later. ge
 After generating code, write in Documentation.md all needed documentation for code and in file CHANGES.md write what you have done with simple words, like log of changes
 
 After generating code change all .md files when you think is needed, but to change /docs files is restricted, you can only suggest to add change
+
+If you create some textures, create empty files in textures folder(you can still generate some texture placeholder using code)

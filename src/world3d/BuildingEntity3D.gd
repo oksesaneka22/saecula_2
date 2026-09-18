@@ -5,6 +5,7 @@ class_name BuildingEntity3D
 ## Замінює ConstructionSite3D після завершення робіт, реєструє свої тайли в GridManager,
 ## містить опціональний InventoryComponent для складів/скринь, візуальну процедурну модель та 3D Billboard текст.
 
+const TextureHelper = preload("res://src/core3d/TextureHelper.gd")
 const InventoryComponentScript = preload("res://src/systems/inventory/InventoryComponent.gd")
 
 var building_data: BuildingData = null
@@ -102,9 +103,11 @@ func _setup_visual() -> void:
 
 func _build_campfire_visual(size_m: Vector2) -> void:
 	# 1. Кам'яне кільце вогнища (використовуємо один спільний меш для камінців)
-	var stone_mat := StandardMaterial3D.new()
-	stone_mat.albedo_color = Color(0.45, 0.45, 0.48)
-	stone_mat.roughness = 0.9
+	var stone_mat: StandardMaterial3D = TextureHelper.create_material(
+		TextureHelper.PATH_BLD_CAMPFIRE_STONE,
+		Color(0.45, 0.45, 0.48),
+		0.9
+	)
 
 	var ring_radius: float = minf(size_m.x, size_m.y) * 0.35
 	var stone_count: int = maxi(8, int(ring_radius * 6.0))
@@ -126,9 +129,11 @@ func _build_campfire_visual(size_m: Vector2) -> void:
 		_visual_root.add_child(stone_inst)
 
 	# 2. Поперечні колоди у центрі (спільний CylinderMesh)
-	var wood_mat := StandardMaterial3D.new()
-	wood_mat.albedo_color = Color(0.35, 0.22, 0.12)
-	wood_mat.roughness = 0.85
+	var wood_mat: StandardMaterial3D = TextureHelper.create_material(
+		TextureHelper.PATH_BLD_LOG_WOOD,
+		Color(0.35, 0.22, 0.12),
+		0.85
+	)
 
 	var log_r: float = clampf(ring_radius * 0.12, 0.12, 0.35)
 	var log_mesh := CylinderMesh.new()
@@ -146,11 +151,15 @@ func _build_campfire_visual(size_m: Vector2) -> void:
 		_visual_root.add_child(log_inst)
 
 	# 3. Палаюче вугілля та полум'я
-	var flame_mat := StandardMaterial3D.new()
-	flame_mat.albedo_color = Color(1.0, 0.5, 0.05)
-	flame_mat.emission_enabled = true
-	flame_mat.emission = Color(1.0, 0.55, 0.1)
-	flame_mat.emission_energy_multiplier = 3.0
+	var flame_mat: StandardMaterial3D = TextureHelper.create_material(
+		TextureHelper.PATH_BLD_FIRE,
+		Color(1.0, 0.5, 0.05),
+		0.5,
+		Vector3.ONE,
+		true,
+		Color(1.0, 0.55, 0.1),
+		3.0
+	)
 
 	var flame_h: float = clampf(ring_radius * 1.1, 1.2, 2.8)
 	var flame_mesh := CylinderMesh.new()
@@ -163,7 +172,7 @@ func _build_campfire_visual(size_m: Vector2) -> void:
 	flame_inst.position = Vector3(0, flame_h * 0.5, 0)
 	_visual_root.add_child(flame_inst)
 
-	# 4. Тепле світло вогню (shadow_enabled вимкнено для уникнення важкої компиляції шейдерів тіней на ходу)
+	# 4. Тепле світло вогню (shadow_enabled вимкнено для уникнення важкої компіляції шейдерів тіней на ходу)
 	_fire_light = OmniLight3D.new()
 	_fire_light.light_color = Color(1.0, 0.65, 0.25)
 	_fire_light.light_energy = 2.5
@@ -175,9 +184,12 @@ func _build_campfire_visual(size_m: Vector2) -> void:
 
 func _build_stockpile_visual(size_m: Vector2) -> void:
 	# 1. Дерев'яний настил платформи
-	var deck_mat := StandardMaterial3D.new()
-	deck_mat.albedo_color = Color(0.48, 0.35, 0.22)
-	deck_mat.roughness = 0.8
+	var deck_mat: StandardMaterial3D = TextureHelper.create_material(
+		TextureHelper.PATH_BLD_WOOD_PLANKS,
+		Color(0.48, 0.35, 0.22),
+		0.8,
+		Vector3(size_m.x * 0.5, size_m.y * 0.5, 1.0)
+	)
 
 	var deck_mesh := BoxMesh.new()
 	deck_mesh.size = Vector3(size_m.x - 0.2, 0.15, size_m.y - 0.2)
@@ -188,8 +200,11 @@ func _build_stockpile_visual(size_m: Vector2) -> void:
 	_visual_root.add_child(deck_inst)
 
 	# 2. Чотири кутові стовпи
-	var post_mat := StandardMaterial3D.new()
-	post_mat.albedo_color = Color(0.32, 0.2, 0.1)
+	var post_mat: StandardMaterial3D = TextureHelper.create_material(
+		TextureHelper.PATH_BLD_WOOD_POST,
+		Color(0.32, 0.2, 0.1),
+		0.85
+	)
 	var hx: float = size_m.x * 0.5 - 0.5
 	var hz: float = size_m.y * 0.5 - 0.5
 	var corners := [Vector3(-hx, 1.0, -hz), Vector3(hx, 1.0, -hz), Vector3(-hx, 1.0, hz), Vector3(hx, 1.0, hz)]
@@ -205,8 +220,11 @@ func _build_stockpile_visual(size_m: Vector2) -> void:
 		_visual_root.add_child(post_inst)
 
 	# 3. Декоративні ящики та піддони на складі
-	var crate_mat := StandardMaterial3D.new()
-	crate_mat.albedo_color = Color(0.6, 0.44, 0.25)
+	var crate_mat: StandardMaterial3D = TextureHelper.create_material(
+		TextureHelper.PATH_BLD_CRATE,
+		Color(0.6, 0.44, 0.25),
+		0.8
+	)
 	var crate_spacing_x: float = minf(size_m.x * 0.28, 3.5)
 	var crate_spacing_z: float = minf(size_m.y * 0.28, 3.5)
 	var crate_sz: float = clampf(size_m.x * 0.1, 0.8, 1.4)
@@ -224,19 +242,25 @@ func _build_stockpile_visual(size_m: Vector2) -> void:
 
 
 func _build_wooden_hut_visual(size_m: Vector2) -> void:
-	var wall_mat := StandardMaterial3D.new()
-	wall_mat.albedo_color = Color(0.42, 0.28, 0.16)
-	wall_mat.roughness = 0.9
-
-	var roof_mat := StandardMaterial3D.new()
-	roof_mat.albedo_color = Color(0.28, 0.18, 0.1)
-	roof_mat.roughness = 0.85
-
-	# 1. Основні дерев'яні стіни коробки хатини
 	var wall_w: float = size_m.x * 0.8
 	var wall_h: float = 3.6
 	var wall_d: float = size_m.y * 0.8
 
+	var wall_mat: StandardMaterial3D = TextureHelper.create_material(
+		TextureHelper.PATH_BLD_HUT_WALL,
+		Color(0.42, 0.28, 0.16),
+		0.9,
+		Vector3(wall_w * 0.25, wall_h * 0.25, 1.0)
+	)
+
+	var roof_mat: StandardMaterial3D = TextureHelper.create_material(
+		TextureHelper.PATH_BLD_HUT_ROOF,
+		Color(0.28, 0.18, 0.1),
+		0.85,
+		Vector3(wall_w * 0.25, wall_d * 0.25, 1.0)
+	)
+
+	# 1. Основні дерев'яні стіни коробки хатини
 	var house_mesh := BoxMesh.new()
 	house_mesh.size = Vector3(wall_w, wall_h, wall_d)
 	var house_inst := MeshInstance3D.new()
@@ -255,8 +279,11 @@ func _build_wooden_hut_visual(size_m: Vector2) -> void:
 	_visual_root.add_child(roof_inst)
 
 	# 3. Вхідні двері
-	var door_mat := StandardMaterial3D.new()
-	door_mat.albedo_color = Color(0.2, 0.12, 0.06)
+	var door_mat: StandardMaterial3D = TextureHelper.create_material(
+		TextureHelper.PATH_BLD_HUT_DOOR,
+		Color(0.2, 0.12, 0.06),
+		0.85
+	)
 	var door_mesh := BoxMesh.new()
 	door_mesh.size = Vector3(1.8, 2.4, 0.3)
 	var door_inst := MeshInstance3D.new()
@@ -276,8 +303,11 @@ func _build_wooden_hut_visual(size_m: Vector2) -> void:
 
 
 func _build_generic_visual(size_m: Vector2) -> void:
-	var gen_mat := StandardMaterial3D.new()
-	gen_mat.albedo_color = Color(0.5, 0.5, 0.5)
+	var gen_mat: StandardMaterial3D = TextureHelper.create_material(
+		TextureHelper.PATH_BLD_GENERIC,
+		Color(0.5, 0.5, 0.5),
+		0.8
+	)
 	var gen_mesh := BoxMesh.new()
 	gen_mesh.size = Vector3(size_m.x - 0.2, 2.0, size_m.y - 0.2)
 	var gen_inst := MeshInstance3D.new()

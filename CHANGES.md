@@ -1,5 +1,23 @@
 # Історія змін (CHANGES)
 
+### Перехід на статичні файли текстур замість суто процедурних описів у коді
+- **Створено структуру директорій та набір статичних текстур (`res://assets/textures/`):**
+  - `assets/textures/terrain/`: `grass.png` — текстура трав'яного покриву поверхні землі.
+  - `assets/textures/resources/`: `wood_bark.png`, `foliage.png`, `rock.png`, `rock_dark.png`, `bush.png`, `berries.png` — текстури природних ресурсів (стовбур дерева, крона, скелі, кущі, ягоди).
+  - `assets/textures/buildings/`: `campfire_stone.png`, `log_wood.png`, `fire.png`, `wood_planks.png`, `wood_post.png`, `crate.png`, `hut_wall.png`, `hut_roof.png`, `hut_door.png`, `site_ground.png`, `rope.png`, `generic_building.png` — текстури будівельних елементів споруд та майданчиків.
+  - `assets/textures/items/`: `wood.png`, `stone.png`, `flint.png`, `berries.png`, `stone_axe.png`, `stone_pickaxe.png`, `campfire.png`, `generic_item.png` — текстури предметів та інструментів.
+  - Усі файли створено у форматі PNG (32x32 пікселі) з коректними заголовками зображення, що дозволяє Godot автоматично імпортувати їх через `ResourceLoader`, а розробнику — вільно замінювати на власні ассет-паки або малюнки без зміни коду.
+- **Створено центральний помічник [`TextureHelper.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/core3d/TextureHelper.gd):**
+  - Кешує завантажені `Texture2D` ресурси через `ResourceLoader.load()`.
+  - Метод `create_material(path, fallback_color, roughness, uv_scale, emission_enabled, emission_color, emission_energy)`: формує `StandardMaterial3D` з підключенням текстури файлу, чистим кольором мультиплікації `Color.WHITE` (усуває небажане забарвлення користувацьких текстур) та фільтрацією `TEXTURE_FILTER_NEAREST_WITH_MIPMAPS` для збереження чіткості пікселів у RTS та FPS ракурсах.
+  - Метод `get_item_texture_path(item_id)`: централізовано зіставляє ідентифікатор предмета з файлом текстури.
+- **Інтегровано статичні текстури у всі 3D сутності проекту:**
+  - [`World3D.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/world3d/World3D.gd): земля використовує `TextureHelper.PATH_TERRAIN_GRASS` з тайлінгом UV за розміром карти.
+  - [`WorldResourceNode3D.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/world3d/WorldResourceNode3D.gd): стовбур, хвоя/листя, валуни та кущі ягід використовують відповідні текстури з `assets/textures/resources/`.
+  - [`BuildingEntity3D.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/world3d/BuildingEntity3D.gd): вогнище, склад та дерев'яна хатина використовують текстури з `assets/textures/buildings/`.
+  - [`ConstructionSite3D.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/world3d/ConstructionSite3D.gd): основа будівельного майданчика, розмічальні палі та огороджувальні троси використовують текстури з `assets/textures/buildings/`.
+  - [`DroppedItem3D.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/entities3d/items/DroppedItem3D.gd): 3D моделі дропу підтягують текстури з `assets/textures/items/`.
+
 ### Виправлення зависання при завершенні будівництва вогнища та помилки сигналів часу
 - **Усунено критичну невідповідність аргументів сигналу `day_time_updated` ([`Main.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/core/Main.gd)):**
   - Виправлено сигнатуру обробника `_on_day_time_updated(hour: int, minute: int)` відповідно до визначення в [`EventBus.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/core/EventBus.gd) та виклику в [`GameManager.gd`](file:///C:/Users/Sasha/OneDrive%20-%20UCU/Робочий%20стіл/work_dir/personal/saecula_2/src/core/GameManager.gd) (2 аргументи замість 3).
