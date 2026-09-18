@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=5 format=3 uid="uid://saecula_bld_campfire"]
+
+[ext_resource type="Script" path="res://src/data/schemas/BuildingData.gd" id="1_bld"]
+[ext_resource type="Script" path="res://src/data/schemas/ItemCost.gd" id="2_cost"]
+[ext_resource type="Resource" path="res://data/items/wood.tres" id="3_wood"]
+[ext_resource type="Resource" path="res://data/items/stone.tres" id="4_stone"]
+
+[sub_resource type="Resource" id="Cost_wood"]
+script = ExtResource("2_cost")
+item = ExtResource("3_wood")
+amount = 4
+
+[sub_resource type="Resource" id="Cost_stone"]
+script = ExtResource("2_cost")
+item = ExtResource("4_stone")
+amount = 4
+
+[resource]
+script = ExtResource("1_bld")
+id = &"campfire"
+display_name = "Табірне вогнище"
+description = "Центральне вогнище поселення (8x8 тайлів) для обігріву, світла та первинного виживання."
+size_in_tiles = Vector2i(8, 8)
+is_solid = true
+required_era = 0
+build_time = 6.0
+construction_cost = [SubResource("Cost_wood"), SubResource("Cost_stone")]
+job_type_provided = &""
+storage_slots = 0

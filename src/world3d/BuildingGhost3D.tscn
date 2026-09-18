@@ -1,0 +1,22 @@
+[gd_scene load_steps=3 format=3 uid="uid://saecula_building_ghost_3d"]
+
+[ext_resource type="Script" path="res://src/world3d/BuildingGhost3D.gd" id="1_ghost"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_default"]
+size = Vector3(1.9, 0.7, 1.9)
+
+[node name="BuildingGhost3D" type="Node3D"]
+script = ExtResource("1_ghost")
+
+[node name="FootprintMesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.35, 0)
+mesh = SubResource("BoxMesh_default")
+
+[node name="InfoLabel" type="Label3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2, 0)
+billboard = 1
+double_sided = false
+no_depth_test = true
+render_priority = 10
+font_size = 20
+outline_size = 6

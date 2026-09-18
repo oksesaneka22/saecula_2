@@ -1,6 +1,8 @@
 # Godot 4 engine files
 .godot/
 *.translation
+*.uid
+*.import
 
 # System and export files
 .import/

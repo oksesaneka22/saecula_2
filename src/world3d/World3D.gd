@@ -2,21 +2,24 @@ extends Node3D
 
 ## World3D: Головна 3D сцена світу Saecula.
 ## Керує 3D простором, освітленням, процедурною генерацією ресурсів (дерева, каміння, кущі),
-## та перемиканням режимів: First-Person (гравець) <-> Top-Down RTS (менеджмент колонії).
+## кресленнями-привидами споруд (BuildingGhost3D)
+## та перемиканням режимів: First-Person (гравець) <-> Top-Down RTS (менеджмент колонії/будівництво).
 
 const ResourceNode3DScene = preload("res://src/world3d/WorldResourceNode3D.tscn")
 const Player3DScene = preload("res://src/entities3d/player/Player3D.tscn")
 const RTSCamera3DScene = preload("res://src/core3d/RTSCamera3D.tscn")
+const BuildingGhost3DScene = preload("res://src/world3d/BuildingGhost3D.tscn")
 
-@export var map_tiles_width: int = 60
-@export var map_tiles_height: int = 60
+@export var map_tiles_width: int = 80
+@export var map_tiles_height: int = 80
 
-@export var initial_trees_count: int = 40
-@export var initial_rocks_count: int = 25
-@export var initial_bushes_count: int = 20
+@export var initial_trees_count: int = 50
+@export var initial_rocks_count: int = 30
+@export var initial_bushes_count: int = 25
 
 var player: CharacterBody3D = null
 var rts_camera: Node3D = null
+var building_ghost: Node3D = null
 
 @onready var resource_container: Node3D = $ResourceContainer
 @onready var ground_mesh: MeshInstance3D = $Ground/GroundMesh
@@ -32,6 +35,7 @@ func _ready() -> void:
 
 	EventBus.game_state_changed.connect(_on_game_state_changed)
 	EventBus.inventory_window_toggle_requested.connect(_on_inventory_toggle_requested)
+	BuildingPlacementController.placement_confirmed.connect(_on_building_placement_confirmed)
 
 	# За замовчуванням стартуємо у First-Person режимі
 	_apply_mode(GameManager.current_state)
@@ -76,10 +80,15 @@ func _setup_player_and_camera() -> void:
 	rts_camera.position = spawn_pos
 	add_child(rts_camera)
 
+	# Спавнимо 3D привид будівлі (Blueprint Preview)
+	building_ghost = BuildingGhost3DScene.instantiate()
+	building_ghost.name = "BuildingGhost3D"
+	add_child(building_ghost)
+
 
 func _generate_resources() -> void:
 	var center_cell: Vector2i = Vector2i(map_tiles_width / 2, map_tiles_height / 2)
-	var clear_radius: int = 4
+	var clear_radius: int = 16
 
 	_spawn_resource_batch(ResourceNode3DScene, 0, &"wood", initial_trees_count, center_cell, clear_radius) # TREE
 	_spawn_resource_batch(ResourceNode3DScene, 1, &"stone", initial_rocks_count, center_cell, clear_radius) # ROCK
@@ -97,7 +106,7 @@ func _spawn_resource_batch(scene: PackedScene, res_type: int, drop_id: StringNam
 		var cy: int = randi_range(2, map_tiles_height - 3)
 		var cell: Vector2i = Vector2i(cx, cy)
 
-		# Не спавнимо в зоні появи гравця
+		# Не спавнимо в зоні появи гравця (вільна галявина для розбудови колонії)
 		if cell.distance_to(center_cell) <= clear_radius:
 			continue
 
@@ -128,7 +137,7 @@ func _apply_mode(state: int) -> void:
 			rts_camera.set_active(false)
 
 		GameManager.GameState.COLONY_MODE, GameManager.GameState.BUILDING_MODE:
-			# Режим огляду та менеджменту: Top-Down RTS
+			# Режим огляду та менеджменту/будівництва: Top-Down RTS
 			player.set_active(false)
 			rts_camera.focus_on_position(player.global_position)
 			rts_camera.set_active(true)
@@ -143,3 +152,7 @@ func _on_inventory_toggle_requested() -> void:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		else:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+func _on_building_placement_confirmed(building: BuildingData, cell: Vector2i) -> void:
+	print("[World3D] Розміщено креслення споруди '%s' на клітинці %s" % [building.display_name, str(cell)])

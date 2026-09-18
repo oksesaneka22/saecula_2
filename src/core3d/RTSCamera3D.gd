@@ -1,31 +1,42 @@
 extends Node3D
 
-## RTSCamera3D: Камера огляду та менеджменту поселення зверху (Top-Down RTS / Dota / Factorio).
-## Підтримує переміщення WASD по карті, плавний зум коліщатком миші,
-## та вибір об'єктів/клітинок кліком курсора миші через 3D Raycast.
+## RTSCamera3D: Камера стратегічного виду зверху (Top-Down RTS) у стилі Dota 2 / Factorio.
+## Забезпечує панорамування WASD, масштабування (зум) коліщатком миші,
+## та вибір клітинок/об'єктів у 3D світі через променеве перетинання (Raycast).
 
 signal cell_clicked(cell: Vector2i, world_pos: Vector3)
 signal object_clicked(object: Node)
 
-@export var pan_speed: float = 18.0
-@export var min_zoom_height: float = 8.0
-@export var max_zoom_height: float = 36.0
-@export var current_zoom_height: float = 20.0
-@export var zoom_step: float = 3.0
+@export_group("Movement")
+@export var pan_speed: float = 28.0
+@export var zoom_step: float = 4.0
+@export var min_zoom_height: float = 10.0
+@export var max_zoom_height: float = 65.0
+@export var default_zoom_height: float = 26.0
 
-var is_active: bool = false
-var _target_zoom_height: float = 20.0
+@export_group("State")
+@export var is_active: bool = false
+
+var current_zoom_height: float = 26.0
+var _target_zoom_height: float = 26.0
 
 @onready var camera: Camera3D = $Camera3D
 
 
 func _ready() -> void:
-	_target_zoom_height = current_zoom_height
+	current_zoom_height = default_zoom_height
+	_target_zoom_height = default_zoom_height
 	_apply_camera_offset()
+	set_active(is_active)
 
 
+## Вмикає або вимикає RTS камеру
 func set_active(active: bool) -> void:
 	is_active = active
+	set_process_unhandled_input(active)
+	set_physics_process(active)
+	set_process(active)
+
 	if camera != null:
 		camera.current = active
 
@@ -42,6 +53,17 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not is_active:
 		return
 
+	# Перевірка режиму розміщення креслення (Building Placement)
+	if BuildingPlacementController != null and BuildingPlacementController.is_placing():
+		if event.is_action_pressed("cancel") or event.is_action_pressed("secondary_action"):
+			BuildingPlacementController.cancel_placement()
+			get_viewport().set_input_as_handled()
+			return
+		elif event.is_action_pressed("primary_action"):
+			if BuildingPlacementController.confirm_placement():
+				get_viewport().set_input_as_handled()
+				return
+
 	# Зум коліщатком миші
 	if event.is_action_pressed("zoom_in"):
 		_target_zoom_height = clampf(_target_zoom_height - zoom_step, min_zoom_height, max_zoom_height)
@@ -56,6 +78,17 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("primary_action"):
 		_handle_mouse_click()
 		get_viewport().set_input_as_handled()
+
+
+func _process(_delta: float) -> void:
+	if not is_active or camera == null:
+		return
+
+	# Якщо активний режим будівництва — транслюємо координати курсора на сітку
+	if BuildingPlacementController != null and BuildingPlacementController.is_placing():
+		var cell: Vector2i = _get_hovered_ground_cell()
+		if cell.x != -9999:
+			BuildingPlacementController.update_hover(cell)
 
 
 func _physics_process(delta: float) -> void:
@@ -83,8 +116,29 @@ func _apply_camera_offset() -> void:
 	camera.rotation_degrees = Vector3(-55.0, 0.0, 0.0)
 
 
+func _get_hovered_ground_cell() -> Vector2i:
+	if camera == null:
+		return Vector2i(-9999, -9999)
+
+	var mouse_pos: Vector2 = get_viewport().get_mouse_position()
+	var ray_origin: Vector3 = camera.project_ray_origin(mouse_pos)
+	var ray_normal: Vector3 = camera.project_ray_normal(mouse_pos)
+
+	if absf(ray_normal.y) > 0.0001:
+		var t: float = -ray_origin.y / ray_normal.y
+		if t > 0.0:
+			var ground_point: Vector3 = ray_origin + (ray_normal * t)
+			return GridManager.world_to_map_3d(ground_point)
+
+	return Vector2i(-9999, -9999)
+
+
 func _handle_mouse_click() -> void:
 	if camera == null:
+		return
+
+	# Якщо гравець будує — клік обробляється BuildingPlacementController
+	if BuildingPlacementController != null and BuildingPlacementController.is_placing():
 		return
 
 	var mouse_pos: Vector2 = get_viewport().get_mouse_position()

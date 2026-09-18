@@ -1,10 +1,11 @@
-[gd_scene load_steps=7 format=3 uid="uid://saecula_hud"]
+[gd_scene load_steps=8 format=3 uid="uid://saecula_hud"]
 
 [ext_resource type="Script" path="res://src/ui/hud/HotbarUI.gd" id="1_hotbar"]
 [ext_resource type="Script" path="res://src/ui/hud/InventoryUI.gd" id="2_inv"]
 [ext_resource type="Script" path="res://src/ui/hud/CraftingUI.gd" id="3_craft"]
 [ext_resource type="Script" path="res://src/ui/hud/CrosshairUI.gd" id="4_cross"]
 [ext_resource type="Script" path="res://src/ui/hud/ModeIndicatorUI.gd" id="5_mode"]
+[ext_resource type="PackedScene" path="res://src/ui/hud/BuildMenuUI.tscn" id="6_build"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_banner"]
 bg_color = Color(0.08, 0.1, 0.12, 0.75)
@@ -91,3 +92,5 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("3_craft")
+
+[node name="BuildMenuUI" parent="." instance=ExtResource("6_build")]
