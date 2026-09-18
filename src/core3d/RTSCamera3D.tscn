@@ -1,0 +1,10 @@
+[gd_scene load_steps=2 format=3 uid="uid://saecula_rts_camera_3d"]
+
+[ext_resource type="Script" path="res://src/core3d/RTSCamera3D.gd" id="1_rts_cam"]
+
+[node name="RTSCamera3D" type="Node3D"]
+script = ExtResource("1_rts_cam")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.573576, 0.819152, 0, -0.819152, 0.573576, 0, 20, 14)
+fov = 60.0

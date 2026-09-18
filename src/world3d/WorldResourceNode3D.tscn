@@ -1,0 +1,17 @@
+[gd_scene load_steps=3 format=3 uid="uid://saecula_resource_node_3d"]
+
+[ext_resource type="Script" path="res://src/world3d/WorldResourceNode3D.gd" id="1_node"]
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_default"]
+height = 2.0
+radius = 0.5
+
+[node name="WorldResourceNode3D" type="StaticBody3D"]
+collision_layer = 1
+collision_mask = 3
+script = ExtResource("1_node")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("CylinderShape3D_default")
+
+[node name="VisualRoot" type="Node3D" parent="."]

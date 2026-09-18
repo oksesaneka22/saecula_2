@@ -1,0 +1,47 @@
+[gd_scene load_steps=6 format=3 uid="uid://saecula_player_3d"]
+
+[ext_resource type="Script" path="res://src/entities3d/player/Player3D.gd" id="1_player"]
+[ext_resource type="Script" path="res://src/systems/inventory/InventoryComponent.gd" id="2_inventory"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
+radius = 0.4
+height = 1.8
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_body"]
+radius = 0.38
+height = 1.6
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_player"]
+albedo_color = Color(0.18, 0.45, 0.72, 1)
+roughness = 0.7
+
+[node name="Player3D" type="CharacterBody3D"]
+collision_layer = 2
+collision_mask = 5
+script = ExtResource("1_player")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+shape = SubResource("CapsuleShape3D_player")
+
+[node name="Head" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, 0)
+
+[node name="FPSCamera" type="Camera3D" parent="Head"]
+current = true
+fov = 75.0
+
+[node name="InteractRay" type="RayCast3D" parent="Head"]
+target_position = Vector3(0, 0, -3.2)
+collision_mask = 1
+
+[node name="VisualBody" type="Node3D" parent="."]
+
+[node name="BodyMesh" type="MeshInstance3D" parent="VisualBody"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+mesh = SubResource("CapsuleMesh_body")
+surface_material_override/0 = SubResource("StandardMaterial3D_player")
+
+[node name="InventoryComponent" type="Node" parent="."]
+script = ExtResource("2_inventory")
+max_slots = 24

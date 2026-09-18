@@ -3,3 +3,5 @@ i think player must have ability, to change UI modes(from player mode, to villag
 Make UI of technology trees very cool, there will be really many technologies
 
 game must support 1920x1080 and 2560x1440
+
+Top-down view for management mode, first-person view for player

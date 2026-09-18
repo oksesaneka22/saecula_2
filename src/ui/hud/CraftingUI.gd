@@ -109,12 +109,15 @@ func open_crafting() -> void:
 	_is_open = true
 	visible = true
 	_refresh_recipes_ui()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	crafting_window_toggled.emit(true)
 
 
 func close_crafting() -> void:
 	_is_open = false
 	visible = false
+	if GameManager.current_state == GameManager.GameState.PLAYING:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	crafting_window_toggled.emit(false)
 
 

@@ -1,11 +1,61 @@
-[gd_scene load_steps=5 format=3 uid="uid://saecula_hud"]
+[gd_scene load_steps=7 format=3 uid="uid://saecula_hud"]
 
 [ext_resource type="Script" path="res://src/ui/hud/HotbarUI.gd" id="1_hotbar"]
 [ext_resource type="Script" path="res://src/ui/hud/InventoryUI.gd" id="2_inv"]
 [ext_resource type="Script" path="res://src/ui/hud/CraftingUI.gd" id="3_craft"]
+[ext_resource type="Script" path="res://src/ui/hud/CrosshairUI.gd" id="4_cross"]
+[ext_resource type="Script" path="res://src/ui/hud/ModeIndicatorUI.gd" id="5_mode"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_banner"]
+bg_color = Color(0.08, 0.1, 0.12, 0.75)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.4, 0.5, 0.6, 0.5)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
 
 [node name="HUD" type="CanvasLayer"]
 layer = 10
+
+[node name="CrosshairUI" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("4_cross")
+
+[node name="ModeIndicatorUI" type="PanelContainer" parent="."]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -260.0
+offset_top = 16.0
+offset_right = 260.0
+offset_bottom = 52.0
+grow_horizontal = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_banner")
+script = ExtResource("5_mode")
+
+[node name="MarginContainer" type="MarginContainer" parent="ModeIndicatorUI"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 4
+
+[node name="Label" type="Label" parent="ModeIndicatorUI/MarginContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="HotbarUI" type="Control" parent="."]
 layout_mode = 3

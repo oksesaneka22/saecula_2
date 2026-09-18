@@ -1,9 +1,9 @@
-extends Node2D
+extends Node
 
 const ItemDataScript = preload("res://src/data/schemas/ItemData.gd")
 const InventoryComponentScript = preload("res://src/systems/inventory/InventoryComponent.gd")
-const WorldResourceNodeScript = preload("res://src/world/WorldResourceNode.gd")
-const DroppedItemScene = preload("res://src/entities/items/DroppedItem.tscn")
+const WorldResourceNode3DScene = preload("res://src/world3d/WorldResourceNode3D.tscn")
+const Player3DScene = preload("res://src/entities3d/player/Player3D.tscn")
 
 func _ready() -> void:
 	# Підписуємося на сигнали EventBus для валідації шини
@@ -12,8 +12,8 @@ func _ready() -> void:
 
 	# 1. Валідація доступу до GridManager
 	assert(GridManager != null, "GridManager autoload must be available")
-	var sample_path: PackedVector2Array = GridManager.get_world_path(Vector2(0, 0), Vector2(64, 64))
-	print("[Main] System initialized. Sample path length: ", sample_path.size())
+	var sample_path_3d: PackedVector3Array = GridManager.get_world_path_3d(Vector3(0, 0, 0), Vector3(20, 0, 20))
+	print("[Main] 3D System initialized. Sample path length: ", sample_path_3d.size())
 
 	# 2. Валідація доступу до ItemDatabase (Ітерація 4.1)
 	assert(ItemDatabase != null, "ItemDatabase autoload must be available")
@@ -24,11 +24,14 @@ func _ready() -> void:
 	# 3. Валідація InventoryComponent (Ітерація 4.2)
 	_test_inventory_component(wood)
 
-	# 4. Валідація збору ресурсів та дропу (Ітерація 4.3)
+	# 4. Валідація 3D збору ресурсів та дропу
 	_test_harvest_and_drop()
 
 	# 5. Валідація CraftingManager (Ітерація 5.1)
 	_test_crafting_manager()
+
+	# 6. Валідація Player3D інструментів та збору ресурсів
+	_test_player_3d_tools()
 
 
 func _test_inventory_component(wood: Resource) -> void:
@@ -54,26 +57,23 @@ func _test_inventory_component(wood: Resource) -> void:
 
 
 func _test_harvest_and_drop() -> void:
-	# Тестова перевірка реєстрації, знищення та очищення сітки
-	var test_cell = Vector2i(70, 40)
+	var test_cell = Vector2i(55, 55)
 	assert(GridManager.is_cell_walkable(test_cell) == true, "Cell must be initially walkable")
 
-	var node: StaticBody2D = WorldResourceNodeScript.new()
-	node.global_position = GridManager.map_to_world(test_cell)
+	var node: StaticBody3D = WorldResourceNode3DScene.instantiate()
+	node.position = GridManager.map_to_world_3d(test_cell, 0.0)
 	node.resource_type = 0 # TREE
 	node.max_health = 1.0
 	node.current_health = 1.0
 	node.drop_item_id = &"wood"
 	add_child(node)
 
-	# Клітинка стає зайнятою
-	assert(GridManager.is_cell_solid(test_cell) == true, "ResourceNode must block cell")
+	assert(GridManager.is_cell_solid(test_cell) == true, "ResourceNode3D must block cell")
 	assert(GridManager.get_occupant(test_cell) == node, "GridManager occupant must be node")
 
-	# Удар (harvest) призводить до знищення та звільнення клітинки
 	node.harvest(1.0, 0)
 	assert(GridManager.is_cell_walkable(test_cell) == true, "Destroyed node must free cell in GridManager")
-	print("[Main] Harvest and drop mechanics unit tests passed successfully!")
+	print("[Main] 3D Harvest and drop mechanics unit tests passed successfully!")
 
 
 func _test_crafting_manager() -> void:
@@ -106,10 +106,33 @@ func _test_crafting_manager() -> void:
 	print("[Main] CraftingManager unit tests passed successfully!")
 
 
-func _on_game_state_changed(new_state: int, old_state: int) -> void:
-	# Безпечне реагування на зміну стану
+func _test_player_3d_tools() -> void:
+	var test_player = Player3DScene.instantiate()
+	add_child(test_player)
+
+	# Перевірка з пустими руками
+	test_player.select_hotbar_slot(0)
+	assert(test_player._get_active_tool_type() == 0, "Empty hand tool type must be 0 (NONE)")
+	assert(test_player._get_active_tool_damage() == 1.0, "Empty hand tool damage must be 1.0")
+
+	# Додаємо кам'яну сокиру в перший слот хотбару
+	var axe = ItemDatabase.get_item(&"stone_axe")
+	assert(axe != null, "stone_axe must exist in database")
+	test_player.inventory.add_item(axe, 1)
+
+	# Перевіряємо зчитування типу інструмента та шкоди
+	var tool_type: int = test_player._get_active_tool_type()
+	var tool_dmg: float = test_player._get_active_tool_damage()
+	assert(tool_type == 1, "Equipped axe must return tool_type 1 (AXE)")
+	assert(tool_dmg >= 2.0, "Axe efficiency must be >= 2.0")
+
+	test_player.queue_free()
+	print("[Main] Player3D tool calculation unit tests passed successfully!")
+
+
+func _on_game_state_changed(_new_state: int, _old_state: int) -> void:
 	pass
 
 
-func _on_day_time_updated(hour: int, minute: int) -> void:
+func _on_day_time_updated(_hour: int, _minute: int) -> void:
 	pass

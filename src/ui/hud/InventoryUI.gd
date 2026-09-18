@@ -1,7 +1,7 @@
 extends Control
 
 ## InventoryUI: Повне вікно інвентаря гравця (сітка 6 колонок x 4 ряди = 24 слоти).
-## Відкривається та закривається на клавіші 'I' або 'Tab'.
+## Відкривається та закривається на клавіші 'I'.
 ## Центрується на екрані (Anchor Preset Center) з підтримкою 1080p та 1440p.
 
 const ItemSlotUIScript = preload("res://src/ui/hud/ItemSlotUI.gd")
@@ -74,7 +74,7 @@ func _setup_ui() -> void:
 
 	# Підказка знизу
 	var hint = Label.new()
-	hint.text = "Натисніть 'I', 'Tab' або 'Escape', щоб закрити"
+	hint.text = "Натисніть 'I' або 'Escape', щоб закрити"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.add_theme_font_size_override("font_size", 12)
 	hint.add_theme_color_override("font_color", Color(0.6, 0.65, 0.7))
@@ -112,11 +112,14 @@ func open_inventory() -> void:
 	_is_open = true
 	visible = true
 	_refresh_inventory()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
 func close_inventory() -> void:
 	_is_open = false
 	visible = false
+	if GameManager.current_state == GameManager.GameState.PLAYING:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func _refresh_inventory() -> void:
