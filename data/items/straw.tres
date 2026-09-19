@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ItemData" load_steps=2 format=3 uid="uid://saecula_item_straw"]
+
+[ext_resource type="Script" path="res://src/data/schemas/ItemData.gd" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+id = &"straw"
+display_name = "Сіно"
+description = "Сухе сіно для покрівлі дахів, підстилки та утеплення споруд."
+category = 0
+max_stack = 64
+tool_type = 0
+tier = 0
+tool_efficiency = 1.0

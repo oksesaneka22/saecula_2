@@ -6,11 +6,14 @@ extends RefCounted
 ## та застосування до 3D-моделей і предметів гри.
 
 const PATH_TERRAIN_GRASS: String = "res://assets/textures/terrain/grass.png"
+const PATH_TERRAIN_WATER: String = "res://assets/textures/terrain/water.png"
 
 const PATH_RES_WOOD_BARK: String = "res://assets/textures/resources/wood_bark.png"
 const PATH_RES_FOLIAGE: String = "res://assets/textures/resources/foliage.png"
 const PATH_RES_ROCK: String = "res://assets/textures/resources/rock.png"
 const PATH_RES_ROCK_DARK: String = "res://assets/textures/resources/rock_dark.png"
+const PATH_RES_CLAY: String = "res://assets/textures/resources/clay_deposit.png"
+const PATH_RES_FLINT: String = "res://assets/textures/resources/flint_deposit.png"
 const PATH_RES_BUSH: String = "res://assets/textures/resources/bush.png"
 const PATH_RES_BERRIES: String = "res://assets/textures/resources/berries.png"
 
@@ -24,6 +27,7 @@ const PATH_BLD_HUT_WALL: String = "res://assets/textures/buildings/hut_wall.png"
 const PATH_BLD_HUT_ROOF: String = "res://assets/textures/buildings/hut_roof.png"
 const PATH_BLD_HUT_DOOR: String = "res://assets/textures/buildings/hut_door.png"
 const PATH_BLD_SITE_GROUND: String = "res://assets/textures/buildings/site_ground.png"
+const PATH_BLD_STRAW_THATCH: String = "res://assets/textures/buildings/straw_thatch.png"
 const PATH_BLD_ROPE: String = "res://assets/textures/buildings/rope.png"
 const PATH_BLD_GENERIC: String = "res://assets/textures/buildings/generic_building.png"
 
@@ -31,6 +35,8 @@ const PATH_BLOCK_WOOD: String = "res://assets/textures/blocks/wood_block.png"
 const PATH_BLOCK_STONE: String = "res://assets/textures/blocks/stone_block.png"
 
 const PATH_ITEM_WOOD: String = "res://assets/textures/items/wood.png"
+const PATH_ITEM_STRAW: String = "res://assets/textures/items/straw.png"
+const PATH_ITEM_CLAY: String = "res://assets/textures/items/clay.png"
 const PATH_ITEM_STONE: String = "res://assets/textures/items/stone.png"
 const PATH_ITEM_FLINT: String = "res://assets/textures/items/flint.png"
 const PATH_ITEM_BERRIES: String = "res://assets/textures/items/berries.png"
@@ -103,6 +109,10 @@ static func get_item_texture_path(item_id: StringName) -> String:
 			return PATH_ITEM_STONE
 		&"flint":
 			return PATH_ITEM_FLINT
+		&"clay":
+			return PATH_ITEM_CLAY
+		&"straw":
+			return PATH_ITEM_STRAW
 		&"berries":
 			return PATH_ITEM_BERRIES
 		&"stone_axe":

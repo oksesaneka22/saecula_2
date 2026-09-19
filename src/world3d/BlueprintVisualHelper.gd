@@ -34,6 +34,16 @@ static func build_blueprint_hologram(building_id: StringName, size_m: Vector2, m
 			_build_stockpile_holo(root, size_m, material)
 		&"wooden_hut":
 			_build_wooden_hut_holo(root, size_m, material)
+		&"modular_floor":
+			_build_modular_floor_holo(root, material)
+		&"modular_pillar":
+			_build_modular_pillar_holo(root, material)
+		&"modular_wall":
+			_build_modular_wall_holo(root, material)
+		&"modular_door":
+			_build_modular_door_holo(root, material)
+		&"modular_roof":
+			_build_modular_roof_holo(root, material)
 		_:
 			_build_generic_holo(root, size_m, material)
 
@@ -207,3 +217,74 @@ static func _build_generic_holo(parent: Node3D, size_m: Vector2, mat: Material) 
 	box_inst.material_override = mat
 	box_inst.position = Vector3(0, h * 0.5, 0)
 	parent.add_child(box_inst)
+
+static func _build_modular_floor_holo(parent: Node3D, mat: Material) -> void:
+	var inst := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(1.0, 0.08, 1.0)
+	inst.mesh = box
+	inst.material_override = mat
+	inst.position = Vector3(0.0, 0.04, 0.0)
+	parent.add_child(inst)
+
+
+static func _build_modular_pillar_holo(parent: Node3D, mat: Material) -> void:
+	var inst := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(0.24, 2.0, 0.24)
+	inst.mesh = box
+	inst.material_override = mat
+	inst.position = Vector3(0.0, 1.0, 0.0)
+	parent.add_child(inst)
+
+
+static func _build_modular_wall_holo(parent: Node3D, mat: Material) -> void:
+	var inst := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(1.0, 2.0, 0.2)
+	inst.mesh = box
+	inst.material_override = mat
+	inst.position = Vector3(0.0, 1.0, 0.0)
+	parent.add_child(inst)
+
+
+static func _build_modular_door_holo(parent: Node3D, mat: Material) -> void:
+	var post_l := MeshInstance3D.new()
+	var post_box := BoxMesh.new()
+	post_box.size = Vector3(0.12, 2.0, 0.2)
+	post_l.mesh = post_box
+	post_l.material_override = mat
+	post_l.position = Vector3(-0.44, 1.0, 0.0)
+	parent.add_child(post_l)
+
+	var post_r := MeshInstance3D.new()
+	post_r.mesh = post_box
+	post_r.material_override = mat
+	post_r.position = Vector3(0.44, 1.0, 0.0)
+	parent.add_child(post_r)
+
+	var lintel := MeshInstance3D.new()
+	var lintel_box := BoxMesh.new()
+	lintel_box.size = Vector3(1.0, 0.15, 0.2)
+	lintel.mesh = lintel_box
+	lintel.material_override = mat
+	lintel.position = Vector3(0.0, 1.925, 0.0)
+	parent.add_child(lintel)
+
+	var door := MeshInstance3D.new()
+	var door_box := BoxMesh.new()
+	door_box.size = Vector3(0.76, 1.85, 0.06)
+	door.mesh = door_box
+	door.material_override = mat
+	door.position = Vector3(0.0, 0.925, 0.0)
+	parent.add_child(door)
+
+
+static func _build_modular_roof_holo(parent: Node3D, mat: Material) -> void:
+	var inst := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(1.0, 0.12, 1.0)
+	inst.mesh = box
+	inst.material_override = mat
+	inst.position = Vector3(0.0, 2.06, 0.0)
+	parent.add_child(inst)

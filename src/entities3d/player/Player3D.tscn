@@ -4,12 +4,12 @@
 [ext_resource type="Script" path="res://src/systems/inventory/InventoryComponent.gd" id="2_inventory"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
-radius = 0.4
-height = 1.8
+radius = 0.28
+height = 1.75
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_body"]
-radius = 0.38
-height = 1.6
+radius = 0.26
+height = 1.55
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_player"]
 albedo_color = Color(0.18, 0.45, 0.72, 1)

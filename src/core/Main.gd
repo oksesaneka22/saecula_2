@@ -51,6 +51,15 @@ func _ready() -> void:
 	# 11. Валідація воксельних блоків у стилі Minecraft (дерево/камінь)
 	_test_block_placement()
 
+	# 12. Валідація модульного будівництва Going Medieval (підлога, стіна, опора, двері, стеля)
+	_test_going_medieval_modular_construction()
+
+	# 13. Валідація водойм (річки/озера) та родовищ глини і кремнію на узбережжі
+	_test_water_bodies_and_shore_resources()
+
+	# 14. Валідація процедурної генерації світу (1000x1000 тайлів лісу, чанковий стрімінг)
+	_test_procedural_forest_world_generation()
+
 
 func _test_inventory_component(wood: Resource) -> void:
 	var test_inv: Node = InventoryComponentScript.new()
@@ -203,7 +212,7 @@ func _test_building_placement_controller() -> void:
 
 	# Перевірка за межами карти
 	assert(BuildingPlacementController.can_place_at(campfire, Vector2i(-5, -5)) == false, "Negative coords must be invalid")
-	assert(BuildingPlacementController.can_place_at(campfire, Vector2i(79, 79)) == false, "Out of bounds must be invalid")
+	assert(BuildingPlacementController.can_place_at(campfire, Vector2i(GridManager.grid_width - 1, GridManager.grid_height - 1)) == false, "Out of bounds must be invalid")
 
 	# Перевірка розрахунку 3D центру будівлі
 	var center: Vector3 = BuildingPlacementController.get_building_world_center(Vector2i(0, 0), Vector2i(4, 4))
@@ -461,3 +470,245 @@ func _test_block_placement() -> void:
 	assert(BlockManager.has_blocks_in_area(Vector2i(28, 28), campfire_bld.size_in_tiles) == false, "Area has no blocks after removal")
 
 	print("[Main] Minecraft-style Block Placement unit tests passed successfully!")
+
+
+func _test_going_medieval_modular_construction() -> void:
+	print("[Main] Testing Going Medieval modular construction system...")
+
+	# 1. Перевірка наявності автолоаду ModularManager
+	assert(ModularManager != null, "ModularManager autoload must be registered")
+
+	# 2. Перевірка реєстрації всіх 5 модульних споруд
+	var floor_bld = BuildingPlacementController.get_building(&"modular_floor")
+	var pillar_bld = BuildingPlacementController.get_building(&"modular_pillar")
+	var wall_bld = BuildingPlacementController.get_building(&"modular_wall")
+	var door_bld = BuildingPlacementController.get_building(&"modular_door")
+	var roof_bld = BuildingPlacementController.get_building(&"modular_roof")
+
+	assert(floor_bld != null, "modular_floor must exist in BuildingPlacementController")
+	assert(pillar_bld != null, "modular_pillar must exist in BuildingPlacementController")
+	assert(wall_bld != null, "modular_wall must exist in BuildingPlacementController")
+	assert(door_bld != null, "modular_door must exist in BuildingPlacementController")
+	assert(roof_bld != null, "modular_roof must exist in BuildingPlacementController")
+
+	# 3. Валідація правил ієрархії (Не можна ставити стіни та опори до підлоги, і стелю до стін)
+	var test_cell := Vector2i(70, 70)
+	ModularManager.clear_all()
+
+	# Без підлоги стіна, опора та двері НЕ повинні дозволятися
+	assert(not ModularManager.can_place_modular_piece(&"modular_wall", test_cell), "Cannot place wall without floor")
+	assert(not ModularManager.can_place_modular_piece(&"modular_pillar", test_cell), "Cannot place pillar without floor")
+	assert(not ModularManager.can_place_modular_piece(&"modular_door", test_cell), "Cannot place door without floor")
+	assert(not ModularManager.can_place_modular_piece(&"modular_roof", test_cell), "Cannot place roof without walls/support")
+
+	# Підлога на вільній клітинці ДОЗВОЛЯЄТЬСЯ
+	assert(ModularManager.can_place_modular_piece(&"modular_floor", test_cell), "Can place floor on free ground")
+	var floor_piece = ModularManager.place_blueprint(&"modular_floor", test_cell)
+	assert(floor_piece != null, "Floor blueprint must be created")
+	assert(not floor_piece.is_built, "Newly placed floor must be in blueprint mode")
+	assert(ModularManager.has_floor(test_cell), "ModularManager must recognize floor at cell")
+
+	# Тепер, коли є підлога, стіна/опора/двері ДОЗВОЛЯЮТЬСЯ
+	assert(ModularManager.can_place_modular_piece(&"modular_wall", test_cell), "Can place wall on floor")
+	assert(ModularManager.can_place_modular_piece(&"modular_pillar", test_cell), "Can place pillar on floor")
+	assert(ModularManager.can_place_modular_piece(&"modular_door", test_cell), "Can place door on floor")
+
+	# Ставимо стіну на цю ж клітинку з підлогою
+	var wall_piece = ModularManager.place_blueprint(&"modular_wall", test_cell)
+	assert(wall_piece != null, "Wall blueprint must be created on floor")
+	assert(ModularManager.has_wall_or_pillar(test_cell), "ModularManager must recognize wall at cell")
+
+	# Тепер, коли є стіна, стеля (сіно) ДОЗВОЛЯЄТЬСЯ
+	assert(ModularManager.can_support_roof(test_cell), "Roof can be supported by wall")
+	assert(ModularManager.can_place_modular_piece(&"modular_roof", test_cell), "Can place roof on wall")
+	var roof_piece = ModularManager.place_blueprint(&"modular_roof", test_cell)
+	assert(roof_piece != null, "Roof blueprint must be created")
+
+	# 4. Тестування зведення частин по черзі (інвентар гравця)
+	var test_inv: Node = InventoryComponentScript.new()
+	test_inv.set("slot_count", 8)
+	add_child(test_inv)
+	test_inv.add_item_by_id(&"wood", 10)
+	test_inv.add_item_by_id(&"straw", 10)
+
+	# Спроба збудувати стіну до того, як збудована підлога -> повинно заблокувати
+	wall_piece.interact_construct(test_inv)
+	assert(not wall_piece.is_built, "Wall cannot be built before floor is built")
+
+	# Будуємо підлогу
+	floor_piece.interact_construct(test_inv)
+	assert(floor_piece.is_built, "Floor must be built after interact_construct")
+	assert(ModularManager.has_built_floor(test_cell), "ModularManager must recognize built floor")
+	assert(test_inv.get_item_count(&"wood") == 9, "Floor cost 1 wood (10 - 1 = 9)")
+
+	# Тепер будуємо стіну
+	wall_piece.interact_construct(test_inv)
+	assert(wall_piece.is_built, "Wall must be built after floor is built")
+	assert(test_inv.get_item_count(&"wood") == 7, "Wall cost 2 wood (9 - 2 = 7)")
+
+	# Будуємо стелю
+	roof_piece.interact_construct(test_inv)
+	assert(roof_piece.is_built, "Roof must be built after wall is built")
+	assert(test_inv.get_item_count(&"wood") == 6, "Roof cost 1 wood (7 - 1 = 6)")
+	assert(test_inv.get_item_count(&"straw") == 8, "Roof cost 2 straw (10 - 2 = 8)")
+
+	# 5. Тестування дверей (відчинення та зачинення на interact)
+	var door_cell := Vector2i(71, 70)
+	var door_floor = ModularManager.place_blueprint(&"modular_floor", door_cell)
+	door_floor.interact_construct(test_inv)
+	var door_piece = ModularManager.place_blueprint(&"modular_door", door_cell)
+	door_piece.interact_construct(test_inv)
+	assert(door_piece.is_built, "Door must be built")
+	assert(not door_piece.is_door_open, "Door starts closed")
+	assert(GridManager.is_cell_solid(door_cell), "Closed door blocks cell")
+
+	# Відчиняємо двері
+	door_piece.interact(null)
+	assert(door_piece.is_door_open, "Door must be open after interact")
+	assert(not GridManager.is_cell_solid(door_cell), "Open door allows passage")
+
+	# Зачиняємо двері
+	door_piece.interact(null)
+	assert(not door_piece.is_door_open, "Door must be closed after second interact")
+	assert(GridManager.is_cell_solid(door_cell), "Closed door blocks cell again")
+
+	# 6. Перевірка відкриття через interact_construct на готових дверях
+	door_piece.interact_construct(null)
+	assert(door_piece.is_door_open, "interact_construct on built door must toggle it open")
+	door_piece.interact_construct(null)
+	assert(not door_piece.is_door_open, "interact_construct on built door must toggle it closed")
+
+	# 7. Тестування системи обертання будівель (клавіша R)
+	BuildingPlacementController.start_placement(wall_bld)
+	assert(BuildingPlacementController.current_rotation == 0, "Initial rotation must be 0")
+	assert(BuildingPlacementController.get_rotation_degrees_y() == 0.0, "Initial rotation angle must be 0.0")
+	BuildingPlacementController.rotate_placement(1)
+	assert(BuildingPlacementController.current_rotation == 1, "Rotation index must be 1 after R")
+	assert(BuildingPlacementController.get_rotation_degrees_y() == 90.0, "Rotation angle must be 90.0 after R")
+	BuildingPlacementController.cancel_placement()
+
+	# 8. Тестування розбиття великого креслення хатини на модульні компоненти Going Medieval
+	ModularManager.clear_all()
+	var hut_origin := Vector2i(50, 50)
+	var hut_size := Vector2i(4, 4) # 4x4 для швидкого тесту
+
+	# Очищуємо тестову зону 4x4 від випадкових природних ресурсів генерації карти
+	for dx in range(4):
+		for dy in range(4):
+			var c = hut_origin + Vector2i(dx, dy)
+			GridManager.unregister_occupant(c, true)
+			GridManager.set_cell_solid(c, false)
+
+	var spawned_parts = ModularManager.place_prefab_hut_blueprints(hut_origin, hut_size, 0)
+	assert(spawned_parts.size() > 0, "Prefab hut must spawn modular blueprint parts")
+
+	# Перевіряємо, що всі клітинки підлоги розміщені
+	for dx in range(4):
+		for dy in range(4):
+			var c = hut_origin + Vector2i(dx, dy)
+			assert(ModularManager.has_floor(c), "Prefab hut must place floor at %s" % str(c))
+			assert(ModularManager.has_roof(c), "Prefab hut must place roof at %s" % str(c))
+
+	# Перевіряємо кутові колоди-опори
+	assert(ModularManager.has_wall_or_pillar(hut_origin), "Corner (0,0) must have pillar")
+	assert(ModularManager.has_wall_or_pillar(hut_origin + Vector2i(3, 0)), "Corner (3,0) must have pillar")
+	assert(ModularManager.has_wall_or_pillar(hut_origin + Vector2i(0, 3)), "Corner (0,3) must have pillar")
+	assert(ModularManager.has_wall_or_pillar(hut_origin + Vector2i(3, 3)), "Corner (3,3) must have pillar")
+
+	# Перевіряємо наявність дверей
+	var hut_door = ModularManager.get_piece_at(hut_origin + Vector2i(2, 0), "structure")
+	assert(hut_door != null and hut_door.piece_type == &"modular_door", "Hut must have modular_door blueprint at front entrance")
+
+	# Очищення тестових об'єктів
+	ModularManager.clear_all()
+	test_inv.queue_free()
+
+	print("[Main] Going Medieval modular construction unit tests passed successfully!")
+
+
+func _test_water_bodies_and_shore_resources() -> void:
+	print("[Main] Testing water bodies and shore deposits (clay and flint)...")
+
+	# 1. Перевірка наявності предметів глини та кремнію в базі
+	var clay_item = ItemDatabase.get_item(&"clay")
+	assert(clay_item != null, "ItemDatabase must contain 'clay'")
+	assert(clay_item.display_name == "Глина", "Clay display_name must be 'Глина'")
+
+	var flint_item = ItemDatabase.get_item(&"flint")
+	assert(flint_item != null, "ItemDatabase must contain 'flint'")
+	assert(flint_item.display_name == "Кремінь", "Flint display_name must be 'Кремінь'")
+
+	# 2. Перевірка водної системи GridManager
+	var test_water_pos := Vector2i(10, 10)
+	GridManager.register_water_cell(test_water_pos)
+	assert(GridManager.is_water_cell(test_water_pos), "Cell must be identified as water")
+	assert(not GridManager.is_cell_walkable(test_water_pos), "Water cell must NOT be walkable")
+	assert(GridManager.is_cell_solid(test_water_pos), "Water cell must be solid")
+
+	# 3. Перевірка узбережжя
+	var adjacent_shore := Vector2i(11, 10)
+	assert(GridManager.is_near_water(adjacent_shore, 2), "Adjacent cell must be near water")
+	var far_land := Vector2i(25, 25)
+	assert(not GridManager.is_near_water(far_land, 2), "Distant cell must NOT be near water")
+
+	# Очищення тестової водної клітинки
+	GridManager.unregister_water_cell(test_water_pos)
+	assert(not GridManager.is_water_cell(test_water_pos), "Cell must no longer be water")
+
+	# 4. Перевірка згенерованих водойм на реальній карті
+	var all_waters: Array[Vector2i] = GridManager.get_all_water_cells()
+	assert(all_waters.size() > 0, "Map must have generated water cells (rivers/lakes)")
+	var shore_cells: Array[Vector2i] = GridManager.get_shore_cells(3)
+	assert(shore_cells.size() > 0, "Map must have shore cells around water bodies")
+
+	# 5. Перевірка збирання глини (CLAY) та кремнію (FLINT)
+	var clay_node = WorldResourceNode3DScene.instantiate()
+	clay_node.resource_type = 3 # CLAY
+	clay_node.drop_item_id = &"clay"
+	add_child(clay_node)
+	assert(clay_node.current_health == 3.0, "Clay node health must be 3.0")
+	clay_node.harvest(1.0, 0)
+	assert(clay_node.current_health < 3.0, "Clay node must take damage on harvest")
+	clay_node.queue_free()
+
+	var flint_node = WorldResourceNode3DScene.instantiate()
+	flint_node.resource_type = 4 # FLINT
+	flint_node.drop_item_id = &"flint"
+	add_child(flint_node)
+	assert(flint_node.current_health == 3.0, "Flint node health must be 3.0")
+	# Перевірка бонусу видобутку кайлом (PICKAXE = 2)
+	flint_node.harvest(1.0, 2)
+	assert(flint_node.current_health == 1.0, "Flint node must take 2.0 damage from pickaxe")
+	flint_node.queue_free()
+
+	print("[Main] Water bodies and shore deposits unit tests passed successfully!")
+
+
+func _test_procedural_forest_world_generation() -> void:
+	print("[Main] Testing procedural forest world generation (1000x1000) & chunk streaming...")
+
+	# 1. Перевірка габаритів світу (1000x1000)
+	assert(GridManager.grid_width == 1000, "Grid width must be 1000")
+	assert(GridManager.grid_height == 1000, "Grid height must be 1000")
+
+	# 2. Перевірка генерації гідрографії на великій карті
+	var water_cells: Array[Vector2i] = GridManager.get_all_water_cells()
+	assert(water_cells.size() > 5000, "1000x1000 world must have a rich river and lake system (> 5000 water cells)")
+
+	# 3. Перевірка точки спавну (500, 500)
+	var spawn_pos := Vector2i(500, 500)
+	assert(not GridManager.is_water_cell(spawn_pos), "Spawn point must not be in water")
+	assert(GridManager.is_within_bounds(spawn_pos), "Spawn point must be within bounds")
+
+	# 4. Перевірка чанкового стрімінгу у World3D
+	var world3d: Node = get_node_or_null("World3D")
+	if world3d != null and "_loaded_chunks" in world3d:
+		var loaded_chunks: Dictionary = world3d._loaded_chunks
+		assert(loaded_chunks.size() > 0, "World3D must have active loaded chunks around player")
+		print("[Main] Active chunks around spawn: ", loaded_chunks.size())
+
+	# 5. Перевірка наявності прибережних зон для глини та кремнію
+	var shore_cells: Array[Vector2i] = GridManager.get_shore_cells(3)
+	assert(shore_cells.size() > 100, "Shoreline must provide abundant cells for clay and flint deposits")
+
+	print("[Main] Procedural forest world generation & chunk streaming unit tests passed successfully!")

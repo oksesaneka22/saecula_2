@@ -40,6 +40,7 @@ func initialize_grid(width: int, height: int) -> void:
 	grid_width = width
 	grid_height = height
 	_occupants.clear()
+	_water_cells.clear()
 
 	astar_grid.region = Rect2i(0, 0, grid_width, grid_height)
 	astar_grid.cell_size = Vector2(TILE_SIZE, TILE_SIZE)
@@ -243,3 +244,71 @@ func is_area_clear(origin_cell: Vector2i, size_in_tiles: Vector2i) -> bool:
 		if not is_cell_walkable(cell):
 			return false
 	return true
+
+# ------------------------------------------------------------------------------
+# Водойми (Річки та Озера)
+# ------------------------------------------------------------------------------
+var _water_cells: Dictionary = {} # Vector2i -> bool
+
+signal water_cell_registered(cell: Vector2i)
+signal water_cell_unregistered(cell: Vector2i)
+
+
+## Реєструє клітинку як водойму (річка/озеро) та робить її непрохідною
+func register_water_cell(map_pos: Vector2i) -> void:
+	if not is_within_bounds(map_pos):
+		return
+	_water_cells[map_pos] = true
+	set_cell_solid(map_pos, true)
+	water_cell_registered.emit(map_pos)
+
+
+## Скасовує статус водойми для клітинки
+func unregister_water_cell(map_pos: Vector2i) -> void:
+	if _water_cells.has(map_pos):
+		_water_cells.erase(map_pos)
+		set_cell_solid(map_pos, false)
+		water_cell_unregistered.emit(map_pos)
+
+
+## Чи є дана клітинка водоймою (річка або озеро)
+func is_water_cell(map_pos: Vector2i) -> bool:
+	return _water_cells.has(map_pos)
+
+
+## Повертає список усіх клітинок води на карті
+func get_all_water_cells() -> Array[Vector2i]:
+	var list: Array[Vector2i] = []
+	for k in _water_cells.keys():
+		list.append(k)
+	return list
+
+
+## Перевіряє, чи знаходиться клітинка на узбережжі водойми (відстань від 1 до max_distance тайлів до води)
+func is_near_water(map_pos: Vector2i, max_distance: int = 3) -> bool:
+	if is_water_cell(map_pos):
+		return false
+	for dx in range(-max_distance, max_distance + 1):
+		for dy in range(-max_distance, max_distance + 1):
+			if dx == 0 and dy == 0:
+				continue
+			if (dx * dx + dy * dy) <= (max_distance * max_distance):
+				if is_water_cell(map_pos + Vector2i(dx, dy)):
+					return true
+	return false
+
+
+## Повертає всі вільні для проходу клітинки суходолу вздовж узбережжя водойм
+func get_shore_cells(max_dist: int = 2) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	var visited: Dictionary = {}
+	for w_cell in _water_cells.keys():
+		for dx in range(-max_dist, max_dist + 1):
+			for dy in range(-max_dist, max_dist + 1):
+				var check := Vector2i(w_cell.x + dx, w_cell.y + dy)
+				if visited.has(check):
+					continue
+				visited[check] = true
+				if is_within_bounds(check) and not is_water_cell(check) and is_cell_walkable(check):
+					result.append(check)
+	return result

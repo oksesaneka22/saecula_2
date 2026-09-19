@@ -48,8 +48,9 @@ func _ready() -> void:
 		if inventory.get_item_count(&"wood") == 0:
 			inventory.add_item_by_id(&"stone_axe", 1)
 			inventory.add_item_by_id(&"stone_pickaxe", 1)
-			inventory.add_item_by_id(&"wood", 32)
-			inventory.add_item_by_id(&"stone", 32)
+			inventory.add_item_by_id(&"wood", 64)
+			inventory.add_item_by_id(&"stone", 64)
+			inventory.add_item_by_id(&"straw", 64)
 
 
 func _on_hotbar_slot_selected(slot_index: int) -> void:
@@ -165,8 +166,12 @@ func _try_interact_or_harvest() -> void:
 
 	player_interacted.emit(collider)
 
-	# 1. Якщо це будівельний майданчик (ConstructionSite3D) — взаємодія з доставкою/роботою
+	# 1. Якщо це модульний блок (ModularPiece3D) або будівельний майданчик (ConstructionSite3D)
 	if collider.has_method("interact_construct"):
+		if collider.get("is_built") == true:
+			if collider.has_method("interact"):
+				collider.interact(self)
+				return
 		collider.interact_construct(inventory)
 		return
 

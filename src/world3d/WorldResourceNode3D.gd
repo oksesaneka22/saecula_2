@@ -8,8 +8,10 @@ extends StaticBody3D
 
 enum ResourceType {
 	TREE,       ## Дерево -> спавнить wood
-	ROCK,       ## Кам'яна брила -> спавнить stone / flint
-	BUSH        ## Кущ диких ягід -> спавнить berries
+	ROCK,       ## Кам'яна брила -> спавнить stone
+	BUSH,       ## Кущ диких ягід -> спавнить berries
+	CLAY,       ## Родовище глини -> спавнить clay (біля водойм)
+	FLINT       ## Поклади кремнію -> спавнить flint (біля водойм)
 }
 
 const TextureHelper = preload("res://src/core3d/TextureHelper.gd")
@@ -25,6 +27,14 @@ const DroppedItem3DScene = preload("res://src/entities3d/items/DroppedItem3D.tsc
 var _cell: Vector2i = Vector2i.ZERO
 var _shake_tween: Tween = null
 var _original_scale: Vector3 = Vector3.ONE
+
+func get_cell() -> Vector2i:
+	if _cell == Vector2i.ZERO and GridManager != null:
+		return GridManager.world_to_map_3d(global_position)
+	return _cell
+
+func set_cell(c: Vector2i) -> void:
+	_cell = c
 
 var visual_root: Node3D = null
 var collision_shape: CollisionShape3D = null
@@ -74,6 +84,10 @@ func _setup_visual() -> void:
 			_build_rock_mesh()
 		ResourceType.BUSH:
 			_build_bush_mesh()
+		ResourceType.CLAY:
+			_build_clay_mesh()
+		ResourceType.FLINT:
+			_build_flint_mesh()
 
 
 func _build_tree_mesh() -> void:
@@ -212,12 +226,106 @@ func _build_bush_mesh() -> void:
 		collision_shape.position.y = 0.45
 
 
+
+
+func _build_clay_mesh() -> void:
+	var clay_mat: StandardMaterial3D = TextureHelper.create_material(
+		TextureHelper.PATH_RES_CLAY,
+		Color("B35427"),
+		0.85
+	)
+
+	# Основа насипу глини
+	var base_mound := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 0.55
+	cyl.bottom_radius = 0.7
+	cyl.height = 0.25
+	base_mound.mesh = cyl
+	base_mound.position.y = 0.125
+	base_mound.material_override = clay_mat
+	visual_root.add_child(base_mound)
+
+	# Верхній пласт глини
+	var top_mound := MeshInstance3D.new()
+	var sph := SphereMesh.new()
+	sph.radius = 0.45
+	sph.height = 0.35
+	top_mound.mesh = sph
+	top_mound.position = Vector3(0.05, 0.25, -0.05)
+	top_mound.material_override = clay_mat
+	visual_root.add_child(top_mound)
+
+	# Додатковий грудочок глини поруч
+	var lump := MeshInstance3D.new()
+	var lump_sph := SphereMesh.new()
+	lump_sph.radius = 0.22
+	lump_sph.height = 0.2
+	lump.mesh = lump_sph
+	lump.position = Vector3(-0.35, 0.1, 0.3)
+	lump.material_override = clay_mat
+	visual_root.add_child(lump)
+
+	if collision_shape != null:
+		var cyl_shape: CylinderShape3D = CylinderShape3D.new()
+		cyl_shape.radius = 0.7
+		cyl_shape.height = 0.6
+		collision_shape.shape = cyl_shape
+		collision_shape.position.y = 0.3
+
+
+func _build_flint_mesh() -> void:
+	var flint_mat: StandardMaterial3D = TextureHelper.create_material(
+		TextureHelper.PATH_RES_FLINT,
+		Color("2F3640"),
+		0.35
+	)
+
+	# Центральний кристал / гострий камінь кремнію
+	var main_prism := MeshInstance3D.new()
+	var prism_mesh := PrismMesh.new()
+	prism_mesh.size = Vector3(0.7, 0.8, 0.6)
+	main_prism.mesh = prism_mesh
+	main_prism.position.y = 0.4
+	main_prism.rotation_degrees = Vector3(15, 30, -10)
+	main_prism.material_override = flint_mat
+	visual_root.add_child(main_prism)
+
+	# Бічний відкол кремнію
+	var side_prism := MeshInstance3D.new()
+	var side_mesh := PrismMesh.new()
+	side_mesh.size = Vector3(0.45, 0.55, 0.4)
+	side_prism.mesh = side_mesh
+	side_prism.position = Vector3(0.35, 0.25, 0.2)
+	side_prism.rotation_degrees = Vector3(-20, 60, 25)
+	side_prism.material_override = flint_mat
+	visual_root.add_child(side_prism)
+
+	# Менший осколок
+	var small_prism := MeshInstance3D.new()
+	var small_mesh := BoxMesh.new()
+	small_mesh.size = Vector3(0.35, 0.25, 0.35)
+	small_prism.mesh = small_mesh
+	small_prism.position = Vector3(-0.3, 0.15, -0.2)
+	small_prism.rotation_degrees = Vector3(35, -45, 10)
+	small_prism.material_override = flint_mat
+	visual_root.add_child(small_prism)
+
+	if collision_shape != null:
+		var box_shape: BoxShape3D = BoxShape3D.new()
+		box_shape.size = Vector3(1.1, 0.8, 1.1)
+		collision_shape.shape = box_shape
+		collision_shape.position.y = 0.4
+
+
 func harvest(damage: float = 1.0, tool_type: int = 0) -> void:
 	var effective_damage: float = damage
 	if resource_type == ResourceType.TREE and tool_type == 1: # AXE
 		effective_damage *= 2.0
-	elif resource_type == ResourceType.ROCK and tool_type == 2: # PICKAXE
+	elif (resource_type == ResourceType.ROCK or resource_type == ResourceType.FLINT) and tool_type == 2: # PICKAXE
 		effective_damage *= 2.0
+	elif resource_type == ResourceType.CLAY and (tool_type == 2 or tool_type == 1):
+		effective_damage *= 1.5
 
 	current_health -= effective_damage
 	_play_hit_effect()
@@ -237,7 +345,7 @@ func _play_hit_effect() -> void:
 
 
 func _destroy_and_drop() -> void:
-	GridManager.unregister_occupant(_cell, true)
+	GridManager.unregister_occupant(get_cell(), true)
 
 	var drop_count: int = randi_range(drop_min_amount, drop_max_amount)
 	if get_parent() != null and DroppedItem3DScene != null:

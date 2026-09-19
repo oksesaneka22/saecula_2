@@ -50,6 +50,7 @@ func _setup_category_tabs() -> void:
 
 	var categories = [
 		{"id": &"all", "label": " Усі споруди "},
+		{"id": &"modular", "label": " 🏛️ Модульні (Going Medieval) "},
 		{"id": &"base", "label": " 🔥 Базові "},
 		{"id": &"storage", "label": " 📦 Сховища "},
 		{"id": &"living", "label": " 🏠 Житло & Праця "}
@@ -137,6 +138,8 @@ func _on_game_state_changed(_new_state: int, _old_state: int) -> void:
 func _get_building_category(bld: BuildingData) -> StringName:
 	if bld == null:
 		return &"base"
+	if bld.id.begins_with("modular_"):
+		return &"modular"
 	if bld.storage_slots > 0 or bld.id == &"stockpile":
 		return &"storage"
 	if bld.job_type_provided != &"" or bld.id == &"wooden_hut":

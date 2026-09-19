@@ -68,6 +68,13 @@ func _setup_visual() -> void:
 			mesh_instance.mesh = prism
 			fallback_color = Color("2C3E50")
 
+		&"clay":
+			var sphere: SphereMesh = SphereMesh.new()
+			sphere.radius = 0.16
+			sphere.height = 0.22
+			mesh_instance.mesh = sphere
+			fallback_color = Color("B35427")
+
 		&"berries":
 			var sphere: SphereMesh = SphereMesh.new()
 			sphere.radius = 0.16
