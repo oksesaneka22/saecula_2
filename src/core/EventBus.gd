@@ -26,6 +26,9 @@ signal day_passed(day_number: int)
 ## Зміна здоров'я/витривалості персонажа гравця
 signal player_stats_changed(current_hp: float, max_hp: float, current_stamina: float, max_stamina: float)
 
+## Спроба виконати дію за виснаження / нульової енергії
+signal energy_depleted_action_attempted
+
 ## Гравець взаємодіє з об'єктом у світі
 signal player_interacted_with_world(target_node: Node, map_coords: Vector2i)
 

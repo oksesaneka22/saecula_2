@@ -376,22 +376,22 @@ func show_temporary_message(text: String, col: Color = Color(1, 0.3, 0.3)) -> vo
 
 
 ## Взаємодія на [E] або клік миші (зведення частини або відкриття дверей)
-func interact_construct(inventory: Node) -> void:
+func interact_construct(inventory: Node) -> bool:
 	if is_built:
 		if piece_type == &"modular_door":
 			interact(null)
-		return
+		return false
 
 	# 1. Перевірка структурних правил перед будівництвом
 	if piece_type in [&"modular_wall", &"modular_pillar", &"modular_door"]:
 		if ModularManager != null and not ModularManager.has_built_floor(cell_coord):
 			show_temporary_message("Спочатку збудуйте підлогу!", Color(1.0, 0.35, 0.35))
-			return
+			return false
 
 	if piece_type == &"modular_roof":
 		if ModularManager != null and not ModularManager.has_built_support_for_roof(cell_coord):
 			show_temporary_message("Спочатку збудуйте стіни або опори!", Color(1.0, 0.35, 0.35))
-			return
+			return false
 
 	# 2. Перевірка наявності матеріалів в інвентарі
 	if inventory != null:
@@ -400,7 +400,7 @@ func interact_construct(inventory: Node) -> void:
 			var count: int = inventory.get_item_count(item_id) if inventory.has_method("get_item_count") else 0
 			if count < needed:
 				show_temporary_message("Потрібно: %s" % get_cost_text(), Color(1.0, 0.35, 0.35))
-				return
+				return false
 
 		# 3. Списання матеріалів
 		for item_id in required_materials.keys():
@@ -415,6 +415,7 @@ func interact_construct(inventory: Node) -> void:
 	piece_constructed.emit(self)
 	if ModularManager != null:
 		ModularManager.notify_piece_built(self)
+	return true
 
 
 ## Взаємодія гравця з готовим об'єктом (наприклад, відкривання/закривання дверей)

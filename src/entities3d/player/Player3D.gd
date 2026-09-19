@@ -3,15 +3,26 @@ extends CharacterBody3D
 ## Player3D: Контролер гравця у 3D світі гри з видом від 1-ї особи (First-Person).
 ## Керується за допомогою WASD, огляд мишею через Head/Camera3D, взаємодія та збір ресурсів через RayCast3D.
 ## Підтримує будівництво воксельних блоків (Minecraft-style) на ПКМ та видобуток на ЛКМ.
+## Містить повноцінну систему енергії (1000 од. на день) з витратами на біг, видобуток та будівництво.
 
 signal active_slot_changed(slot_index: int)
 signal player_interacted(target: Node)
+signal energy_changed(current: float, max_val: float)
 
 @export var walk_speed: float = 5.0
 @export var sprint_speed: float = 7.5
 @export var jump_velocity: float = 7.0
 @export var mouse_sensitivity: float = 0.0025
 @export var reach_distance: float = 4.5
+
+## Параметри системи енергії
+@export var max_energy: float = 1000.0
+@export var current_energy: float = 1000.0
+@export var sprint_energy_per_sec: float = 0.0
+@export var harvest_energy_cost: float = 2.5
+@export var construct_energy_cost: float = 6.0
+@export var place_block_energy_cost: float = 3.0
+@export var rest_regen_rate: float = 0.0
 
 var gravity: float = 18.0
 var is_active: bool = true
@@ -41,6 +52,11 @@ func _ready() -> void:
 
 	if EventBus != null:
 		EventBus.hotbar_slot_selected.connect(_on_hotbar_slot_selected)
+		EventBus.day_passed.connect(func(_day): restore_energy(max_energy))
+
+	energy_changed.emit(current_energy, max_energy)
+	if EventBus != null:
+		EventBus.player_stats_changed.emit(100.0, 100.0, current_energy, max_energy)
 
 	# Надаємо гравцю стартовий комплект інструментів та матеріалів:
 	# Слот 1 (Wood) та Слот 2 (Stone) для миттєвого тестування будівництва на ПКМ!
@@ -102,9 +118,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 
-	# Встановлення воксельного блоку (ПКМ як у Minecraft)
+	# Вживання їжі (ягоди на ПКМ) або встановлення воксельного блоку (ПКМ як у Minecraft)
 	if event.is_action_pressed("secondary_action"):
 		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+			if _try_consume_food():
+				get_viewport().set_input_as_handled()
+				return
 			if _try_place_block():
 				get_viewport().set_input_as_handled()
 				return
@@ -133,7 +152,13 @@ func _physics_process(delta: float) -> void:
 	var input_dir: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	var move_direction: Vector3 = (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
 
-	var speed: float = sprint_speed if Input.is_key_pressed(KEY_SHIFT) else walk_speed
+	var wants_sprint: bool = Input.is_key_pressed(KEY_SHIFT) and move_direction != Vector3.ZERO
+	var can_sprint: bool = current_energy > 0.0
+
+	var speed: float = walk_speed
+	if wants_sprint and can_sprint:
+		speed = sprint_speed
+
 	if move_direction != Vector3.ZERO:
 		velocity.x = move_direction.x * speed
 		velocity.z = move_direction.z * speed
@@ -151,6 +176,50 @@ func select_hotbar_slot(slot_index: int) -> void:
 		active_slot_changed.emit(active_hotbar_slot)
 		if EventBus != null:
 			EventBus.hotbar_slot_selected.emit(active_hotbar_slot)
+
+
+## Витрачає вказану кількість енергії гравця. Повертає true якщо енергія була успішно знята.
+func consume_energy(amount: float) -> bool:
+	if current_energy <= 0.0:
+		return false
+	current_energy = maxf(0.0, current_energy - amount)
+	energy_changed.emit(current_energy, max_energy)
+	if EventBus != null:
+		EventBus.player_stats_changed.emit(100.0, 100.0, current_energy, max_energy)
+	return true
+
+
+## Відновлює вказану кількість енергії гравця.
+func restore_energy(amount: float) -> void:
+	if current_energy >= max_energy:
+		return
+	current_energy = minf(max_energy, current_energy + amount)
+	energy_changed.emit(current_energy, max_energy)
+	if EventBus != null:
+		EventBus.player_stats_changed.emit(100.0, 100.0, current_energy, max_energy)
+
+
+## Перевіряє наявність достатньої кількості енергії
+func has_energy(amount: float) -> bool:
+	return current_energy >= amount
+
+
+func _show_energy_warning() -> void:
+	if EventBus != null and EventBus.has_signal("energy_depleted_action_attempted"):
+		EventBus.energy_depleted_action_attempted.emit()
+	print("[Player3D] Виснаження! Недостатньо енергії для дії.")
+
+
+func _try_consume_food() -> bool:
+	var active_item_id: StringName = _get_active_item_id()
+	if active_item_id == &"berries" and current_energy < max_energy:
+		if inventory != null and inventory.get_item_count(&"berries") > 0:
+			if inventory.remove_item(&"berries", 1):
+				restore_energy(25.0)
+				_play_swing_animation()
+				print("[Player3D] З'їдено ягоди! Енергію відновлено: +25 (%d/%d)" % [int(current_energy), int(max_energy)])
+				return true
+	return false
 
 
 func _try_interact_or_harvest() -> void:
@@ -172,7 +241,13 @@ func _try_interact_or_harvest() -> void:
 			if collider.has_method("interact"):
 				collider.interact(self)
 				return
-		collider.interact_construct(inventory)
+		if current_energy < construct_energy_cost:
+			_show_energy_warning()
+			if collider.has_method("show_temporary_message"):
+				collider.show_temporary_message("Недостатньо енергії!", Color(1.0, 0.3, 0.3))
+			return
+		if collider.interact_construct(inventory):
+			consume_energy(construct_energy_cost)
 		return
 
 	# 2. Якщо це споруда зі сховищем / склад (BuildingEntity3D)
@@ -182,8 +257,12 @@ func _try_interact_or_harvest() -> void:
 
 	# 3. Якщо це природний ресурс (WorldResourceNode3D) або блок (WorldBlock3D)
 	if collider.has_method("harvest"):
+		if current_energy < harvest_energy_cost:
+			_show_energy_warning()
+			return
 		var equipped_tool_type: int = _get_active_tool_type()
 		var tool_damage: float = _get_active_tool_damage()
+		consume_energy(harvest_energy_cost)
 		collider.harvest(tool_damage, equipped_tool_type)
 		return
 
@@ -246,6 +325,9 @@ func _try_place_block() -> bool:
 		return false
 	if inventory == null or inventory.get_item_count(active_item_id) <= 0:
 		return false
+	if current_energy < place_block_energy_cost:
+		_show_energy_warning()
+		return false
 	if interact_ray == null or not interact_ray.is_colliding():
 		return false
 
@@ -262,6 +344,7 @@ func _try_place_block() -> bool:
 		return false
 
 	var block = BlockManager.place_block(active_item_id, target_coord)
+	consume_energy(place_block_energy_cost)
 	_play_swing_animation()
 	print("[Player3D] Встановлено блок '%s' на позиції %s" % [active_item_id, str(target_coord)])
 	return true

@@ -9,6 +9,7 @@ const BuildingEntity3DScript = preload("res://src/world3d/BuildingEntity3D.gd")
 const StockpileBuildingScript = preload("res://src/world/buildings/StockpileBuilding.gd")
 const ModularPiece3DScript = preload("res://src/world3d/modular/ModularPiece3D.gd")
 const ItemSlotUIScript = preload("res://src/ui/hud/ItemSlotUI.gd")
+const EnergyBarUIScript = preload("res://src/ui/hud/EnergyBarUI.gd")
 
 func _ready() -> void:
 	# Підписуємося на сигнали EventBus для валідації шини
@@ -67,6 +68,9 @@ func _ready() -> void:
 
 	# 16. Валідація текстур в інвентарі та повного розміру дерев'яної колоди-опори
 	_test_inventory_textures_and_pillar_size()
+
+	# 17. Валідація системи енергії (1000 од., дії, виснаження при 0, шкала EnergyBarUI)
+	_test_player_energy_system()
 
 
 func _test_inventory_component(wood: Resource) -> void:
@@ -821,3 +825,48 @@ func _test_inventory_textures_and_pillar_size() -> void:
 
 	slot_ui.queue_free()
 	print("[Main] Inventory slot textures and modular pillar block size tests passed successfully!")
+
+
+func _test_player_energy_system() -> void:
+	print("[Main] Testing player energy system & EnergyBarUI...")
+	var player = Player3DScene.instantiate()
+	add_child(player)
+
+	# 1. Початковий стан: великий запас на день (1000 од.)
+	assert(player.max_energy == 1000.0, "Max energy must be 1000.0 for a full day of activities")
+	assert(player.current_energy == 1000.0, "Current energy must start at 1000.0")
+	assert(player.has_energy(2.5), "Player must have energy for harvesting")
+	assert(player.has_energy(6.0), "Player must have energy for modular construction")
+	assert(player.has_energy(3.0), "Player must have energy for block placement")
+	assert(player.sprint_energy_per_sec == 0.0, "Sprinting must not consume energy")
+	assert(player.rest_regen_rate == 0.0, "There should be no passive energy regeneration")
+
+	# 2. Витрата енергії при діях
+	var consumed = player.consume_energy(25.0)
+	assert(consumed == true, "Energy consumption must succeed")
+	assert(is_equal_approx(player.current_energy, 975.0), "Energy should be 975.0 after 25.0 consumed")
+
+	# 3. Виснаження до 0
+	player.consume_energy(1000.0)
+	assert(player.current_energy == 0.0, "Energy cannot drop below 0.0")
+	assert(player.has_energy(2.5) == false, "At 0 energy player cannot perform actions requiring energy")
+	assert(player.consume_energy(5.0) == false, "consume_energy at 0 must return false")
+
+	# 4. Відновлення енергії (їжа / відпочинок)
+	player.restore_energy(25.0)
+	assert(is_equal_approx(player.current_energy, 25.0), "Energy should be restored by 25.0 (berries)")
+
+	# 5. Новий день (EventBus.day_passed) відновлює сили на максимум
+	EventBus.day_passed.emit(2)
+	assert(is_equal_approx(player.current_energy, 1000.0), "Passing a day must fully replenish energy to 1000.0")
+
+	# 6. Валідація інтерфейсної шкали EnergyBarUI
+	var energy_bar = EnergyBarUIScript.new()
+	add_child(energy_bar)
+	energy_bar._on_energy_changed(750.0, 1000.0)
+	assert(energy_bar.current_energy == 750.0, "EnergyBarUI must track current energy")
+	assert(energy_bar.max_energy == 1000.0, "EnergyBarUI must track max energy")
+	energy_bar.queue_free()
+
+	player.queue_free()
+	print("[Main] Player energy system & EnergyBarUI unit tests passed successfully!")
