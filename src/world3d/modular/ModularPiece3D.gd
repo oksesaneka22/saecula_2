@@ -166,6 +166,7 @@ func _build_floor_geometry(mat: Material) -> void:
 	_visual_root.add_child(mesh_inst)
 
 	_collision_shape = CollisionShape3D.new()
+	_collision_shape.name = "CollisionShape3D"
 	var shape := BoxShape3D.new()
 	shape.size = Vector3(1.0, 0.08, 1.0)
 	_collision_shape.shape = shape
@@ -176,15 +177,16 @@ func _build_floor_geometry(mat: Material) -> void:
 func _build_pillar_geometry(mat: Material) -> void:
 	var mesh_inst := MeshInstance3D.new()
 	var box := BoxMesh.new()
-	box.size = Vector3(0.24, 2.0, 0.24)
+	box.size = Vector3(1.0, 2.0, 1.0)
 	mesh_inst.mesh = box
 	mesh_inst.material_override = mat
 	mesh_inst.position = Vector3(0.0, 1.0, 0.0)
 	_visual_root.add_child(mesh_inst)
 
 	_collision_shape = CollisionShape3D.new()
+	_collision_shape.name = "CollisionShape3D"
 	var shape := BoxShape3D.new()
-	shape.size = Vector3(0.24, 2.0, 0.24)
+	shape.size = Vector3(1.0, 2.0, 1.0)
 	_collision_shape.shape = shape
 	_collision_shape.position = Vector3(0.0, 1.0, 0.0)
 	add_child(_collision_shape)
@@ -200,6 +202,7 @@ func _build_wall_geometry(mat: Material) -> void:
 	_visual_root.add_child(mesh_inst)
 
 	_collision_shape = CollisionShape3D.new()
+	_collision_shape.name = "CollisionShape3D"
 	var shape := BoxShape3D.new()
 	shape.size = Vector3(1.0, 2.0, 0.2)
 	_collision_shape.shape = shape
@@ -280,6 +283,7 @@ func _build_roof_geometry(mat: Material) -> void:
 	_visual_root.add_child(mesh_inst)
 
 	_collision_shape = CollisionShape3D.new()
+	_collision_shape.name = "CollisionShape3D"
 	var shape := BoxShape3D.new()
 	shape.size = Vector3(1.0, 0.12, 1.0)
 	_collision_shape.shape = shape

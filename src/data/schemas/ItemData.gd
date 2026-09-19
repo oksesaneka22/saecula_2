@@ -18,7 +18,8 @@ enum ToolType {
 	AXE,
 	PICKAXE,
 	HAMMER,
-	SWORD
+	SWORD,
+	SCYTHE
 }
 
 @export_group("Identity")

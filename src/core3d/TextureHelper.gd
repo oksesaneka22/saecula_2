@@ -16,6 +16,7 @@ const PATH_RES_CLAY: String = "res://assets/textures/resources/clay_deposit.png"
 const PATH_RES_FLINT: String = "res://assets/textures/resources/flint_deposit.png"
 const PATH_RES_BUSH: String = "res://assets/textures/resources/bush.png"
 const PATH_RES_BERRIES: String = "res://assets/textures/resources/berries.png"
+const PATH_RES_GRASS: String = "res://assets/textures/resources/grass_tuft.png"
 
 const PATH_BLD_CAMPFIRE_STONE: String = "res://assets/textures/buildings/campfire_stone.png"
 const PATH_BLD_LOG_WOOD: String = "res://assets/textures/buildings/log_wood.png"
@@ -43,6 +44,7 @@ const PATH_ITEM_BERRIES: String = "res://assets/textures/items/berries.png"
 const PATH_ITEM_STONE_AXE: String = "res://assets/textures/items/stone_axe.png"
 const PATH_ITEM_STONE_PICKAXE: String = "res://assets/textures/items/stone_pickaxe.png"
 const PATH_ITEM_CAMPFIRE: String = "res://assets/textures/items/campfire.png"
+const PATH_ITEM_SCYTHE: String = "res://assets/textures/items/scythe.png"
 const PATH_ITEM_GENERIC: String = "res://assets/textures/items/generic_item.png"
 
 static var _cache: Dictionary = {}
@@ -121,5 +123,7 @@ static func get_item_texture_path(item_id: StringName) -> String:
 			return PATH_ITEM_STONE_PICKAXE
 		&"campfire":
 			return PATH_ITEM_CAMPFIRE
+		&"scythe":
+			return PATH_ITEM_SCYTHE
 		_:
 			return PATH_ITEM_GENERIC

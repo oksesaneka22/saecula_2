@@ -231,7 +231,7 @@ static func _build_modular_floor_holo(parent: Node3D, mat: Material) -> void:
 static func _build_modular_pillar_holo(parent: Node3D, mat: Material) -> void:
 	var inst := MeshInstance3D.new()
 	var box := BoxMesh.new()
-	box.size = Vector3(0.24, 2.0, 0.24)
+	box.size = Vector3(1.0, 2.0, 1.0)
 	inst.mesh = box
 	inst.material_override = mat
 	inst.position = Vector3(0.0, 1.0, 0.0)

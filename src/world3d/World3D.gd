@@ -23,13 +23,14 @@ const ConstructionSite3DScene = preload("res://src/world3d/ConstructionSite3D.ts
 @export var world_seed: int = 1337
 
 const CHUNK_SIZE: int = 25
-const ACTIVE_CHUNK_RADIUS: int = 3
+const ACTIVE_CHUNK_RADIUS: int = 2
 
 # Генератори шуму для процедурного лісового ландшафту
 var _forest_noise: FastNoiseLite = null
 var _rock_noise: FastNoiseLite = null
 var _bush_noise: FastNoiseLite = null
 var _shore_noise: FastNoiseLite = null
+var _grass_noise: FastNoiseLite = null
 
 # Чанковий менеджмент та персистентність збору ресурсів
 var _loaded_chunks: Dictionary = {}    # Vector2i(chunk_x, chunk_y) -> Node3D
@@ -94,8 +95,13 @@ func _ready() -> void:
 	_spawn_starter_construction_site()
 
 
-func _process(_delta: float) -> void:
-	_update_chunk_streaming()
+var _chunk_check_timer: float = 0.0
+
+func _process(delta: float) -> void:
+	_chunk_check_timer += delta
+	if _chunk_check_timer >= 0.15:
+		_chunk_check_timer = 0.0
+		_update_chunk_streaming()
 
 
 # ------------------------------------------------------------------------------
@@ -187,6 +193,10 @@ func _init_noise_generators() -> void:
 	_shore_noise.seed = world_seed + 303
 	_shore_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	_shore_noise.frequency = 0.08
+
+	_grass_noise = FastNoiseLite.new()
+	_grass_noise.seed = 1405
+	_grass_noise.frequency = 0.075
 
 
 func _setup_water_material() -> void:
@@ -350,26 +360,30 @@ func _load_chunk(ch: Vector2i) -> void:
 
 			# 1. Прибережна смуга (1..3 тайли від води): родовища глини та кремнію
 			if GridManager.is_near_water(cell, 3):
-				if (gx * 53 + gy * 79) % 4 == 0:
+				if (gx * 53 + gy * 79) % 6 == 0:
 					var sn: float = _shore_noise.get_noise_2d(gx, gy)
 					if sn > 0.05:
 						_spawn_chunk_node(chunk_node, cell, WorldResourceNode3D.ResourceType.CLAY, &"clay")
 					elif sn < -0.05:
 						_spawn_chunk_node(chunk_node, cell, WorldResourceNode3D.ResourceType.FLINT, &"flint")
 			else:
-				# 2. Суходіл: Скелі, дерева, кущі ягід
+				# 2. Суходіл: Скелі, дерева, кущі ягід (оптимізована щільність для 60-144+ FPS)
 				var rn: float = _rock_noise.get_noise_2d(gx, gy)
-				if rn > 0.68 and (gx * 37 + gy * 71) % 4 == 0:
+				if rn > 0.70 and (gx * 37 + gy * 71) % 6 == 0:
 					_spawn_chunk_node(chunk_node, cell, WorldResourceNode3D.ResourceType.ROCK, &"stone")
 				else:
 					var fn: float = _forest_noise.get_noise_2d(gx, gy)
 					if fn > 0.08:
 						var cell_hash: int = (gx * 73856093 ^ gy * 19349663) & 0x7fffffff
-						var spawn_prob: float = 0.24 if fn > 0.25 else 0.12
+						var spawn_prob: float = 0.075 if fn > 0.25 else 0.038
 						if float(cell_hash % 1000) / 1000.0 < spawn_prob:
 							_spawn_chunk_node(chunk_node, cell, WorldResourceNode3D.ResourceType.TREE, &"wood")
-					elif _bush_noise.get_noise_2d(gx, gy) > 0.35 and (gx * 31 + gy * 17) % 7 == 0:
+					elif _bush_noise.get_noise_2d(gx, gy) > 0.38 and (gx * 31 + gy * 17) % 9 == 0:
 						_spawn_chunk_node(chunk_node, cell, WorldResourceNode3D.ResourceType.BUSH, &"berries")
+					elif fn <= 0.10:
+						var gn: float = _grass_noise.get_noise_2d(gx, gy)
+						if gn > 0.40 and (gx * 41 + gy * 67) % 2 == 0:
+							_spawn_chunk_node(chunk_node, cell, WorldResourceNode3D.ResourceType.GRASS, &"straw")
 
 	if not water_quads.is_empty():
 		_build_chunk_water_mesh(chunk_node, water_quads)
@@ -395,10 +409,13 @@ func _spawn_chunk_node(
 	var node: WorldResourceNode3D = ResourceNode3DScene.instantiate()
 	node.resource_type = type
 	node.drop_item_id = item_id
+	if type == WorldResourceNode3D.ResourceType.GRASS:
+		node.max_health = 1.0
+		node.drop_min_amount = 1
+		node.drop_max_amount = 3
 	node.position = GridManager.map_to_world_3d(cell, 0.0)
 	node.set_cell(cell)
 	chunk_node.add_child(node)
-	GridManager.register_occupant(cell, node, true)
 
 
 func _build_chunk_water_mesh(chunk_node: Node3D, cells: Array[Vector2i]) -> void:

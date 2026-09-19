@@ -7,6 +7,8 @@ const Player3DScene = preload("res://src/entities3d/player/Player3D.tscn")
 const ConstructionSite3DScript = preload("res://src/world3d/ConstructionSite3D.gd")
 const BuildingEntity3DScript = preload("res://src/world3d/BuildingEntity3D.gd")
 const StockpileBuildingScript = preload("res://src/world/buildings/StockpileBuilding.gd")
+const ModularPiece3DScript = preload("res://src/world3d/modular/ModularPiece3D.gd")
+const ItemSlotUIScript = preload("res://src/ui/hud/ItemSlotUI.gd")
 
 func _ready() -> void:
 	# Підписуємося на сигнали EventBus для валідації шини
@@ -59,6 +61,12 @@ func _ready() -> void:
 
 	# 14. Валідація процедурної генерації світу (1000x1000 тайлів лісу, чанковий стрімінг)
 	_test_procedural_forest_world_generation()
+
+	# 15. Валідація дикої трави, коси та заготівлі сіна
+	_test_grass_and_scythe()
+
+	# 16. Валідація текстур в інвентарі та повного розміру дерев'яної колоди-опори
+	_test_inventory_textures_and_pillar_size()
 
 
 func _test_inventory_component(wood: Resource) -> void:
@@ -712,3 +720,104 @@ func _test_procedural_forest_world_generation() -> void:
 	assert(shore_cells.size() > 100, "Shoreline must provide abundant cells for clay and flint deposits")
 
 	print("[Main] Procedural forest world generation & chunk streaming unit tests passed successfully!")
+
+
+func _test_grass_and_scythe() -> void:
+	print("[Main] Testing wild grass, scythe crafting and harvesting straw...")
+	# 1. Валідація предмета scythe
+	var scythe_item = ItemDatabase.get_item(&"scythe")
+	assert(scythe_item != null, "Item 'scythe' must exist in ItemDatabase")
+	assert(scythe_item.tool_type == 5, "Scythe tool_type must be 5 (ToolType.SCYTHE)")
+
+	# 2. Валідація рецепта craft_scythe
+	var scythe_recipe = CraftingManager.get_recipe(&"craft_scythe")
+	assert(scythe_recipe != null, "Recipe 'craft_scythe' must exist in CraftingManager")
+
+	var test_inv: Node = InventoryComponentScript.new()
+	test_inv.set("slot_count", 5)
+	add_child(test_inv)
+
+	test_inv.add_item_by_id(&"wood", 2)
+	test_inv.add_item_by_id(&"flint", 1)
+	assert(CraftingManager.can_craft(scythe_recipe, test_inv) == true, "Must be able to craft scythe with 2 wood and 1 flint")
+
+	var craft_ok = CraftingManager.craft_item(scythe_recipe, test_inv)
+	assert(craft_ok == true, "Crafting scythe must succeed")
+	assert(test_inv.has_item(&"scythe", 1) == true, "Scythe must be in inventory")
+	assert(test_inv.get_item_count(&"wood") == 0, "Wood must be consumed")
+	assert(test_inv.get_item_count(&"flint") == 0, "Flint must be consumed")
+
+	# 3. Валідація вузла трави: створення та перевірка прохідності
+	var grass_cell = Vector2i(77, 77)
+	var prev_occ = GridManager.get_occupant(grass_cell)
+	if prev_occ is Node:
+		prev_occ.queue_free()
+	GridManager.unregister_occupant(grass_cell, true)
+
+	var grass_node: StaticBody3D = WorldResourceNode3DScene.instantiate()
+	grass_node.position = GridManager.map_to_world_3d(grass_cell, 0.0)
+	grass_node.resource_type = 5 # GRASS
+	grass_node.drop_item_id = &"straw"
+	grass_node.drop_min_amount = 1
+	grass_node.drop_max_amount = 2
+	grass_node.max_health = 1.0
+	grass_node.current_health = 1.0
+	add_child(grass_node)
+
+	# Трава НЕ повинна блокувати клітинку для руху
+	assert(GridManager.is_cell_walkable(grass_cell) == true, "Grass cell must be walkable for player/colonists")
+
+	# 4. Спроба видобутку без коси (руками/сокирою/киркою)
+	grass_node.harvest(1.0, 0) # bare hands
+	assert(grass_node.current_health == 1.0, "Grass must take NO damage from bare hands")
+	grass_node.harvest(1.0, 1) # axe
+	assert(grass_node.current_health == 1.0, "Grass must take NO damage from axe")
+	grass_node.harvest(1.0, 2) # pickaxe
+	assert(grass_node.current_health == 1.0, "Grass must take NO damage from pickaxe")
+
+	# 5. Видобуток косою (tool_type = 5)
+	var straw_dropped: Array[bool] = [false]
+	EventBus.item_dropped.connect(func(item_id, _amt, _pos):
+		if item_id == &"straw":
+			straw_dropped[0] = true
+	, CONNECT_ONE_SHOT)
+
+	grass_node.harvest(1.0, 5) # scythe
+	assert(straw_dropped[0] == true, "Harvesting grass with scythe must drop straw")
+	assert(GridManager.is_cell_walkable(grass_cell) == true, "Cell remains walkable after grass is cut")
+
+	test_inv.queue_free()
+	print("[Main] Wild grass, scythe crafting and harvesting straw unit tests passed successfully!")
+
+
+func _test_inventory_textures_and_pillar_size() -> void:
+	print("[Main] Testing inventory slot textures and modular pillar block size...")
+	# 1. Перевірка розміру дерев'яної колоди (ModularPiece3D)
+	var pillar: StaticBody3D = ModularPiece3DScript.new()
+	add_child(pillar)
+	pillar.setup_piece(&"modular_pillar", Vector2i(88, 88), true, 0.0)
+
+	var col: CollisionShape3D = null
+	for child in pillar.get_children():
+		if child is CollisionShape3D:
+			col = child
+			break
+	assert(col != null, "Pillar collision shape must exist")
+	var col_box = col.shape as BoxShape3D
+	assert(col_box != null, "Pillar shape must be BoxShape3D")
+	assert(col_box.size == Vector3(1.0, 2.0, 1.0), "Pillar must be full 1.0x2.0x1.0 block size to eliminate gaps with walls")
+	pillar.queue_free()
+
+	# 2. Перевірка завантаження реальних текстур у слоти інвентаря
+	var slot_ui = ItemSlotUIScript.new()
+	add_child(slot_ui)
+
+	var items_to_test = [&"wood", &"stone", &"flint", &"clay", &"straw", &"berries", &"scythe", &"stone_axe"]
+	for item_id in items_to_test:
+		var item_res = ItemDatabase.get_item(item_id)
+		assert(item_res != null, "Item '%s' must exist" % item_id)
+		slot_ui.set_slot_data(item_res, 5)
+		assert(slot_ui.item_texture != null, "Slot UI must load valid Texture2D for '%s'" % item_id)
+
+	slot_ui.queue_free()
+	print("[Main] Inventory slot textures and modular pillar block size tests passed successfully!")

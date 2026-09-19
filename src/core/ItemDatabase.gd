@@ -1,5 +1,7 @@
 extends Node
 
+const TextureHelper = preload("res://src/core3d/TextureHelper.gd")
+
 ## ItemDatabase: Глобальний реєстр предметів гри Saecula.
 ## Автоматично сканує та кешує ресурси з папки `data/items/`.
 ## Надає методи швидкого доступу get_item(id), has_item(id) та get_all_items().
@@ -30,11 +32,13 @@ func load_items_from_directory(path: String) -> void:
 			var res: Resource = load(file_path)
 			if res != null and res.is_class("Resource"):
 				var res_id: Variant = res.get("id")
-				if res_id is StringName and res_id != &"":
-					_items[res_id] = res
-					loaded_count += 1
-				elif res_id is String and res_id != "":
-					_items[StringName(res_id)] = res
+				var sid: StringName = StringName(res_id) if res_id != null else &""
+				if sid != &"":
+					if res.get("icon") == null:
+						var tex: Texture2D = TextureHelper.get_texture(TextureHelper.get_item_texture_path(sid))
+						if tex != null:
+							res.set("icon", tex)
+					_items[sid] = res
 					loaded_count += 1
 		file_name = dir.get_next()
 

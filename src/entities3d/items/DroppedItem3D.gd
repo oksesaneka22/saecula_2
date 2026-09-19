@@ -102,6 +102,12 @@ func _setup_visual() -> void:
 			mesh_instance.mesh = cyl
 			fallback_color = Color("E67E22")
 
+		&"scythe":
+			var box: BoxMesh = BoxMesh.new()
+			box.size = Vector3(0.4, 0.45, 0.08)
+			mesh_instance.mesh = box
+			fallback_color = Color("BDC3C7")
+
 		_:
 			var box: BoxMesh = BoxMesh.new()
 			box.size = Vector3(0.25, 0.25, 0.25)

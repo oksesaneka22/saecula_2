@@ -1,17 +1,17 @@
 class_name WorldResourceNode3D
 extends StaticBody3D
 
-## WorldResourceNode3D: 3D природний ресурс на карті (Дерево, Валун, Кущ ягід).
-## Блокує тайл у GridManager у площині X-Z, має запас міцності (health),
-## реагує на удари/видобуток (harvest), має 3D анімацію тремтіння
-## та спавнить DroppedItem3D після знищення.
+## WorldResourceNode3D: Високопродуктивний 3D природний ресурс на карті (Дерево, Валун, Кущ ягід, Глина, Кремінь, Дика трава).
+## Оптимізовано для високого FPS: використовує спільні статичні ArrayMesh з запеченими матеріалами (1 MeshInstance3D на вузол),
+## статичні Shape3D колізії, вимкнені тіні для дрібних приземних об'єктів та кешування геометрії.
 
 enum ResourceType {
 	TREE,       ## Дерево -> спавнить wood
 	ROCK,       ## Кам'яна брила -> спавнить stone
 	BUSH,       ## Кущ диких ягід -> спавнить berries
 	CLAY,       ## Родовище глини -> спавнить clay (біля водойм)
-	FLINT       ## Поклади кремнію -> спавнить flint (біля водойм)
+	FLINT,      ## Поклади кремнію -> спавнить flint (біля водойм)
+	GRASS       ## Дика трава кучками -> спавнить straw (потрібна коса)
 }
 
 const TextureHelper = preload("res://src/core3d/TextureHelper.gd")
@@ -38,6 +38,28 @@ func set_cell(c: Vector2i) -> void:
 
 var visual_root: Node3D = null
 var collision_shape: CollisionShape3D = null
+var _mesh_inst: MeshInstance3D = null
+
+# ------------------------------------------------------------------------------
+# Статичне кешування сіток (ArrayMesh) та колізій (Shape3D)
+# ------------------------------------------------------------------------------
+static var _static_tree_mesh: ArrayMesh = null
+static var _static_tree_shape: CylinderShape3D = null
+
+static var _static_rock_mesh: ArrayMesh = null
+static var _static_rock_shape: BoxShape3D = null
+
+static var _static_bush_mesh: ArrayMesh = null
+static var _static_bush_shape: SphereShape3D = null
+
+static var _static_clay_mesh: ArrayMesh = null
+static var _static_clay_shape: CylinderShape3D = null
+
+static var _static_flint_mesh: ArrayMesh = null
+static var _static_flint_shape: BoxShape3D = null
+
+static var _static_grass_mesh: ArrayMesh = null
+static var _static_grass_shape: BoxShape3D = null
 
 
 func _ready() -> void:
@@ -60,13 +82,18 @@ func _ready() -> void:
 
 	_original_scale = visual_root.scale
 
-	# Прив'язка до центру 3D клітинки сітки (X-Z)
-	_cell = GridManager.world_to_map_3d(global_position)
-	var snapped_pos: Vector3 = GridManager.map_to_world_3d(_cell, 0.0)
-	global_position.x = snapped_pos.x
-	global_position.z = snapped_pos.z
+	if _cell == Vector2i.ZERO and GridManager != null:
+		_cell = GridManager.world_to_map_3d(global_position)
 
-	GridManager.register_occupant(_cell, self, true)
+	if GridManager != null:
+		var snapped_pos: Vector3 = GridManager.map_to_world_3d(_cell, 0.0)
+		global_position.x = snapped_pos.x
+		global_position.z = snapped_pos.z
+
+		if GridManager.get_occupant(_cell) != self:
+			var is_solid: bool = (resource_type != ResourceType.GRASS)
+			GridManager.register_occupant(_cell, self, is_solid)
+
 	_setup_visual()
 
 
@@ -74,251 +101,252 @@ func _setup_visual() -> void:
 	if visual_root == null:
 		return
 
-	for child in visual_root.get_children():
-		child.queue_free()
+	_ensure_static_assets()
+
+	if _mesh_inst == null:
+		if visual_root.has_node("ResourceMesh"):
+			_mesh_inst = visual_root.get_node("ResourceMesh")
+		else:
+			_mesh_inst = MeshInstance3D.new()
+			_mesh_inst.name = "ResourceMesh"
+			visual_root.add_child(_mesh_inst)
 
 	match resource_type:
 		ResourceType.TREE:
-			_build_tree_mesh()
+			_mesh_inst.mesh = _static_tree_mesh
+			_mesh_inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			if collision_shape != null:
+				collision_shape.shape = _static_tree_shape
+				collision_shape.position.y = 1.6
 		ResourceType.ROCK:
-			_build_rock_mesh()
+			_mesh_inst.mesh = _static_rock_mesh
+			_mesh_inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			if collision_shape != null:
+				collision_shape.shape = _static_rock_shape
+				collision_shape.position.y = 0.5
 		ResourceType.BUSH:
-			_build_bush_mesh()
+			_mesh_inst.mesh = _static_bush_mesh
+			_mesh_inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			if collision_shape != null:
+				collision_shape.shape = _static_bush_shape
+				collision_shape.position.y = 0.4
 		ResourceType.CLAY:
-			_build_clay_mesh()
+			_mesh_inst.mesh = _static_clay_mesh
+			_mesh_inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			if collision_shape != null:
+				collision_shape.shape = _static_clay_shape
+				collision_shape.position.y = 0.3
 		ResourceType.FLINT:
-			_build_flint_mesh()
+			_mesh_inst.mesh = _static_flint_mesh
+			_mesh_inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			if collision_shape != null:
+				collision_shape.shape = _static_flint_shape
+				collision_shape.position.y = 0.4
+		ResourceType.GRASS:
+			_mesh_inst.mesh = _static_grass_mesh
+			_mesh_inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			if collision_shape != null:
+				collision_shape.shape = _static_grass_shape
+				collision_shape.position.y = 0.22
 
 
-func _build_tree_mesh() -> void:
-	# 1. Стовбур
-	var trunk: MeshInstance3D = MeshInstance3D.new()
-	var trunk_mesh: CylinderMesh = CylinderMesh.new()
-	trunk_mesh.top_radius = 0.22
-	trunk_mesh.bottom_radius = 0.32
-	trunk_mesh.height = 1.8
-	trunk.mesh = trunk_mesh
-	trunk.position.y = 0.9
+# ------------------------------------------------------------------------------
+# Побудова спільних геометрій один раз (Static Initialization)
+# ------------------------------------------------------------------------------
+static func _ensure_static_assets() -> void:
+	if _static_tree_mesh != null:
+		return
 
-	var trunk_mat: StandardMaterial3D = TextureHelper.create_material(
-		TextureHelper.PATH_RES_WOOD_BARK,
-		Color("5C3A21"),
-		0.9
-	)
-	trunk.material_override = trunk_mat
-	visual_root.add_child(trunk)
+	# 1. Дерево (ArrayMesh: Поверхня 0 = Стовбур, Поверхня 1 = Крона)
+	var trunk = CylinderMesh.new()
+	trunk.top_radius = 0.22
+	trunk.bottom_radius = 0.32
+	trunk.height = 1.8
+	var st_trunk = SurfaceTool.new()
+	st_trunk.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st_trunk.append_from(trunk, 0, Transform3D(Basis(), Vector3(0, 0.9, 0)))
 
-	# 2. Крона (3 конуси різного відтінку для глибини)
-	var foliage_data: Array = [
-		{"y": 2.0, "radius": 1.25, "height": 1.5, "color": Color("1E5936")},
-		{"y": 2.8, "radius": 1.0, "height": 1.3, "color": Color("277748")},
-		{"y": 3.5, "radius": 0.7, "height": 1.1, "color": Color("35975D")}
-	]
+	var fol1 = CylinderMesh.new()
+	fol1.top_radius = 0.02
+	fol1.bottom_radius = 1.25
+	fol1.height = 1.5
+	var fol2 = CylinderMesh.new()
+	fol2.top_radius = 0.02
+	fol2.bottom_radius = 1.0
+	fol2.height = 1.3
+	var fol3 = CylinderMesh.new()
+	fol3.top_radius = 0.02
+	fol3.bottom_radius = 0.7
+	fol3.height = 1.1
 
-	var fol_mat: StandardMaterial3D = TextureHelper.create_material(
-		TextureHelper.PATH_RES_FOLIAGE,
-		Color("277748"),
-		0.8
-	)
+	var st_fol = SurfaceTool.new()
+	st_fol.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st_fol.append_from(fol1, 0, Transform3D(Basis(), Vector3(0, 2.0, 0)))
+	st_fol.append_from(fol2, 0, Transform3D(Basis(), Vector3(0, 2.8, 0)))
+	st_fol.append_from(fol3, 0, Transform3D(Basis(), Vector3(0, 3.5, 0)))
 
-	for layer in foliage_data:
-		var fol: MeshInstance3D = MeshInstance3D.new()
-		var cone: CylinderMesh = CylinderMesh.new()
-		cone.top_radius = 0.02
-		cone.bottom_radius = layer["radius"]
-		cone.height = layer["height"]
-		fol.mesh = cone
-		fol.position.y = layer["y"]
-		fol.material_override = fol_mat
-		visual_root.add_child(fol)
+	_static_tree_mesh = ArrayMesh.new()
+	st_trunk.commit(_static_tree_mesh)
+	st_fol.commit(_static_tree_mesh)
+	var trunk_mat = TextureHelper.create_material(TextureHelper.PATH_RES_WOOD_BARK, Color("5C3A21"), 0.9)
+	var fol_mat = TextureHelper.create_material(TextureHelper.PATH_RES_FOLIAGE, Color("277748"), 0.8)
+	_static_tree_mesh.surface_set_material(0, trunk_mat)
+	_static_tree_mesh.surface_set_material(1, fol_mat)
 
-	if collision_shape != null:
-		var cyl_shape: CylinderShape3D = CylinderShape3D.new()
-		cyl_shape.radius = 0.6
-		cyl_shape.height = 3.2
-		collision_shape.shape = cyl_shape
-		collision_shape.position.y = 1.6
+	_static_tree_shape = CylinderShape3D.new()
+	_static_tree_shape.radius = 0.6
+	_static_tree_shape.height = 3.2
 
-
-func _build_rock_mesh() -> void:
-	var boulder: MeshInstance3D = MeshInstance3D.new()
-	var b_mesh: BoxMesh = BoxMesh.new()
+	# 2. Кам'яна брила (ArrayMesh: Поверхня 0 = Валун, Поверхня 1 = Бічний камінь)
+	var b_mesh = BoxMesh.new()
 	b_mesh.size = Vector3(1.4, 0.9, 1.2)
-	boulder.mesh = b_mesh
-	boulder.position.y = 0.45
-	boulder.rotation_degrees = Vector3(5, 25, -8)
+	var rot1 = Basis.from_euler(Vector3(deg_to_rad(5), deg_to_rad(25), deg_to_rad(-8)))
+	var st_rock = SurfaceTool.new()
+	st_rock.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st_rock.append_from(b_mesh, 0, Transform3D(rot1, Vector3(0, 0.45, 0)))
 
-	var rock_mat: StandardMaterial3D = TextureHelper.create_material(
-		TextureHelper.PATH_RES_ROCK,
-		Color("6C7A89"),
-		0.7
-	)
-	boulder.material_override = rock_mat
-	visual_root.add_child(boulder)
-
-	var side_rock: MeshInstance3D = MeshInstance3D.new()
-	var s_mesh: BoxMesh = BoxMesh.new()
+	var s_mesh = BoxMesh.new()
 	s_mesh.size = Vector3(0.8, 0.6, 0.7)
-	side_rock.mesh = s_mesh
-	side_rock.position = Vector3(0.5, 0.3, 0.3)
-	side_rock.rotation_degrees = Vector3(-12, 45, 10)
+	var rot2 = Basis.from_euler(Vector3(deg_to_rad(-12), deg_to_rad(45), deg_to_rad(10)))
+	var st_side = SurfaceTool.new()
+	st_side.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st_side.append_from(s_mesh, 0, Transform3D(rot2, Vector3(0.5, 0.3, 0.3)))
 
-	var side_mat: StandardMaterial3D = TextureHelper.create_material(
-		TextureHelper.PATH_RES_ROCK_DARK,
-		Color("4D5656"),
-		0.75
-	)
-	side_rock.material_override = side_mat
-	visual_root.add_child(side_rock)
+	_static_rock_mesh = ArrayMesh.new()
+	st_rock.commit(_static_rock_mesh)
+	st_side.commit(_static_rock_mesh)
+	var rock_mat = TextureHelper.create_material(TextureHelper.PATH_RES_ROCK, Color("6C7A89"), 0.7)
+	var side_mat = TextureHelper.create_material(TextureHelper.PATH_RES_ROCK_DARK, Color("4D5656"), 0.75)
+	_static_rock_mesh.surface_set_material(0, rock_mat)
+	_static_rock_mesh.surface_set_material(1, side_mat)
 
-	if collision_shape != null:
-		var box_shape: BoxShape3D = BoxShape3D.new()
-		box_shape.size = Vector3(1.6, 1.0, 1.4)
-		collision_shape.shape = box_shape
-		collision_shape.position.y = 0.5
+	_static_rock_shape = BoxShape3D.new()
+	_static_rock_shape.size = Vector3(1.6, 1.0, 1.4)
 
-
-func _build_bush_mesh() -> void:
-	var bush: MeshInstance3D = MeshInstance3D.new()
-	var sphere: SphereMesh = SphereMesh.new()
+	# 3. Кущ ягід (ArrayMesh: Поверхня 0 = Кущ, Поверхня 1 = Ягоди)
+	var sphere = SphereMesh.new()
 	sphere.radius = 0.65
 	sphere.height = 0.8
-	bush.mesh = sphere
-	bush.position.y = 0.4
+	var st_bush = SurfaceTool.new()
+	st_bush.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st_bush.append_from(sphere, 0, Transform3D(Basis(), Vector3(0, 0.4, 0)))
 
-	var bush_mat: StandardMaterial3D = TextureHelper.create_material(
-		TextureHelper.PATH_RES_BUSH,
-		Color("27AE60"),
-		0.85
-	)
-	bush.material_override = bush_mat
-	visual_root.add_child(bush)
-
-	var berry_offsets: Array[Vector3] = [
+	var b_sphere = SphereMesh.new()
+	b_sphere.radius = 0.09
+	b_sphere.height = 0.18
+	var st_berries = SurfaceTool.new()
+	st_berries.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var b_offsets = [
 		Vector3(0.3, 0.65, 0.2),
 		Vector3(-0.35, 0.55, 0.25),
 		Vector3(0.1, 0.7, -0.3),
 		Vector3(-0.25, 0.6, -0.2),
-		Vector3(0.4, 0.45, -0.15)
+		Vector3(0.35, 0.5, -0.15)
 	]
+	for bo in b_offsets:
+		st_berries.append_from(b_sphere, 0, Transform3D(Basis(), bo))
 
-	var berry_mat: StandardMaterial3D = TextureHelper.create_material(
-		TextureHelper.PATH_RES_BERRIES,
-		Color("E74C3C"),
-		0.3
-	)
+	_static_bush_mesh = ArrayMesh.new()
+	st_bush.commit(_static_bush_mesh)
+	st_berries.commit(_static_bush_mesh)
+	var bush_mat = TextureHelper.create_material(TextureHelper.PATH_RES_BUSH, Color("27AE60"), 0.85)
+	var berry_mat = TextureHelper.create_material(TextureHelper.PATH_RES_BUSH, Color("C0392B"), 0.3)
+	_static_bush_mesh.surface_set_material(0, bush_mat)
+	_static_bush_mesh.surface_set_material(1, berry_mat)
 
-	for offset in berry_offsets:
-		var berry: MeshInstance3D = MeshInstance3D.new()
-		var b_mesh: SphereMesh = SphereMesh.new()
-		b_mesh.radius = 0.07
-		b_mesh.height = 0.14
-		berry.mesh = b_mesh
-		berry.position = offset
-		berry.material_override = berry_mat
-		visual_root.add_child(berry)
+	_static_bush_shape = SphereShape3D.new()
+	_static_bush_shape.radius = 0.7
 
-	if collision_shape != null:
-		var cyl_shape: CylinderShape3D = CylinderShape3D.new()
-		cyl_shape.radius = 0.65
-		cyl_shape.height = 0.9
-		collision_shape.shape = cyl_shape
-		collision_shape.position.y = 0.45
+	# 4. Глина (ArrayMesh: Шаруватий насип теракотової вологої глини)
+	var clay_mat = TextureHelper.create_material(TextureHelper.PATH_RES_CLAY, Color("B85333"), 0.88)
+	var st_clay = SurfaceTool.new()
+	st_clay.begin(Mesh.PRIMITIVE_TRIANGLES)
 
+	var base_cyl = CylinderMesh.new()
+	base_cyl.top_radius = 0.8
+	base_cyl.bottom_radius = 0.95
+	base_cyl.height = 0.25
+	st_clay.append_from(base_cyl, 0, Transform3D(Basis(), Vector3(0, 0.12, 0)))
 
-
-
-func _build_clay_mesh() -> void:
-	var clay_mat: StandardMaterial3D = TextureHelper.create_material(
-		TextureHelper.PATH_RES_CLAY,
-		Color("B35427"),
-		0.85
-	)
-
-	# Основа насипу глини
-	var base_mound := MeshInstance3D.new()
-	var cyl := CylinderMesh.new()
-	cyl.top_radius = 0.55
-	cyl.bottom_radius = 0.7
-	cyl.height = 0.25
-	base_mound.mesh = cyl
-	base_mound.position.y = 0.125
-	base_mound.material_override = clay_mat
-	visual_root.add_child(base_mound)
-
-	# Верхній пласт глини
-	var top_mound := MeshInstance3D.new()
-	var sph := SphereMesh.new()
+	var sph = SphereMesh.new()
 	sph.radius = 0.45
 	sph.height = 0.35
-	top_mound.mesh = sph
-	top_mound.position = Vector3(0.05, 0.25, -0.05)
-	top_mound.material_override = clay_mat
-	visual_root.add_child(top_mound)
+	st_clay.append_from(sph, 0, Transform3D(Basis(), Vector3(0.05, 0.25, -0.05)))
 
-	# Додатковий грудочок глини поруч
-	var lump := MeshInstance3D.new()
-	var lump_sph := SphereMesh.new()
-	lump_sph.radius = 0.22
-	lump_sph.height = 0.2
-	lump.mesh = lump_sph
-	lump.position = Vector3(-0.35, 0.1, 0.3)
-	lump.material_override = clay_mat
-	visual_root.add_child(lump)
+	var lump = SphereMesh.new()
+	lump.radius = 0.22
+	lump.height = 0.2
+	st_clay.append_from(lump, 0, Transform3D(Basis(), Vector3(-0.35, 0.1, 0.3)))
 
-	if collision_shape != null:
-		var cyl_shape: CylinderShape3D = CylinderShape3D.new()
-		cyl_shape.radius = 0.7
-		cyl_shape.height = 0.6
-		collision_shape.shape = cyl_shape
-		collision_shape.position.y = 0.3
+	_static_clay_mesh = ArrayMesh.new()
+	st_clay.commit(_static_clay_mesh)
+	_static_clay_mesh.surface_set_material(0, clay_mat)
 
+	_static_clay_shape = CylinderShape3D.new()
+	_static_clay_shape.radius = 0.7
+	_static_clay_shape.height = 0.6
 
-func _build_flint_mesh() -> void:
-	var flint_mat: StandardMaterial3D = TextureHelper.create_material(
-		TextureHelper.PATH_RES_FLINT,
-		Color("2F3640"),
-		0.35
-	)
+	# 5. Кремінь (ArrayMesh: Гострі кристалічні призми)
+	var flint_mat = TextureHelper.create_material(TextureHelper.PATH_RES_FLINT, Color("2F3640"), 0.35)
+	var st_flint = SurfaceTool.new()
+	st_flint.begin(Mesh.PRIMITIVE_TRIANGLES)
 
-	# Центральний кристал / гострий камінь кремнію
-	var main_prism := MeshInstance3D.new()
-	var prism_mesh := PrismMesh.new()
-	prism_mesh.size = Vector3(0.7, 0.8, 0.6)
-	main_prism.mesh = prism_mesh
-	main_prism.position.y = 0.4
-	main_prism.rotation_degrees = Vector3(15, 30, -10)
-	main_prism.material_override = flint_mat
-	visual_root.add_child(main_prism)
+	var p1 = PrismMesh.new()
+	p1.size = Vector3(0.7, 0.8, 0.6)
+	var r1 = Basis.from_euler(Vector3(deg_to_rad(15), deg_to_rad(30), deg_to_rad(-10)))
+	st_flint.append_from(p1, 0, Transform3D(r1, Vector3(0, 0.4, 0)))
 
-	# Бічний відкол кремнію
-	var side_prism := MeshInstance3D.new()
-	var side_mesh := PrismMesh.new()
-	side_mesh.size = Vector3(0.45, 0.55, 0.4)
-	side_prism.mesh = side_mesh
-	side_prism.position = Vector3(0.35, 0.25, 0.2)
-	side_prism.rotation_degrees = Vector3(-20, 60, 25)
-	side_prism.material_override = flint_mat
-	visual_root.add_child(side_prism)
+	var p2 = PrismMesh.new()
+	p2.size = Vector3(0.45, 0.55, 0.4)
+	var r2 = Basis.from_euler(Vector3(deg_to_rad(-20), deg_to_rad(60), deg_to_rad(25)))
+	st_flint.append_from(p2, 0, Transform3D(r2, Vector3(0.35, 0.25, 0.2)))
 
-	# Менший осколок
-	var small_prism := MeshInstance3D.new()
-	var small_mesh := BoxMesh.new()
-	small_mesh.size = Vector3(0.35, 0.25, 0.35)
-	small_prism.mesh = small_mesh
-	small_prism.position = Vector3(-0.3, 0.15, -0.2)
-	small_prism.rotation_degrees = Vector3(35, -45, 10)
-	small_prism.material_override = flint_mat
-	visual_root.add_child(small_prism)
+	var p3 = BoxMesh.new()
+	p3.size = Vector3(0.35, 0.25, 0.35)
+	var r3 = Basis.from_euler(Vector3(deg_to_rad(35), deg_to_rad(-45), deg_to_rad(10)))
+	st_flint.append_from(p3, 0, Transform3D(r3, Vector3(-0.3, 0.15, -0.2)))
 
-	if collision_shape != null:
-		var box_shape: BoxShape3D = BoxShape3D.new()
-		box_shape.size = Vector3(1.1, 0.8, 1.1)
-		collision_shape.shape = box_shape
-		collision_shape.position.y = 0.4
+	_static_flint_mesh = ArrayMesh.new()
+	st_flint.commit(_static_flint_mesh)
+	_static_flint_mesh.surface_set_material(0, flint_mat)
+
+	_static_flint_shape = BoxShape3D.new()
+	_static_flint_shape.size = Vector3(1.1, 0.8, 1.1)
+
+	# 6. Дика трава (ArrayMesh: перехресні стебла трави для заготівлі сіна)
+	var grass_mat = TextureHelper.create_material(TextureHelper.PATH_RES_GRASS, Color("4CAF50"), 0.8)
+	var st_grass = SurfaceTool.new()
+	st_grass.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var blade_angles = [0.0, 45.0, 90.0, 135.0]
+	for deg in blade_angles:
+		var bm = BoxMesh.new()
+		bm.size = Vector3(0.55, 0.42, 0.03)
+		var brot = Basis.from_euler(Vector3(0, deg_to_rad(deg), 0))
+		st_grass.append_from(bm, 0, Transform3D(brot, Vector3(0, 0.21, 0)))
+
+	_static_grass_mesh = ArrayMesh.new()
+	st_grass.commit(_static_grass_mesh)
+	_static_grass_mesh.surface_set_material(0, grass_mat)
+
+	_static_grass_shape = BoxShape3D.new()
+	_static_grass_shape.size = Vector3(0.7, 0.45, 0.7)
 
 
+# ------------------------------------------------------------------------------
+# Видобуток (Harvest) та анімація удару
+# ------------------------------------------------------------------------------
 func harvest(damage: float = 1.0, tool_type: int = 0) -> void:
+	if resource_type == ResourceType.GRASS:
+		# Траву можна косити ТІЛЬКИ косою (ToolType.SCYTHE = 5)
+		if tool_type != 5:
+			_play_hit_effect()
+			return
+		current_health -= damage * 2.0
+		_play_hit_effect()
+		if current_health <= 0.0:
+			_destroy_and_drop()
+		return
+
 	var effective_damage: float = damage
 	if resource_type == ResourceType.TREE and tool_type == 1: # AXE
 		effective_damage *= 2.0

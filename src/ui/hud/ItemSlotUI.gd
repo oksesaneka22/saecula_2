@@ -1,10 +1,12 @@
 extends Control
 
 ## ItemSlotUI: Окремий слот інвентаря / хотбара для відображення предмета.
-## Відображає фон слота, рамку вибору (для хотбара), іконку/колір ресурсу,
+## Відображає фон слота, рамку вибору (для хотбара), реальну текстуру предмета,
 ## лічильник кількості в стаку та гарячу клавішу (1-8).
 
 signal slot_clicked(slot_index: int)
+
+const TextureHelper = preload("res://src/core3d/TextureHelper.gd")
 
 @export var slot_size: Vector2 = Vector2(52.0, 52.0)
 
@@ -26,6 +28,7 @@ var item_count: int = 0:
 		queue_redraw()
 
 var display_name: String = ""
+var item_texture: Texture2D = null
 
 
 func _ready() -> void:
@@ -42,11 +45,18 @@ func set_slot_data(p_item_res: Resource, p_count: int) -> void:
 		display_name = str(raw_name) if raw_name != null else str(item_id)
 		item_count = p_count
 		tooltip_text = "%s (%d)" % [display_name, item_count]
+
+		var raw_icon = p_item_res.get("icon")
+		if raw_icon is Texture2D:
+			item_texture = raw_icon
+		else:
+			item_texture = TextureHelper.get_texture(TextureHelper.get_item_texture_path(item_id))
 	else:
 		item_id = &""
 		item_count = 0
 		display_name = ""
 		tooltip_text = ""
+		item_texture = null
 	queue_redraw()
 
 
@@ -70,19 +80,31 @@ func _draw() -> void:
 	else:
 		draw_rect(r, border_color, false, 1.2)
 
-	# 3. Іконка / колірний плейсхолдер предмета
+	# 3. Текстура / Іконка предмета
 	if item_count > 0 and item_id != &"":
 		var center: Vector2 = r.get_center()
-		var item_color: Color = Color("d4a373") # Wood
-		if item_id == &"stone":
-			item_color = Color("8d99ae")
-		elif item_id == &"flint":
-			item_color = Color("2b2d42")
-		elif item_id == &"berries":
-			item_color = Color("d90429")
+		if item_texture == null:
+			item_texture = TextureHelper.get_texture(TextureHelper.get_item_texture_path(item_id))
 
-		draw_circle(center, 14.0, item_color)
-		draw_circle(center, 10.0, item_color.lightened(0.2))
+		if item_texture != null:
+			var icon_size: Vector2 = Vector2(34.0, 34.0)
+			var icon_rect: Rect2 = Rect2(center - icon_size * 0.5, icon_size)
+			draw_texture_rect(item_texture, icon_rect, false)
+		else:
+			var item_color: Color = Color("d4a373") # Wood
+			if item_id == &"stone":
+				item_color = Color("8d99ae")
+			elif item_id == &"flint":
+				item_color = Color("2b2d42")
+			elif item_id == &"berries":
+				item_color = Color("d90429")
+			elif item_id == &"clay":
+				item_color = Color("b85333")
+			elif item_id == &"straw":
+				item_color = Color("e0c068")
+
+			draw_circle(center, 14.0, item_color)
+			draw_circle(center, 10.0, item_color.lightened(0.2))
 
 		# 4. Лічильник кількості в правому нижньому кутку
 		var count_str: String = str(item_count)

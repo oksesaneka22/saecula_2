@@ -1,5 +1,7 @@
 extends Control
 
+const TextureHelper = preload("res://src/core3d/TextureHelper.gd")
+
 ## CraftingUI: Вікно крафту предметів та інструментів.
 ## Відкривається та закривається клавішею 'C'.
 ## Відображає доступні рецепти, перевіряє матеріали в реальному часі (зелена/сіра кнопка),
@@ -150,6 +152,24 @@ func _create_recipe_row(recipe: Resource) -> Control:
 	var hbox = HBoxContainer.new()
 	hbox.add_theme_constant_override("separation", 12)
 	panel.add_child(hbox)
+
+	# Іконка результату крафту
+	var result_item: Resource = recipe.get("result_item")
+	var res_tex: Texture2D = null
+	if result_item != null:
+		var raw_icon = result_item.get("icon")
+		if raw_icon is Texture2D:
+			res_tex = raw_icon
+		else:
+			res_tex = TextureHelper.get_texture(TextureHelper.get_item_texture_path(result_item.get("id")))
+
+	if res_tex != null:
+		var tr := TextureRect.new()
+		tr.custom_minimum_size = Vector2(36, 36)
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tr.texture = res_tex
+		hbox.add_child(tr)
 
 	# Інформація про предмет та інгредієнти
 	var info_vbox = VBoxContainer.new()
