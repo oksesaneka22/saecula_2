@@ -4,6 +4,7 @@ class_name BuildingEntity3D
 ## BuildingEntity3D: Фізична завершена споруда у 3D світі гри.
 ## Замінює ConstructionSite3D після завершення робіт, реєструє свої тайли в GridManager,
 ## містить опціональний InventoryComponent для складів/скринь, візуальну процедурну модель та 3D Billboard текст.
+## Автоматично реєструється в логістичній системі LogisticsManager, якщо має слоти сховища.
 
 const TextureHelper = preload("res://src/core3d/TextureHelper.gd")
 const InventoryComponentScript = preload("res://src/systems/inventory/InventoryComponent.gd")
@@ -22,6 +23,11 @@ var _fire_light: OmniLight3D = null
 func _ready() -> void:
 	add_to_group("buildings")
 	add_to_group("interactable")
+
+
+func _exit_tree() -> void:
+	if LogisticsManager != null and inventory != null:
+		LogisticsManager.unregister_stockpile(self)
 
 
 ## Налаштовує щойно зведену будівлю за схемою та початковою клітинкою
@@ -61,6 +67,9 @@ func _setup_inventory(slots: int) -> void:
 		inventory.set("slot_count", slots)
 		add_child(inventory)
 		inventory.inventory_updated.connect(_on_inventory_updated)
+
+	if LogisticsManager != null:
+		LogisticsManager.register_stockpile(self)
 
 
 func _setup_collision() -> void:
@@ -172,7 +181,7 @@ func _build_campfire_visual(size_m: Vector2) -> void:
 	flame_inst.position = Vector3(0, flame_h * 0.5, 0)
 	_visual_root.add_child(flame_inst)
 
-	# 4. Тепле світло вогню (shadow_enabled вимкнено для уникнення важкої компіляції шейдерів тіней на ходу)
+	# 4. Тепле світло вогню
 	_fire_light = OmniLight3D.new()
 	_fire_light.light_color = Color(1.0, 0.65, 0.25)
 	_fire_light.light_energy = 2.5
@@ -350,7 +359,13 @@ func _update_label() -> void:
 	]
 
 	if inventory != null:
-		text += "\n📦 Сховище: %d/%d слотів" % [inventory.get_all_items().size(), inventory.slot_count]
+		var used_slots: int = 0
+		var total_count: int = 0
+		for slot in inventory.get_all_items():
+			if slot != null and slot.item != null and slot.count > 0:
+				used_slots += 1
+				total_count += slot.count
+		text += "\n📦 Склад: %d/%d слотів (%d предм.)" % [used_slots, inventory.slot_count, total_count]
 
 	if not building_data.job_type_provided.is_empty():
 		text += "\n🛠 Робоче місце: %s" % [String(building_data.job_type_provided).capitalize()]
@@ -362,8 +377,49 @@ func _on_inventory_updated() -> void:
 	_update_label()
 
 
+## Повертає кількість конкретного предмета на цьому складі
+func get_available_item_count(item_id: StringName) -> int:
+	if inventory != null and inventory.has_method("get_item_count"):
+		return inventory.get_item_count(item_id)
+	return 0
+
+
+## Вилучає count предметів зі складу
+func withdraw_item(item_id: StringName, count: int) -> int:
+	if inventory == null or count <= 0:
+		return 0
+	var available: int = inventory.get_item_count(item_id)
+	var to_withdraw: int = mini(available, count)
+	if to_withdraw > 0:
+		inventory.remove_item(item_id, to_withdraw, true)
+	return to_withdraw
+
+
+## Вносить count предметів на склад
+func deposit_item(item_id: StringName, count: int) -> int:
+	if inventory == null or count <= 0:
+		return count
+	var item_res: Resource = ItemDatabase.get_item(item_id) if ItemDatabase != null else null
+	if item_res == null:
+		return count
+	return inventory.add_item(item_res, count)
+
+
+## Взаємодія для перегляду та перекладання ресурсів
+func interact_storage(player: Node = null) -> void:
+	if inventory != null:
+		EventBus.storage_ui_requested.emit(self)
+
+
+func interact(player: Node = null) -> void:
+	if inventory != null:
+		interact_storage(player)
+
+
 ## Демонтує будівлю, звільняє клітинки сітки та надсилає сигнал
 func demolish() -> void:
+	if LogisticsManager != null and inventory != null:
+		LogisticsManager.unregister_stockpile(self)
 	for c in occupied_cells:
 		GridManager.unregister_occupant(c, true)
 

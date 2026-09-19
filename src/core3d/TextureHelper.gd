@@ -27,6 +27,9 @@ const PATH_BLD_SITE_GROUND: String = "res://assets/textures/buildings/site_groun
 const PATH_BLD_ROPE: String = "res://assets/textures/buildings/rope.png"
 const PATH_BLD_GENERIC: String = "res://assets/textures/buildings/generic_building.png"
 
+const PATH_BLOCK_WOOD: String = "res://assets/textures/blocks/wood_block.png"
+const PATH_BLOCK_STONE: String = "res://assets/textures/blocks/stone_block.png"
+
 const PATH_ITEM_WOOD: String = "res://assets/textures/items/wood.png"
 const PATH_ITEM_STONE: String = "res://assets/textures/items/stone.png"
 const PATH_ITEM_FLINT: String = "res://assets/textures/items/flint.png"
@@ -46,11 +49,14 @@ static func get_texture(path: String) -> Texture2D:
 	if _cache.has(path):
 		return _cache[path] as Texture2D
 
-	if ResourceLoader.exists(path):
-		var tex: Variant = load(path)
-		if tex is Texture2D:
+	if FileAccess.file_exists(path):
+		var global_p: String = ProjectSettings.globalize_path(path)
+		var img := Image.new()
+		var err := img.load(global_p)
+		if err == OK:
+			var tex := ImageTexture.create_from_image(img)
 			_cache[path] = tex
-			return tex as Texture2D
+			return tex
 
 	return null
 

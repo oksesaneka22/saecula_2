@@ -3,16 +3,22 @@ extends Control
 ## HotbarUI: Панель швидкого доступу на 8 слотів.
 ## Розташовується по центру внизу екрана (Anchor Preset Bottom Center).
 ## Дозволяє обирати активний слот цифрами 1-8 або кліком,
-## синхронізується з першими 8 слотами інвентаря гравця.
+## синхронізується з першими 8 слотами інвентаря гравця та Player3D.
 
 const ItemSlotUIScript = preload("res://src/ui/hud/ItemSlotUI.gd")
 
 const SLOT_COUNT: int = 8
 
+var _is_updating_externally: bool = false
+
 @export var selected_slot_index: int = 0:
 	set(val):
-		selected_slot_index = clampi(val, 0, SLOT_COUNT - 1)
-		_update_selection()
+		var clamped: int = clampi(val, 0, SLOT_COUNT - 1)
+		if selected_slot_index != clamped or _slot_nodes.is_empty():
+			selected_slot_index = clamped
+			_update_selection()
+			if not _is_updating_externally and EventBus != null:
+				EventBus.hotbar_slot_selected.emit(selected_slot_index)
 
 var _slot_nodes: Array[Control] = []
 var _inventory: Node = null
@@ -26,6 +32,16 @@ func _ready() -> void:
 
 	_setup_ui()
 	_connect_player_inventory()
+
+	if EventBus != null:
+		EventBus.hotbar_slot_selected.connect(_on_external_slot_selected)
+
+
+func _on_external_slot_selected(idx: int) -> void:
+	if selected_slot_index != idx:
+		_is_updating_externally = true
+		selected_slot_index = idx
+		_is_updating_externally = false
 
 
 func _setup_ui() -> void:
@@ -75,7 +91,12 @@ func _refresh_hotbar() -> void:
 
 	for i in range(SLOT_COUNT):
 		if i < _slot_nodes.size():
-			var slot_data = _inventory.get_slot(i)
+			var slot_data = null
+			if _inventory.has_method("get_slot"):
+				slot_data = _inventory.get_slot(i)
+			elif "slots" in _inventory and i < _inventory.slots.size():
+				slot_data = _inventory.slots[i]
+
 			if slot_data != null and not slot_data.is_empty():
 				_slot_nodes[i].set_slot_data(slot_data.item, slot_data.count)
 			else:

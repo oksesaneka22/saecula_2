@@ -165,12 +165,16 @@ func _handle_mouse_click() -> void:
 
 	if hit_collider != null:
 		object_clicked.emit(hit_collider)
-		# Якщо клікнули по ресурсу в RTS режимі — завдаємо удару
+		# Взаємодія залежно від типу об'єкта
 		if hit_collider.has_method("harvest"):
 			hit_collider.harvest(1.0, 0)
 		elif hit_collider.has_method("interact_construct"):
 			var player_node = get_tree().get_first_node_in_group("player")
 			var player_inv = player_node.inventory if player_node != null and "inventory" in player_node else null
 			hit_collider.interact_construct(player_inv)
+		elif hit_collider.has_method("interact_storage"):
+			hit_collider.interact_storage()
+		elif hit_collider.has_method("interact"):
+			hit_collider.interact()
 
 	cell_clicked.emit(hit_cell, hit_pos)

@@ -98,6 +98,8 @@ func start_placement(building: BuildingData) -> void:
 	_is_valid = false
 	_current_cell = Vector2i(-9999, -9999)
 
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
 	if GameManager != null:
 		_prev_game_state = GameManager.current_state
 		GameManager.change_state(GameManager.GameState.BUILDING_MODE)
@@ -182,7 +184,7 @@ func update_hover(origin_cell: Vector2i) -> void:
 
 
 ## Підтверджує розміщення споруди у поточній позиції
-func confirm_placement() -> bool:
+func confirm_placement(keep_placing: bool = false) -> bool:
 	if not _is_placing or _active_building == null:
 		return false
 
@@ -195,7 +197,13 @@ func confirm_placement() -> bool:
 	placement_confirmed.emit(placed_building, placed_cell)
 	EventBus.construction_site_placed.emit(null, placed_building.id, placed_cell)
 
-	cancel_placement()
+	var should_continue: bool = keep_placing or Input.is_key_pressed(KEY_SHIFT)
+	if should_continue:
+		_is_valid = can_place_at(_active_building, _current_cell)
+		placement_hover_updated.emit(_current_cell, _is_valid)
+	else:
+		cancel_placement()
+
 	return true
 
 

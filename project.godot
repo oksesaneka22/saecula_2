@@ -21,6 +21,8 @@ GridManager="*res://src/world/GridManager.gd"
 ItemDatabase="*res://src/core/ItemDatabase.gd"
 CraftingManager="*res://src/systems/crafting/CraftingManager.gd"
 BuildingPlacementController="*res://src/systems/building/BuildingPlacementController.gd"
+LogisticsManager="*res://src/systems/logistics/LogisticsManager.gd"
+BlockManager="*res://src/systems/blocks/BlockManager.gd"
 
 [display]
 

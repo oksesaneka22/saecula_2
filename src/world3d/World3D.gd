@@ -38,6 +38,12 @@ func _ready() -> void:
 	add_child(buildings_container)
 
 	_setup_ground()
+
+	var blocks_node := Node3D.new()
+	blocks_node.name = "Blocks"
+	add_child(blocks_node)
+	BlockManager.blocks_container = blocks_node
+
 	_setup_player_and_camera()
 	_generate_resources()
 
@@ -183,6 +189,8 @@ func _apply_mode(state: GameManager.GameState) -> void:
 			if player != null:
 				player.set_active(false)
 			if rts_camera != null:
+				if player != null and state == GameManager.GameState.BUILDING_MODE:
+					rts_camera.focus_on_position(player.global_position)
 				rts_camera.set_active(true)
 		GameManager.GameState.PAUSED:
 			if player != null:

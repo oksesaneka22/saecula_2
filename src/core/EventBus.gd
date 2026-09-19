@@ -70,6 +70,12 @@ signal building_completed(building_node: Node, building_id: StringName, map_coor
 ## Споруду знищено або демонтовано
 signal building_demolished(building_id: StringName, map_coords: Vector2i)
 
+## Встановлення воксельного блоку (дерево/камінь) гравцем у світі
+signal block_placed(block_type: StringName, grid_coord: Vector3i)
+
+## Знищення / добуток воксельного блоку
+signal block_destroyed(block_type: StringName, grid_coord: Vector3i)
+
 
 # ------------------------------------------------------------------------------
 # 5. Події системи завдань колонії (Job System a-la Minecolonies)
@@ -124,3 +130,22 @@ signal notification_posted(title: String, message: String, notification_type: in
 
 ## Зміна вибору активного слота на хотбарі
 signal hotbar_slot_selected(slot_index: int)
+
+
+# ------------------------------------------------------------------------------
+# 9. Події логістики та складів (Logistics & Storage)
+# ------------------------------------------------------------------------------
+## Новий склад або контейнер зареєстровано в логістичній системі
+signal stockpile_registered(stockpile_node: Node)
+
+## Склад видалено або знято з обліку
+signal stockpile_unregistered(stockpile_node: Node)
+
+## Оновлено сумарну кількість предметів на складах колонії
+signal colony_storage_updated(item_id: StringName, total_count: int)
+
+## Запит на відкриття інтерфейсу сховища (Stockpile / Container)
+signal storage_ui_requested(storage_node: Node)
+
+## Інтерфейс сховища закрито
+signal storage_ui_closed

@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3 uid="uid://saecula_hud"]
+[gd_scene load_steps=10 format=3 uid="uid://saecula_hud"]
 
 [ext_resource type="Script" path="res://src/ui/hud/HotbarUI.gd" id="1_hotbar"]
 [ext_resource type="Script" path="res://src/ui/hud/InventoryUI.gd" id="2_inv"]
@@ -6,6 +6,8 @@
 [ext_resource type="Script" path="res://src/ui/hud/CrosshairUI.gd" id="4_cross"]
 [ext_resource type="Script" path="res://src/ui/hud/ModeIndicatorUI.gd" id="5_mode"]
 [ext_resource type="PackedScene" path="res://src/ui/hud/BuildMenuUI.tscn" id="6_build"]
+[ext_resource type="PackedScene" uid="uid://saecula_storage_ui" path="res://src/ui/storage/StorageUI.tscn" id="7_storage"]
+[ext_resource type="Script" path="res://src/ui/hud/HUDActionBar.gd" id="8_actionbar"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_banner"]
 bg_color = Color(0.08, 0.1, 0.12, 0.75)
@@ -73,6 +75,49 @@ grow_horizontal = 2
 grow_vertical = 0
 script = ExtResource("1_hotbar")
 
+[node name="HUDActionBar" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -400.0
+offset_top = -68.0
+offset_right = -16.0
+offset_bottom = -16.0
+grow_horizontal = 0
+grow_vertical = 0
+script = ExtResource("8_actionbar")
+
+[node name="HBoxContainer" type="HBoxContainer" parent="HUDActionBar"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 8
+alignment = 2
+
+[node name="BuildButton" type="Button" parent="HUDActionBar/HBoxContainer"]
+custom_minimum_size = Vector2(136, 42)
+layout_mode = 2
+tooltip_text = "Відкрити меню споруд та креслень (B)"
+text = "🔨 Будівництво [B]"
+
+[node name="CraftButton" type="Button" parent="HUDActionBar/HBoxContainer"]
+custom_minimum_size = Vector2(106, 42)
+layout_mode = 2
+tooltip_text = "Відкрити крафтинг (C)"
+text = "🛠️ Крафт [C]"
+
+[node name="InventoryButton" type="Button" parent="HUDActionBar/HBoxContainer"]
+custom_minimum_size = Vector2(110, 42)
+layout_mode = 2
+tooltip_text = "Відкрити інвентар (I)"
+text = "🎒 Інвентар [I]"
+
 [node name="InventoryUI" type="Control" parent="."]
 visible = false
 layout_mode = 3
@@ -94,3 +139,5 @@ grow_vertical = 2
 script = ExtResource("3_craft")
 
 [node name="BuildMenuUI" parent="." instance=ExtResource("6_build")]
+
+[node name="StorageUI" parent="." instance=ExtResource("7_storage")]

@@ -16,6 +16,7 @@ signal construction_canceled
 const TextureHelper = preload("res://src/core3d/TextureHelper.gd")
 const DroppedItem3DScene = preload("res://src/entities3d/items/DroppedItem3D.tscn")
 const BuildingEntity3DScript = preload("res://src/world3d/BuildingEntity3D.gd")
+const BlueprintVisualHelperScript = preload("res://src/world3d/BlueprintVisualHelper.gd")
 
 @export var building_data: BuildingData = null
 @export var origin_cell: Vector2i = Vector2i.ZERO
@@ -32,7 +33,16 @@ var _visual_root: Node3D = null
 var _label_3d: Label3D = null
 var _progress_bar_mesh: MeshInstance3D = null
 var _wobble_tween: Tween = null
+var _blueprint_hologram: Node3D = null
+var _holo_material: StandardMaterial3D = null
+var _holo_time: float = 0.0
 
+
+
+func _process(delta: float) -> void:
+	if _holo_material != null:
+		_holo_time += delta
+		_holo_material.emission_energy_multiplier = 0.55 + 0.25 * sin(_holo_time * 3.0)
 
 func _ready() -> void:
 	add_to_group("construction_sites")
@@ -171,9 +181,28 @@ func _setup_visual() -> void:
 	rope_right.position = Vector3(hx, 1.2, 0)
 	_visual_root.add_child(rope_right)
 
-	# 4. 3D Billboard текст
+	# 4. Голографічний блупрінт споруди (Factorio Blueprint Hologram)
+	_setup_blueprint_hologram(size_m)
+
+	# 5. 3D Billboard текст
 	_setup_label(size_m)
 
+
+
+func _setup_blueprint_hologram(size_m: Vector2) -> void:
+	if building_data == null:
+		return
+	_holo_material = BlueprintVisualHelperScript.create_hologram_material(
+		Color(0.18, 0.68, 1.0, 0.42),
+		Color(0.12, 0.52, 0.98),
+		0.7
+	)
+	_blueprint_hologram = BlueprintVisualHelperScript.build_blueprint_hologram(
+		building_data.id,
+		size_m,
+		_holo_material
+	)
+	_visual_root.add_child(_blueprint_hologram)
 
 func _setup_label(size_m: Vector2) -> void:
 	if _label_3d == null:
@@ -194,7 +223,7 @@ func _update_display() -> void:
 	if _label_3d == null or building_data == null:
 		return
 
-	var text: String = "🏗 %s [%dx%d]\n" % [
+	var text: String = "📐 КРЕСЛЕННЯ: %s [%dx%d]\n" % [
 		building_data.display_name,
 		building_data.size_in_tiles.x,
 		building_data.size_in_tiles.y

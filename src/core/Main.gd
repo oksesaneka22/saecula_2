@@ -6,6 +6,7 @@ const WorldResourceNode3DScene = preload("res://src/world3d/WorldResourceNode3D.
 const Player3DScene = preload("res://src/entities3d/player/Player3D.tscn")
 const ConstructionSite3DScript = preload("res://src/world3d/ConstructionSite3D.gd")
 const BuildingEntity3DScript = preload("res://src/world3d/BuildingEntity3D.gd")
+const StockpileBuildingScript = preload("res://src/world/buildings/StockpileBuilding.gd")
 
 func _ready() -> void:
 	# Підписуємося на сигнали EventBus для валідації шини
@@ -41,6 +42,15 @@ func _ready() -> void:
 	# 8. Валідація ConstructionSite3D та повного циклу будівництва (Ітерація 6.2)
 	_test_construction_site()
 
+	# 9. Валідація LogisticsManager та складів (Ітерація 7.1)
+	_test_logistics_and_stockpile()
+
+	# 10. Валідація меню створення будівель та блупрінтів Factorio (Ітерація 7.2)
+	_test_blueprint_and_build_menu()
+
+	# 11. Валідація воксельних блоків у стилі Minecraft (дерево/камінь)
+	_test_block_placement()
+
 
 func _test_inventory_component(wood: Resource) -> void:
 	var test_inv: Node = InventoryComponentScript.new()
@@ -66,6 +76,10 @@ func _test_inventory_component(wood: Resource) -> void:
 
 func _test_harvest_and_drop() -> void:
 	var test_cell = Vector2i(75, 75)
+	var existing_occ = GridManager.get_occupant(test_cell)
+	if existing_occ is Node:
+		existing_occ.queue_free()
+	GridManager.unregister_occupant(test_cell, true)
 	assert(GridManager.is_cell_walkable(test_cell) == true, "Cell must be initially walkable")
 
 	var node: StaticBody3D = WorldResourceNode3DScene.instantiate()
@@ -150,19 +164,19 @@ func _test_building_placement_controller() -> void:
 
 	var stockpile = BuildingPlacementController.get_building(&"stockpile")
 	assert(stockpile != null, "Stockpile building must exist")
-	assert(stockpile.size_in_tiles == Vector2i(6, 6), "Stockpile size must be 6x6")
+	assert(stockpile.size_in_tiles == Vector2i(4, 4), "Stockpile size must be 4x4")
 
 	var wooden_hut = BuildingPlacementController.get_building(&"wooden_hut")
 	assert(wooden_hut != null, "Wooden hut building must exist")
-	assert(wooden_hut.size_in_tiles == Vector2i(8, 8), "Wooden hut size must be 8x8")
+	assert(wooden_hut.size_in_tiles == Vector2i(6, 6), "Wooden hut size must be 6x6")
 
 	# Перевірка get_occupied_cells
 	var occupied = BuildingPlacementController.get_occupied_cells(Vector2i(10, 10), Vector2i(2, 2))
 	assert(occupied.size() == 4, "2x2 building must occupy 4 cells")
 	assert(occupied.has(Vector2i(10, 10)) and occupied.has(Vector2i(11, 11)), "Must cover all rectangle tiles")
 
-	var hut_occupied = BuildingPlacementController.get_occupied_cells(Vector2i(20, 20), Vector2i(8, 8))
-	assert(hut_occupied.size() == 64, "8x8 building must occupy 64 cells")
+	var hut_occupied = BuildingPlacementController.get_occupied_cells(Vector2i(20, 20), Vector2i(6, 6))
+	assert(hut_occupied.size() == 36, "6x6 building must occupy 36 cells")
 
 	# Перевірка can_place_at: виділена тестова зона (34..44) з тимчасовим збереженням клітинок
 	var test_origin = Vector2i(34, 34)
@@ -279,6 +293,65 @@ func _test_construction_site() -> void:
 	print("[Main] ConstructionSite3D & BuildingEntity3D unit tests passed successfully!")
 
 
+func _test_logistics_and_stockpile() -> void:
+	assert(LogisticsManager != null, "LogisticsManager autoload must be available")
+	var initial_stockpiles: int = LogisticsManager.get_stockpiles_count()
+
+	# 1. Створення та тестування 2D складу (StockpileBuilding)
+	var sp_2d = StockpileBuildingScript.new()
+	sp_2d.name = "TestStockpile2D"
+	sp_2d.map_position = Vector2i(70, 70)
+	add_child(sp_2d)
+
+	assert(LogisticsManager.get_all_stockpiles().has(sp_2d), "2D Stockpile must be registered in LogisticsManager")
+	assert(LogisticsManager.get_stockpiles_count() == initial_stockpiles + 1, "Stockpile count must increment")
+
+	# Тест внесення предметів через 2D склад
+	var unadded: int = sp_2d.deposit_item(&"wood", 10)
+	assert(unadded == 0, "All 10 wood must fit into stockpile")
+	assert(sp_2d.get_available_item_count(&"wood") == 10, "Stockpile must have 10 wood")
+	assert(LogisticsManager.get_available_item_count(&"wood") >= 10, "LogisticsManager must report wood in colony storage")
+
+	# Тест часткового вилучення через 2D склад
+	var taken_2d: int = sp_2d.withdraw_item(&"wood", 4)
+	assert(taken_2d == 4, "Must withdraw 4 wood")
+	assert(sp_2d.get_available_item_count(&"wood") == 6, "Stockpile must retain 6 wood")
+
+	# 2. Створення та тестування 3D складу (BuildingEntity3D)
+	var stockpile_data = BuildingPlacementController.get_building(&"stockpile")
+	assert(stockpile_data != null, "Stockpile building data must exist")
+
+	var sp_3d: StaticBody3D = BuildingEntity3DScript.new()
+	sp_3d.name = "TestStockpile3D"
+	add_child(sp_3d)
+	sp_3d.setup_building(stockpile_data, Vector2i(55, 55))
+
+	assert(LogisticsManager.get_all_stockpiles().has(sp_3d), "3D Stockpile must be registered in LogisticsManager")
+	assert(LogisticsManager.get_stockpiles_count() == initial_stockpiles + 2, "Stockpiles count must be +2")
+
+	# 3. Тест глобальних операцій LogisticsManager (deposit / withdraw)
+	var rem: int = LogisticsManager.deposit_item(&"stone", 25)
+	assert(rem == 0, "25 stone must fit into available stockpiles")
+	assert(LogisticsManager.get_available_item_count(&"stone") == 25, "Colony stone count must be 25")
+
+	var found_sp = LogisticsManager.find_stockpile_with_item(&"stone", 10)
+	assert(found_sp != null, "Must find stockpile holding stone")
+
+	var withdrawn_stone: int = LogisticsManager.withdraw_item(&"stone", 15)
+	assert(withdrawn_stone == 15, "Must withdraw 15 stone through LogisticsManager")
+	assert(LogisticsManager.get_available_item_count(&"stone") == 10, "Remaining colony stone must be 10")
+
+	# 4. Демонтаж та автоматичне зняття з обліку
+	sp_3d.demolish()
+	sp_2d.queue_free()
+
+	LogisticsManager.unregister_stockpile(sp_2d)
+
+	assert(LogisticsManager.get_stockpiles_count() == initial_stockpiles, "Stockpiles count must return to initial state")
+
+	print("[Main] LogisticsManager & Stockpile unit tests passed successfully!")
+
+
 func _on_game_state_changed(new_state: int, old_state: int) -> void:
 	print("[Main] Стан гри змінився: %s -> %s" % [old_state, new_state])
 
@@ -287,3 +360,94 @@ func _on_day_time_updated(hour: int, minute: int) -> void:
 	# Тільки для логування важливих переходів
 	if hour % 6 == 0 and minute == 0:
 		print("[Main] День %d, час: %02d:%02d" % [GameManager.current_day, hour, minute])
+
+func _test_blueprint_and_build_menu() -> void:
+	const BlueprintHelper = preload("res://src/world3d/BlueprintVisualHelper.gd")
+	const BuildMenuUIScene = preload("res://src/ui/hud/BuildMenuUI.tscn")
+
+	# 1. Валідація генерації голограм блупрінтів
+	var holo_mat = BlueprintHelper.create_hologram_material()
+	assert(holo_mat != null and holo_mat.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA, "Holo material must have alpha transparency")
+
+	var campfire_holo = BlueprintHelper.build_blueprint_hologram(&"campfire", Vector2(4, 4), holo_mat)
+	assert(campfire_holo != null and campfire_holo.get_child_count() > 0, "Campfire holo must have children")
+	campfire_holo.queue_free()
+
+	var stockpile_holo = BlueprintHelper.build_blueprint_hologram(&"stockpile", Vector2(8, 8), holo_mat)
+	assert(stockpile_holo != null and stockpile_holo.get_child_count() > 0, "Stockpile holo must have children")
+	stockpile_holo.queue_free()
+
+	var hut_holo = BlueprintHelper.build_blueprint_hologram(&"wooden_hut", Vector2(12, 12), holo_mat)
+	assert(hut_holo != null and hut_holo.get_child_count() > 0, "Hut holo must have children")
+	hut_holo.queue_free()
+
+	# 2. Валідація ConstructionSite3D голограми
+	var campfire = BuildingPlacementController.get_building(&"campfire")
+	var site = ConstructionSite3DScript.new()
+	add_child(site)
+	site.setup_site(campfire, Vector2i(42, 42))
+	assert(site._blueprint_hologram != null, "ConstructionSite3D must instantiate blueprint hologram")
+	site.cancel_construction()
+
+	# 3. Валідація BuildMenuUI
+	var build_menu = BuildMenuUIScene.instantiate()
+	add_child(build_menu)
+	build_menu.open()
+	assert(build_menu.visible == true, "BuildMenuUI must be visible after open()")
+	build_menu.close()
+	assert(build_menu.visible == false, "BuildMenuUI must be hidden after close()")
+	build_menu.queue_free()
+
+	print("[Main] Blueprint & BuildMenuUI unit tests passed successfully!")
+
+
+func _test_block_placement() -> void:
+	# 1. Перевірка типу предметів
+	assert(BlockManager.is_placeable_block(&"wood") == true, "Wood must be placeable as block")
+	assert(BlockManager.is_placeable_block(&"stone") == true, "Stone must be placeable as block")
+	assert(BlockManager.is_placeable_block(&"berries") == false, "Berries cannot be placed as block")
+
+	# 2. Перевірка конвертації координат
+	var coord: Vector3i = BlockManager.world_to_block_coord(Vector3(12.3, 0.5, 15.9))
+	assert(coord == Vector3i(12, 0, 15), "Voxel coord must snap to floor integer")
+	var world_pos: Vector3 = BlockManager.block_coord_to_world(coord)
+	assert(is_equal_approx(world_pos.x, 12.5) and is_equal_approx(world_pos.y, 0.5) and is_equal_approx(world_pos.z, 15.5), "World pos must be voxel center")
+
+	# 3. Розміщення дерев'яного блоку (Wood Block)
+	var test_coord: Vector3i = Vector3i(25, 0, 25)
+	assert(BlockManager.can_place_block_at(test_coord) == true, "Cell must be available for placement")
+	var wood_block: Node = BlockManager.place_block(&"wood", test_coord, self)
+	assert(wood_block != null, "Wood block must be placed successfully")
+	assert(BlockManager.has_block(test_coord) == true, "BlockManager must register block")
+	assert(BlockManager.get_block(test_coord) == wood_block, "Get block must return placed instance")
+	assert(BlockManager.can_place_block_at(test_coord) == false, "Cannot place on top of existing block at same coord")
+
+	# 4. Вертикальне штабелювання (Minecraft-style stack на Y=1)
+	var top_coord: Vector3i = test_coord + Vector3i(0, 1, 0)
+	assert(BlockManager.can_place_block_at(top_coord) == true, "Upper cell must be available")
+	var stone_block: Node = BlockManager.place_block(&"stone", top_coord, self)
+	assert(stone_block != null, "Stone block must be placed above wood block")
+	assert(BlockManager.has_block(top_coord) == true, "Stone block must be registered")
+	assert(BlockManager.get_block_count() == 2, "Total blocks count must be 2")
+
+	# 5. Перевірка видобутку та руйнування блоку (Mining)
+	wood_block.harvest(1.0, 1)
+	assert(BlockManager.has_block(test_coord) == false, "Wood block must be destroyed after harvest")
+
+	# 6. Очищення тестових блоків
+	BlockManager.clear_all_blocks()
+	assert(BlockManager.get_block_count() == 0, "All blocks must be cleared")
+
+	# 7. Перевірка реакції Player3D на вибір слота хотбару
+	var test_player = Player3DScene.instantiate()
+	add_child(test_player)
+	assert(test_player._get_active_item_id() == &"stone_axe", "Initial active item must be stone_axe")
+	EventBus.hotbar_slot_selected.emit(2)
+	assert(test_player.active_hotbar_slot == 2, "Player active slot must update to 2 via EventBus")
+	assert(test_player._get_active_item_id() == &"wood", "Active item must be wood")
+	EventBus.hotbar_slot_selected.emit(3)
+	assert(test_player.active_hotbar_slot == 3, "Player active slot must update to 3 via EventBus")
+	assert(test_player._get_active_item_id() == &"stone", "Active item must be stone")
+	test_player.queue_free()
+
+	print("[Main] Minecraft-style Block Placement unit tests passed successfully!")

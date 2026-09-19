@@ -1,5 +1,7 @@
 extends Node3D
 
+const BlueprintVisualHelperScript = preload("res://src/world3d/BlueprintVisualHelper.gd")
+
 ## BuildingGhost3D: 3D візуалізація креслення-привида (Blueprint Preview) перед розміщенням.
 ## Слідує за координатами сітки під мишкою, масштабується під розмір будівлі
 ## та змінює колір на зелений (вільно) або червоний (зайнято/непрохідно).
@@ -9,6 +11,7 @@ extends Node3D
 
 var _material: StandardMaterial3D = null
 var _current_building: BuildingData = null
+var _holo_instance: Node3D = null
 
 
 func _ready() -> void:
@@ -35,6 +38,9 @@ func _on_placement_started(building: BuildingData) -> void:
 func _on_placement_canceled() -> void:
 	_current_building = null
 	visible = false
+	if _holo_instance != null:
+		_holo_instance.queue_free()
+		_holo_instance = null
 
 
 func _on_placement_hover_updated(cell: Vector2i, is_valid: bool) -> void:
@@ -61,14 +67,23 @@ func _update_ghost_mesh_size() -> void:
 	var size_x: float = float(maxi(_current_building.size_in_tiles.x, 1)) * GridManager.TILE_SIZE_3D
 	var size_y: float = float(maxi(_current_building.size_in_tiles.y, 1)) * GridManager.TILE_SIZE_3D
 
-	var box_height: float = 1.2
+	# 1. Плоска рамка відбитку на землі
+	var box_height: float = 0.12
 	var box: BoxMesh = BoxMesh.new()
 	box.size = Vector3(size_x - 0.1, box_height, size_y - 0.1)
 	footprint_mesh.mesh = box
 	footprint_mesh.position = Vector3(0, box_height * 0.5, 0)
 
+	# 2. Голографічний каркас будівлі
+	if _holo_instance != null:
+		_holo_instance.queue_free()
+		_holo_instance = null
+	_holo_instance = BlueprintVisualHelperScript.build_blueprint_hologram(_current_building.id, Vector2(size_x, size_y), _material)
+	add_child(_holo_instance)
+
 	if info_label != null:
-		info_label.position = Vector3(0, box_height + 1.2, 0)
+		var label_h: float = maxf(2.6, (size_y * 0.35) + 1.2)
+		info_label.position = Vector3(0, label_h, 0)
 		info_label.font_size = 28
 		info_label.outline_size = 8
 
