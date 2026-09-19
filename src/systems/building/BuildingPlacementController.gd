@@ -167,6 +167,10 @@ func can_place_at(building: BuildingData, origin_cell: Vector2i) -> bool:
 		if GridManager.get_occupant(cell) != null:
 			return false
 
+	# 4. Воксельні блоки (WorldBlock3D) заважають зведенню споруди
+	if BlockManager != null and BlockManager.has_blocks_in_area(origin_cell, building.size_in_tiles):
+		return false
+
 	return true
 
 

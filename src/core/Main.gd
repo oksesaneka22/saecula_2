@@ -160,23 +160,23 @@ func _test_building_placement_controller() -> void:
 
 	var campfire = BuildingPlacementController.get_building(&"campfire")
 	assert(campfire != null, "Campfire building must exist")
-	assert(campfire.size_in_tiles == Vector2i(2, 2), "Campfire size must be 2x2")
+	assert(campfire.size_in_tiles == Vector2i(4, 4), "Campfire size must be 4x4")
 
 	var stockpile = BuildingPlacementController.get_building(&"stockpile")
 	assert(stockpile != null, "Stockpile building must exist")
-	assert(stockpile.size_in_tiles == Vector2i(4, 4), "Stockpile size must be 4x4")
+	assert(stockpile.size_in_tiles == Vector2i(6, 6), "Stockpile size must be 6x6")
 
 	var wooden_hut = BuildingPlacementController.get_building(&"wooden_hut")
 	assert(wooden_hut != null, "Wooden hut building must exist")
-	assert(wooden_hut.size_in_tiles == Vector2i(6, 6), "Wooden hut size must be 6x6")
+	assert(wooden_hut.size_in_tiles == Vector2i(10, 10), "Wooden hut size must be 10x10")
 
 	# Перевірка get_occupied_cells
-	var occupied = BuildingPlacementController.get_occupied_cells(Vector2i(10, 10), Vector2i(2, 2))
-	assert(occupied.size() == 4, "2x2 building must occupy 4 cells")
-	assert(occupied.has(Vector2i(10, 10)) and occupied.has(Vector2i(11, 11)), "Must cover all rectangle tiles")
+	var occupied = BuildingPlacementController.get_occupied_cells(Vector2i(10, 10), Vector2i(4, 4))
+	assert(occupied.size() == 16, "4x4 building must occupy 16 cells")
+	assert(occupied.has(Vector2i(10, 10)) and occupied.has(Vector2i(13, 13)), "Must cover all rectangle tiles")
 
-	var hut_occupied = BuildingPlacementController.get_occupied_cells(Vector2i(20, 20), Vector2i(6, 6))
-	assert(hut_occupied.size() == 36, "6x6 building must occupy 36 cells")
+	var hut_occupied = BuildingPlacementController.get_occupied_cells(Vector2i(20, 20), Vector2i(10, 10))
+	assert(hut_occupied.size() == 100, "10x10 building must occupy 100 cells")
 
 	# Перевірка can_place_at: виділена тестова зона (34..44) з тимчасовим збереженням клітинок
 	var test_origin = Vector2i(34, 34)
@@ -206,8 +206,8 @@ func _test_building_placement_controller() -> void:
 	assert(BuildingPlacementController.can_place_at(campfire, Vector2i(79, 79)) == false, "Out of bounds must be invalid")
 
 	# Перевірка розрахунку 3D центру будівлі
-	var center: Vector3 = BuildingPlacementController.get_building_world_center(Vector2i(0, 0), Vector2i(2, 2))
-	assert(is_equal_approx(center.x, 2.0) and is_equal_approx(center.z, 2.0), "2x2 origin 0,0 center must be (2.0, 0, 2.0)")
+	var center: Vector3 = BuildingPlacementController.get_building_world_center(Vector2i(0, 0), Vector2i(4, 4))
+	assert(is_equal_approx(center.x, 2.0) and is_equal_approx(center.z, 2.0), "4x4 origin 0,0 center must be (2.0, 0, 2.0)")
 
 	# Перевірка перемикання станів FSM
 	BuildingPlacementController.start_placement(campfire)
@@ -237,7 +237,7 @@ func _test_construction_site() -> void:
 	site.setup_site(campfire, test_origin)
 
 	# 2. Перевіряємо блокування сітки (2x2 = 4 клітинки)
-	assert(site.occupied_cells.size() == 4, "Campfire site must occupy 4 cells")
+	assert(site.occupied_cells.size() == 16, "Campfire site must occupy 16 cells")
 	for c in site.occupied_cells:
 		assert(GridManager.is_cell_solid(c) == true, "Site cells must be solid")
 		assert(GridManager.get_occupant(c) == site, "Site cells must have site as occupant")
@@ -373,11 +373,11 @@ func _test_blueprint_and_build_menu() -> void:
 	assert(campfire_holo != null and campfire_holo.get_child_count() > 0, "Campfire holo must have children")
 	campfire_holo.queue_free()
 
-	var stockpile_holo = BlueprintHelper.build_blueprint_hologram(&"stockpile", Vector2(8, 8), holo_mat)
+	var stockpile_holo = BlueprintHelper.build_blueprint_hologram(&"stockpile", Vector2(6, 6), holo_mat)
 	assert(stockpile_holo != null and stockpile_holo.get_child_count() > 0, "Stockpile holo must have children")
 	stockpile_holo.queue_free()
 
-	var hut_holo = BlueprintHelper.build_blueprint_hologram(&"wooden_hut", Vector2(12, 12), holo_mat)
+	var hut_holo = BlueprintHelper.build_blueprint_hologram(&"wooden_hut", Vector2(10, 10), holo_mat)
 	assert(hut_holo != null and hut_holo.get_child_count() > 0, "Hut holo must have children")
 	hut_holo.queue_free()
 
@@ -449,5 +449,15 @@ func _test_block_placement() -> void:
 	assert(test_player.active_hotbar_slot == 3, "Player active slot must update to 3 via EventBus")
 	assert(test_player._get_active_item_id() == &"stone", "Active item must be stone")
 	test_player.queue_free()
+
+	# 8. Перевірка, що воксельні блоки заважають зведенню споруд
+	var campfire_bld = BuildingPlacementController.get_building(&"campfire")
+	var test_b_coord := Vector3i(28, 0, 28)
+	var test_b_block = BlockManager.place_block(&"wood", test_b_coord, self)
+	assert(test_b_block != null, "Block placed")
+	assert(BlockManager.has_blocks_in_area(Vector2i(28, 28), campfire_bld.size_in_tiles) == true, "Area has blocks")
+	assert(BuildingPlacementController.can_place_at(campfire_bld, Vector2i(28, 28)) == false, "Building placement must fail when block is present")
+	BlockManager.remove_block(test_b_coord)
+	assert(BlockManager.has_blocks_in_area(Vector2i(28, 28), campfire_bld.size_in_tiles) == false, "Area has no blocks after removal")
 
 	print("[Main] Minecraft-style Block Placement unit tests passed successfully!")

@@ -220,7 +220,9 @@ func _create_building_card(bld: BuildingData) -> Control:
 	title_hbox.add_child(title_lbl)
 
 	var size_badge = Label.new()
-	size_badge.text = "[%dx%d тайлів / %dx%dм]" % [bld.size_in_tiles.x, bld.size_in_tiles.y, bld.size_in_tiles.x * 2, bld.size_in_tiles.y * 2]
+	var m_x: int = int(round(float(bld.size_in_tiles.x) * GridManager.TILE_SIZE_3D))
+	var m_y: int = int(round(float(bld.size_in_tiles.y) * GridManager.TILE_SIZE_3D))
+	size_badge.text = "[%dx%d тайлів / %dx%dм]" % [bld.size_in_tiles.x, bld.size_in_tiles.y, m_x, m_y]
 	size_badge.add_theme_font_size_override("font_size", 12)
 	size_badge.modulate = Color("2A9D8F")
 	title_hbox.add_child(size_badge)

@@ -10,7 +10,7 @@ extends StaticBody2D
 const InventoryComponentScript = preload("res://src/systems/inventory/InventoryComponent.gd")
 
 @export var building_id: StringName = &"stockpile"
-@export var size_in_tiles: Vector2i = Vector2i(4, 4)
+@export var size_in_tiles: Vector2i = Vector2i(6, 6)
 @export var slot_count: int = 32
 
 var map_position: Vector2i = Vector2i.ZERO

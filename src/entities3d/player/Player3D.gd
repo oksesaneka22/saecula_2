@@ -9,7 +9,7 @@ signal player_interacted(target: Node)
 
 @export var walk_speed: float = 5.0
 @export var sprint_speed: float = 7.5
-@export var jump_velocity: float = 4.8
+@export var jump_velocity: float = 7.0
 @export var mouse_sensitivity: float = 0.0025
 @export var reach_distance: float = 4.5
 

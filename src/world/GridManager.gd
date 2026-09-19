@@ -16,7 +16,7 @@ signal grid_initialized(width: int, height: int)
 # Константи та параметри
 # ------------------------------------------------------------------------------
 const TILE_SIZE: int = 32
-const TILE_SIZE_3D: float = 2.0 ## Розмір клітинки в метрах у 3D просторі (X-Z площина)
+const TILE_SIZE_3D: float = 1.0 ## Розмір клітинки в метрах у 3D просторі (1 клітинка = 1x1м, ідентично воксельним блокам)
 
 @export var grid_width: int = 128
 @export var grid_height: int = 128

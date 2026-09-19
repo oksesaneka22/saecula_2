@@ -1,22 +1,19 @@
-# Skill: Data-Driven Resource Schemas (Items, Recipes, Buildings, Eras)
+# Skill: Data-Driven Resource Schemas in 3D (Items, Recipes, Buildings, Blocks)
 
 ## 1. Опис та Призначення (Overview)
-Цей скіл встановлює правила проектування даних за принципом **Data-Driven Design** у Godot 4 за допомогою кастомних `Resource` (`.tres`).
+Цей скіл встановлює правила проектування даних за принципом **Data-Driven Design** у Godot 4 за допомогою кастомних `Resource` (`.tres`) для 3D гри **Saecula**.
 
 ### Чому це критично важливо:
-* Повна ізоляція даних від логіки.
-* Щоб додати новий предмет (наприклад, "Мідний злиток"), новий рецепт або нову будівлю, **не потрібно змінювати код гри** — достатньо створити файл `.tres`.
-* Мінімізує помилки при роботі зі штучним інтелектом (Gemini 3.8 Flash може безпечно генерувати контент, не ризикуючи зламати скрипти рушія).
+* Повна ізоляція даних від логіки рендерингу та 3D фізики.
+* Додавання нових 3D будівель, рецептів чи воксельних блоків виконується виключно створенням `.tres` файлів без зміни рушійного коду.
 
 ---
 
 ## 2. Схеми ресурсів
 
-Всі схеми розміщуються у директорії: `res://src/data/schemas/`.
+Усі схеми розміщуються у директорії: `res://src/data/schemas/`.
 
 ### 2.1. Допоміжна структура витрат (`ItemCost.gd`)
-Використовується скрізь, де потрібна пара "Предмет + Кількість" (рецепти, вартість будівель, перехід між епохами).
-
 ```gdscript
 # res://src/data/schemas/ItemCost.gd
 class_name ItemCost
@@ -29,27 +26,13 @@ extends Resource
 ---
 
 ### 2.2. Схема предмета (`ItemData.gd`)
-
 ```gdscript
 # res://src/data/schemas/ItemData.gd
 class_name ItemData
 extends Resource
 
-enum Category {
-	RESOURCE,    ## Сировина (дерево, камінь, руда)
-	MATERIAL,    ## Оброблений матеріал (дошки, злитки, цегла)
-	TOOL,        ## Інструменти (сокира, кирка, молоток)
-	FOOD,        ## Їжа (ягоди, хліб, м'ясо)
-	WEAPON       ## Зброя (спис, меч, лук)
-}
-
-enum ToolType {
-	NONE,
-	AXE,
-	PICKAXE,
-	HAMMER,
-	SWORD
-}
+enum Category { RESOURCE, MATERIAL, TOOL, FOOD, WEAPON }
+enum ToolType { NONE, AXE, PICKAXE, HAMMER, SWORD }
 
 @export_group("Identity")
 @export var id: StringName = &""
@@ -61,38 +44,18 @@ enum ToolType {
 @export var category: Category = Category.RESOURCE
 @export var max_stack: int = 64
 @export var tool_type: ToolType = ToolType.NONE
-## Рівень інструменту (0 = руки, 1 = камінь, 2 = бронза, 3 = залізо)
 @export var tier: int = 0
 @export var tool_efficiency: float = 1.0
 ```
 
 ---
 
-### 2.3. Схема рецепта крафту (`RecipeData.gd`)
-
-```gdscript
-# res://src/data/schemas/RecipeData.gd
-class_name RecipeData
-extends Resource
-
-@export var id: StringName = &""
-@export var result_item: ItemData
-@export var result_count: int = 1
-@export var craft_time: float = 1.0
-
-## Епоха, в якій стає доступним рецепт
-@export var required_era_id: StringName = &"stone_age"
-
-## Робоче місце (наприклад, "hands", "crafting_bench", "bloomery", "forge")
-@export var crafting_station: StringName = &"hands"
-
-## Масив інгредієнтів
-@export var ingredients: Array[ItemCost] = []
-```
-
----
-
-### 2.4. Схема будівлі / Креслення (`BuildingData.gd`)
+### 2.3. Схема споруди у 3D світі (`BuildingData.gd`)
+У 3D світі гри розмір споруди задається у тайлах `size_in_tiles: Vector2i`.
+Оскільки розмір тайла у 3D просторі становить **`TILE_SIZE_3D = 1.0` метра**, розмір у тайлах точно відповідає фізичному розміру споруди в метрах:
+* **Вогнище (Campfire):** `4x4` тайли = `4.0 x 4.0` метра
+* **Склад (Stockpile):** `6x6` тайлів = `6.0 x 6.0` метра
+* **Дерев'яна хатина (Wooden Hut):** `10x10` тайлів = `10.0 x 10.0` метра
 
 ```gdscript
 # res://src/data/schemas/BuildingData.gd
@@ -107,86 +70,23 @@ extends Resource
 @export var preview_texture: Texture2D
 
 @export_group("Grid & Footprint")
-## Розмір споруди в тайлах (наприклад, 1x1 для скрині, 3x3 для будинку)
+## Розмір споруди в тайлах (1 тайл = 1.0м в 3D просторі)
 @export var size_in_tiles: Vector2i = Vector2i(1, 1)
-## Чи блокує будівля прохід для агентів
+## Чи блокує споруда прохід для агентів
 @export var is_solid: bool = true
 
 @export_group("Construction")
 @export var required_era_id: StringName = &"stone_age"
-## Час роботи колоніста-будівельника над спорудою
 @export var build_time: float = 5.0
-## Необхідні ресурси для побудови
 @export var construction_cost: Array[ItemCost] = []
 
 @export_group("Functionality")
-## Тип професії або робочого місця, яке дає будівля
 @export var job_type_provided: StringName = &""
-## Місткість зберігання (якщо це склад або скриня)
 @export var storage_slots: int = 0
 ```
 
 ---
 
-### 2.5. Схема епохи (`EraData.gd`)
-
-```gdscript
-# res://src/data/schemas/EraData.gd
-class_name EraData
-extends Resource
-
-@export var id: StringName = &"stone_age"
-@export var display_name: String = "Кам'яний вік"
-@export var order_index: int = 0
-@export_multiline var description: String = ""
-
-## Що необхідно принести до Ратуші/Столу досліджень для переходу в цю епоху
-@export var unlock_cost: Array[ItemCost] = []
-
-## Списки розблокованого контенту
-@export var unlocked_recipes: Array[RecipeData] = []
-@export var unlocked_buildings: Array[BuildingData] = []
-```
-
----
-
-## 3. Реєстр та Завантажувач (`ItemDatabase.gd`)
-
-Для швидкого доступу до предметів за `id` використовується глобальний реєстр:
-
-```gdscript
-# res://src/core/ItemDatabase.gd
-class_name ItemDatabase
-extends Node
-
-static var items: Dictionary = {} # StringName -> ItemData
-static var recipes: Dictionary = {} # StringName -> RecipeData
-static var buildings: Dictionary = {} # StringName -> BuildingData
-
-static func get_item(item_id: StringName) -> ItemData:
-	return items.get(item_id, null)
-
-static func get_building(building_id: StringName) -> BuildingData:
-	return buildings.get(building_id, null)
-
-## Завантаження всіх .tres з папки
-static func load_all_resources(path: String, target_dict: Dictionary) -> void:
-	var dir = DirAccess.open(path)
-	if dir:
-		dir.list_dir_begin()
-		var file_name = dir.get_next()
-		while file_name != "":
-			if not dir.current_is_dir() and (file_name.ends_with(".tres") or file_name.ends_with(".res")):
-				var res = load(path.path_join(file_name))
-				if "id" in res and res.id != &"":
-					target_dict[res.id] = res
-			file_name = dir.get_next()
-```
-
----
-
-## 4. Інструкції для Gemini 3.8 Flash при роботі з даними
-
-1. **Ніколи не хардкодити властивості предметів у коді дій:** Не пиши `if item_name == "axe": damage = 5`. Використовуй `item.tool_type == ItemData.ToolType.AXE` та `item.tool_efficiency`.
-2. **Тип `StringName` для ідентифікаторів:** Використовуй `&"stone"` замість `"stone"`. Це оптимізує пам'ять та порівняння ключів у Godot.
-3. **Експорт типів:** Завжди використовуй `@export var ...` для можливості редагування ресурсів через Інспектор Godot.
+### 2.4. Воксельні блоки (Minecraft-Style Voxel Blocks)
+* Предмети категорій `wood` та `stone` підтримують розміщення як кубічні блоки `1.0 x 1.0 x 1.0м` (`WorldBlock3D`).
+* Блоки автоматично взаємодіють з 3D сіткою `GridManager` та блокують розміщення споруд (`BuildingPlacementController`).
