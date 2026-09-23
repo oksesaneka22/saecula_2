@@ -104,11 +104,34 @@ func _refresh_hotbar() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	var wheel_delta: int = 0
+	if event is InputEventMouseButton and event.is_pressed():
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			wheel_delta = -1
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			wheel_delta = 1
+
+	if event.is_action_pressed("zoom_in"):
+		wheel_delta = -1
+	elif event.is_action_pressed("zoom_out"):
+		wheel_delta = 1
+
+	if wheel_delta != 0:
+		selected_slot_index = (selected_slot_index + wheel_delta + SLOT_COUNT) % SLOT_COUNT
+		get_viewport().set_input_as_handled()
+		return
+
 	# Обробка цифр 1-8 для швидкого вибору слота
 	for i in range(SLOT_COUNT):
 		var action_name: String = "hotbar_%d" % (i + 1)
 		if event.is_action_pressed(action_name):
 			selected_slot_index = i
+			get_viewport().set_input_as_handled()
+			return
+
+	if event is InputEventKey and event.is_pressed() and not event.is_echo():
+		if event.keycode >= KEY_1 and event.keycode <= KEY_8:
+			selected_slot_index = event.keycode - KEY_1
 			get_viewport().set_input_as_handled()
 			return
 

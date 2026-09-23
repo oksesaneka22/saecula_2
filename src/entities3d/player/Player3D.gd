@@ -13,7 +13,7 @@ signal energy_changed(current: float, max_val: float)
 @export var sprint_speed: float = 7.5
 @export var jump_velocity: float = 7.0
 @export var mouse_sensitivity: float = 0.0025
-@export var reach_distance: float = 4.5
+@export var reach_distance: float = 6.0
 
 ## Параметри системи енергії
 @export var max_energy: float = 1000.0
@@ -26,6 +26,8 @@ signal energy_changed(current: float, max_val: float)
 
 var gravity: float = 18.0
 var is_active: bool = true
+var is_sleeping: bool = false
+var _sleep_tween: Tween = null
 var active_hotbar_slot: int = 0
 var _swing_tween: Tween = null
 
@@ -90,23 +92,34 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not is_active:
 		return
 
-	# Огляд мишею від першої особи
+	# Під час сну блокуються будь-які дії та рухи
+	if is_sleeping:
+		return
+
+	# Керування камерою мишею від 1-ї особи
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		rotate_y(-event.relative.x * mouse_sensitivity)
-		head.rotate_x(-event.relative.y * mouse_sensitivity)
-		head.rotation.x = clampf(head.rotation.x, -deg_to_rad(85.0), deg_to_rad(85.0))
-		get_viewport().set_input_as_handled()
+		if head != null:
+			head.rotate_x(-event.relative.y * mouse_sensitivity)
+			head.rotation.x = clamp(head.rotation.x, deg_to_rad(-89.0), deg_to_rad(89.0))
 		return
 
 	# Прокручування хотбару колесом миші (як у Minecraft)
+	var wheel_delta: int = 0
+	if event is InputEventMouseButton and event.is_pressed():
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			wheel_delta = -1
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			wheel_delta = 1
+
 	if event.is_action_pressed("zoom_in"):
-		var prev_slot: int = (active_hotbar_slot - 1 + 8) % 8
-		select_hotbar_slot(prev_slot)
-		get_viewport().set_input_as_handled()
-		return
+		wheel_delta = -1
 	elif event.is_action_pressed("zoom_out"):
-		var next_slot: int = (active_hotbar_slot + 1) % 8
-		select_hotbar_slot(next_slot)
+		wheel_delta = 1
+
+	if wheel_delta != 0:
+		var target_slot: int = (active_hotbar_slot + wheel_delta + 8) % 8
+		select_hotbar_slot(target_slot)
 		get_viewport().set_input_as_handled()
 		return
 
@@ -118,9 +131,15 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 
+	if event is InputEventKey and event.is_pressed() and not event.is_echo():
+		if event.keycode >= KEY_1 and event.keycode <= KEY_8:
+			select_hotbar_slot(event.keycode - KEY_1)
+			get_viewport().set_input_as_handled()
+			return
+
 	# Вживання їжі (ягоди на ПКМ) або встановлення воксельного блоку (ПКМ як у Minecraft)
 	if event.is_action_pressed("secondary_action"):
-		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not is_sleeping:
 			if _try_consume_food():
 				get_viewport().set_input_as_handled()
 				return
@@ -128,9 +147,9 @@ func _unhandled_input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 				return
 
-	# Взаємодія / Збір ресурсів / Будівництво (ЛКМ або E)
+	# Взаємодія / Збір ресурсів / Будівництво / Сон біля вогнища (ЛКМ або клавіша E як взаємодія зі стореджом)
 	if event.is_action_pressed("primary_action") or event.is_action_pressed("interact"):
-		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not is_sleeping:
 			_try_interact_or_harvest()
 			get_viewport().set_input_as_handled()
 			return
@@ -250,12 +269,17 @@ func _try_interact_or_harvest() -> void:
 			consume_energy(construct_energy_cost)
 		return
 
-	# 2. Якщо це споруда зі сховищем / склад (BuildingEntity3D)
+	# 2. Якщо це табірне вогнище (BuildingEntity3D) — взаємодія на E як зі сховищем запускає сон
+	if collider.has_method("interact_campfire"):
+		collider.interact_campfire(self)
+		return
+
+	# 3. Якщо це споруда зі сховищем / склад (BuildingEntity3D)
 	if collider.has_method("interact_storage"):
 		collider.interact_storage(self)
 		return
 
-	# 3. Якщо це природний ресурс (WorldResourceNode3D) або блок (WorldBlock3D)
+	# 4. Якщо це природний ресурс (WorldResourceNode3D) або воксельний блок (WorldBlock3D)
 	if collider.has_method("harvest"):
 		if current_energy < harvest_energy_cost:
 			_show_energy_warning()
@@ -266,7 +290,7 @@ func _try_interact_or_harvest() -> void:
 		collider.harvest(tool_damage, equipped_tool_type)
 		return
 
-	# 4. Загальна взаємодія з об'єктом
+	# 5. Загальна взаємодія з об'єктом
 	if collider.has_method("interact"):
 		collider.interact(self)
 		return
@@ -281,7 +305,6 @@ func _play_swing_animation() -> void:
 	_swing_tween = create_tween()
 	_swing_tween.tween_property(fps_camera, "rotation_degrees:x", -2.5, 0.04)
 	_swing_tween.tween_property(fps_camera, "rotation_degrees:x", 0.0, 0.08)
-
 
 func _get_active_tool_type() -> int:
 	if inventory == null:
@@ -385,6 +408,73 @@ func _get_active_item_id() -> StringName:
 	if slot != null and slot.item != null:
 		return slot.item.id
 	return &""
+
+
+func is_campfire_built() -> bool:
+	var campfires = get_tree().get_nodes_in_group("campfires")
+	for c in campfires:
+		if is_instance_valid(c) and not c.is_queued_for_deletion():
+			return true
+	return false
+
+
+## Запуск сну гравця біля вогнища: плавна анімація камери та відновлення всієї шкали енергії
+func start_sleep(duration: float = 2.8) -> void:
+	if is_sleeping:
+		return
+
+	is_sleeping = true
+	velocity = Vector3.ZERO
+
+	if _sleep_tween != null and _sleep_tween.is_valid():
+		_sleep_tween.kill()
+
+	_sleep_tween = create_tween()
+
+	if fps_camera != null:
+		_sleep_tween.parallel().tween_property(fps_camera, "rotation:x", deg_to_rad(-18.0), duration * 0.4)
+		_sleep_tween.parallel().tween_property(fps_camera, "position:y", -0.25, duration * 0.4)
+
+	_sleep_tween.parallel().tween_method(
+		func(val: float):
+			current_energy = val
+			energy_changed.emit(current_energy, max_energy)
+			if EventBus != null:
+				EventBus.player_stats_changed.emit(100.0, 100.0, current_energy, max_energy),
+		current_energy,
+		max_energy,
+		duration * 0.8
+	)
+
+	if fps_camera != null:
+		_sleep_tween.chain().tween_property(fps_camera, "rotation:x", 0.0, duration * 0.4)
+		_sleep_tween.parallel().tween_property(fps_camera, "position:y", 0.0, duration * 0.4)
+
+	_sleep_tween.tween_callback(complete_sleep)
+
+	if EventBus != null and EventBus.has_signal("player_sleep_started"):
+		EventBus.player_sleep_started.emit(duration)
+
+	print("[Player3D] Гравець ліг спати біля багаття на %.1f сек. Енергію повністю відновлено!" % duration)
+
+
+## Завершення сну: гарантоване повернення камери та зняття блокування
+func complete_sleep() -> void:
+	is_sleeping = false
+	current_energy = max_energy
+	if fps_camera != null:
+		fps_camera.position = Vector3.ZERO
+		fps_camera.rotation = Vector3.ZERO
+	energy_changed.emit(current_energy, max_energy)
+	if EventBus != null:
+		EventBus.player_stats_changed.emit(100.0, 100.0, current_energy, max_energy)
+		if EventBus.has_signal("player_sleep_finished"):
+			EventBus.player_sleep_finished.emit()
+
+
+## Обробка взаємодії
+func _handle_interact_or_sleep() -> void:
+	_try_interact_or_harvest()
 
 
 func get_player_aabb() -> AABB:

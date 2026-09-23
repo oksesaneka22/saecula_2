@@ -52,6 +52,8 @@ func setup_building(data: BuildingData, cell: Vector2i) -> void:
 
 	# 5. Створення колізії для взаємодії та фізики
 	_setup_collision()
+	if building_data.id == &"campfire":
+		add_to_group("campfires")
 
 	# 6. Побудова процедурної 3D візуалізації будівлі
 	_setup_visual()
@@ -352,11 +354,19 @@ func _update_label() -> void:
 	if _label_3d == null or building_data == null:
 		return
 
-	var text: String = "🏛 %s (%dx%d)" % [
-		building_data.display_name,
-		building_data.size_in_tiles.x,
-		building_data.size_in_tiles.y
-	]
+	var text: String = ""
+	if building_data.id == &"campfire":
+		text = "🔥 %s (%dx%d)\n(Підійдіть і натисніть [E], щоб заснути та відновити сили)" % [
+			building_data.display_name,
+			building_data.size_in_tiles.x,
+			building_data.size_in_tiles.y
+		]
+	else:
+		text = "🏛 %s (%dx%d)" % [
+			building_data.display_name,
+			building_data.size_in_tiles.x,
+			building_data.size_in_tiles.y
+		]
 
 	if inventory != null:
 		var used_slots: int = 0
@@ -406,6 +416,13 @@ func deposit_item(item_id: StringName, count: int) -> int:
 
 
 ## Взаємодія для перегляду та перекладання ресурсів
+## Взаємодія з вогнищем (сон та повне відновлення сил за схемою сховища)
+func interact_campfire(player: Node = null) -> void:
+	if building_data != null and building_data.id == &"campfire":
+		if player != null and player.has_method("start_sleep"):
+			player.start_sleep()
+
+
 func interact_storage(player: Node = null) -> void:
 	if inventory != null:
 		EventBus.storage_ui_requested.emit(self)
@@ -418,6 +435,8 @@ func interact(player: Node = null) -> void:
 
 ## Демонтує будівлю, звільняє клітинки сітки та надсилає сигнал
 func demolish() -> void:
+	if is_in_group("campfires"):
+		remove_from_group("campfires")
 	if LogisticsManager != null and inventory != null:
 		LogisticsManager.unregister_stockpile(self)
 	for c in occupied_cells:

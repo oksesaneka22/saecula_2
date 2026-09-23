@@ -9,6 +9,7 @@
 [ext_resource type="PackedScene" path="res://src/ui/hud/BuildMenuUI.tscn" id="6_build"]
 [ext_resource type="PackedScene" uid="uid://saecula_storage_ui" path="res://src/ui/storage/StorageUI.tscn" id="7_storage"]
 [ext_resource type="Script" path="res://src/ui/hud/HUDActionBar.gd" id="8_actionbar"]
+[ext_resource type="Script" path="res://src/ui/hud/SleepOverlayUI.gd" id="10_sleep"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_banner"]
 bg_color = Color(0.08, 0.1, 0.12, 0.75)
@@ -158,3 +159,13 @@ script = ExtResource("3_craft")
 [node name="BuildMenuUI" parent="." instance=ExtResource("6_build")]
 
 [node name="StorageUI" parent="." instance=ExtResource("7_storage")]
+
+[node name="SleepOverlayUI" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("10_sleep")

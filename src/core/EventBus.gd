@@ -26,6 +26,10 @@ signal day_passed(day_number: int)
 ## Зміна здоров'я/витривалості персонажа гравця
 signal player_stats_changed(current_hp: float, max_hp: float, current_stamina: float, max_stamina: float)
 
+## Запуск та завершення анімації сну
+signal player_sleep_started(duration: float)
+signal player_sleep_finished
+
 ## Спроба виконати дію за виснаження / нульової енергії
 signal energy_depleted_action_attempted
 

@@ -10,6 +10,7 @@ const StockpileBuildingScript = preload("res://src/world/buildings/StockpileBuil
 const ModularPiece3DScript = preload("res://src/world3d/modular/ModularPiece3D.gd")
 const ItemSlotUIScript = preload("res://src/ui/hud/ItemSlotUI.gd")
 const EnergyBarUIScript = preload("res://src/ui/hud/EnergyBarUI.gd")
+const SleepOverlayUIScript = preload("res://src/ui/hud/SleepOverlayUI.gd")
 
 func _ready() -> void:
 	# Підписуємося на сигнали EventBus для валідації шини
@@ -868,5 +869,54 @@ func _test_player_energy_system() -> void:
 	assert(energy_bar.max_energy == 1000.0, "EnergyBarUI must track max energy")
 	energy_bar.queue_free()
 
+	# 7. Валідація наявності збудованого багаття та взаємодії interact_campfire
+	assert(player.is_campfire_built() == false, "Initially no campfire should be built in tests")
+	var campfire_node = Node3D.new()
+	campfire_node.name = "TestCampfire"
+	campfire_node.add_to_group("campfires")
+	add_child(campfire_node)
+	assert(player.is_campfire_built() == true, "Player must detect built campfire in group 'campfires'")
+
+	var bld_entity = BuildingEntity3DScript.new()
+	assert(bld_entity.has_method("interact_campfire"), "BuildingEntity3D must have interact_campfire method")
+	assert(bld_entity.has_method("interact_storage"), "BuildingEntity3D must have interact_storage method")
+	bld_entity.queue_free()
+
+	# 8. Валідація методів відновлення сил та завершення сну
+	player.consume_energy(600.0)
+	assert(player.current_energy == 400.0, "Energy should be 400.0")
+	player.restore_energy(600.0)
+	assert(is_equal_approx(player.current_energy, 1000.0), "Restore energy should replenish to 1000.0")
+
+	# 9. Валідація SleepOverlayUI
+	var sleep_overlay = SleepOverlayUIScript.new()
+	add_child(sleep_overlay)
+	assert(sleep_overlay.mouse_filter == Control.MOUSE_FILTER_IGNORE, "SleepOverlayUI must not block mouse input")
+	sleep_overlay.queue_free()
+
+	# 10. Валідація прокручування хотбару колесом миші та вибору слотів (1-8)
+	player.active_hotbar_slot = 0
+	var wheel_down_event := InputEventMouseButton.new()
+	wheel_down_event.button_index = MOUSE_BUTTON_WHEEL_DOWN
+	wheel_down_event.pressed = true
+	player._unhandled_input(wheel_down_event)
+	assert(player.active_hotbar_slot == 1, "Wheel down must advance hotbar slot to 1")
+
+	var wheel_up_event := InputEventMouseButton.new()
+	wheel_up_event.button_index = MOUSE_BUTTON_WHEEL_UP
+	wheel_up_event.pressed = true
+	player._unhandled_input(wheel_up_event)
+	assert(player.active_hotbar_slot == 0, "Wheel up must return hotbar slot to 0")
+
+	player._unhandled_input(wheel_up_event)
+	assert(player.active_hotbar_slot == 7, "Wheel up from 0 must wrap around to 7")
+
+	var key_3_event := InputEventKey.new()
+	key_3_event.keycode = KEY_3
+	key_3_event.pressed = true
+	player._unhandled_input(key_3_event)
+	assert(player.active_hotbar_slot == 2, "Key 3 must select hotbar slot index 2")
+
+	campfire_node.queue_free()
 	player.queue_free()
-	print("[Main] Player energy system & EnergyBarUI unit tests passed successfully!")
+	print("[Main] Player energy system, Sleep mechanics & SleepOverlayUI unit tests passed successfully!")
