@@ -47,6 +47,7 @@ var _swing_tween: Tween = null
 
 const BlockGhost3DScript = preload("res://src/world3d/blocks/BlockGhost3D.gd")
 var block_ghost: Node3D = null
+var _torch_light: OmniLight3D = null
 
 @onready var head: Node3D = $Head
 @onready var fps_camera: Camera3D = $Head/FPSCamera
@@ -65,6 +66,20 @@ func _ready() -> void:
 	block_ghost.top_level = true
 	add_child(block_ghost)
 	block_ghost.hide_ghost()
+	_torch_light = OmniLight3D.new()
+	_torch_light.name = "TorchHandLight"
+	_torch_light.light_color = Color(1.0, 0.72, 0.3)
+	_torch_light.light_energy = 2.8
+	_torch_light.omni_range = 15.0
+	_torch_light.omni_attenuation = 1.0
+	_torch_light.shadow_enabled = false
+	_torch_light.visible = false
+	if fps_camera != null:
+		fps_camera.add_child(_torch_light)
+		_torch_light.position = Vector3(0.3, -0.2, -0.4)
+	elif head != null:
+		head.add_child(_torch_light)
+		_torch_light.position = Vector3(0.3, 0.0, -0.4)
 
 	if EventBus != null:
 		EventBus.hotbar_slot_selected.connect(_on_hotbar_slot_selected)
@@ -106,6 +121,17 @@ func set_active(active: bool) -> void:
 	else:
 		velocity = Vector3.ZERO
 
+
+
+func _process(delta: float) -> void:
+	if _torch_light != null:
+		var holding_torch: bool = is_holding_torch()
+		_torch_light.visible = holding_torch
+		if holding_torch:
+			var ticks: float = Time.get_ticks_msec() * 0.01
+			var flicker: float = sin(ticks * 1.3) * 0.18 + cos(ticks * 2.7) * 0.12
+			_torch_light.light_energy = 2.4 + flicker
+			_torch_light.omni_range = 14.0 + flicker * 1.5
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not is_active:
@@ -159,6 +185,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	# Вживання їжі (ягоди на ПКМ), пиття води або встановлення блоку (ПКМ)
 	if event.is_action_pressed("secondary_action"):
 		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not is_sleeping and not is_dead:
+			if _try_place_torch():
+				get_viewport().set_input_as_handled()
+				return
 			if _try_consume_food():
 				get_viewport().set_input_as_handled()
 				return
@@ -418,8 +447,11 @@ func _try_interact_or_harvest() -> void:
 			if collider.has_method("show_temporary_message"):
 				collider.show_temporary_message("Недостатньо енергії!", Color(1.0, 0.3, 0.3))
 			return
-		if collider.interact_construct(inventory):
+		var has_hammer := has_hammer_equipped()
+		if collider.interact_construct(inventory, has_hammer):
 			consume_energy(construct_energy_cost)
+		else:
+			consume_energy(2.0)
 		return
 
 	# 2. Якщо це табірне вогнище (BuildingEntity3D) — взаємодія на E як зі сховищем запускає сон
@@ -650,3 +682,80 @@ func _handle_interact_or_sleep() -> void:
 
 func get_player_aabb() -> AABB:
 	return AABB(global_position - Vector3(0.3, 0.0, 0.3), Vector3(0.6, 1.8, 0.6))
+func get_active_hotbar_item() -> Resource:
+	if inventory == null:
+		return null
+	var slot = null
+	if inventory.has_method("get_slot"):
+		slot = inventory.get_slot(active_hotbar_slot)
+	elif "slots" in inventory and active_hotbar_slot < inventory.slots.size():
+		slot = inventory.slots[active_hotbar_slot]
+	if slot != null and slot.item != null:
+		return slot.item
+	return null
+
+
+func is_holding_torch() -> bool:
+	var item = get_active_hotbar_item()
+	if item != null:
+		var item_id: StringName = StringName(item.get("id"))
+		return item_id == &"torch"
+	return false
+
+
+func has_hammer_equipped() -> bool:
+	var item = get_active_hotbar_item()
+	if item != null:
+		var item_id: StringName = StringName(item.get("id"))
+		return item_id == &"hammer" or item_id == &"stone_hammer"
+	return false
+
+
+func _try_place_torch() -> bool:
+	if not is_holding_torch():
+		return false
+
+	if interact_ray == null or not interact_ray.is_colliding():
+		return false
+
+	var hit_pos: Vector3 = interact_ray.get_collision_point()
+	var hit_normal: Vector3 = interact_ray.get_collision_normal()
+	var collider = interact_ray.get_collider()
+
+	if collider != null and collider.is_in_group("placed_torches"):
+		return false
+
+	# Запобігаємо накладанню кількох смолоскипів в одну точку (мінімальна дистанція 0.4м)
+	for t in get_tree().get_nodes_in_group("placed_torches"):
+		if is_instance_valid(t) and t is Node3D:
+			if (t as Node3D).global_position.distance_to(hit_pos) < 0.4:
+				return false
+
+	# Спершу списуємо 1 смолоскип з інвентаря гравця
+	var removed := false
+	if inventory != null:
+		if inventory.has_method("remove_item_by_id"):
+			removed = inventory.remove_item_by_id(&"torch", 1)
+		elif inventory.has_method("remove_item"):
+			removed = inventory.remove_item(&"torch", 1)
+
+	if not removed:
+		return false
+
+	var PlacedTorchScript = load("res://src/world3d/PlacedTorch3D.gd")
+	var torch_node = PlacedTorchScript.new()
+	var parent_node = get_parent()
+	if parent_node == null:
+		parent_node = get_tree().current_scene
+	if parent_node == null:
+		return false
+
+	parent_node.add_child(torch_node)
+	var place_pos: Vector3 = hit_pos
+	if hit_normal.y < 0.7:
+		place_pos += hit_normal * 0.15
+	torch_node.global_position = place_pos
+
+	_play_swing_animation()
+	print("[Player3D] 🕯️ Смолоскип встановлено у світі на позиції %v (витрачено 1 шт.)" % hit_pos)
+	return true

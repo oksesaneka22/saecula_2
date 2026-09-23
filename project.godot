@@ -41,6 +41,8 @@ renderer/rendering_method.mobile="gl_compatibility"
 textures/canvas_textures/default_texture_filter=0
 2d/snap/snap_2d_transforms_to_pixel=false
 2d/snap/snap_2d_vertices_to_pixel=false
+limits/opengl/max_renderable_lights=256
+limits/opengl/max_lights_per_object=32
 
 [physics]
 

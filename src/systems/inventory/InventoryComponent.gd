@@ -25,6 +25,13 @@ func _ready() -> void:
 	_init_slots()
 
 
+
+## Повністю очищує інвентар від усіх предметів
+func clear() -> void:
+	for slot in slots:
+		slot.clear()
+	inventory_updated.emit()
+
 func _init_slots() -> void:
 	slots.clear()
 	for i in range(slot_count):
@@ -111,12 +118,25 @@ func get_item_count(item_id: StringName) -> int:
 	return total
 
 
-## Видаляє вказану кількість предмета з інвентаря.
+## Допоміжний метод для видалення предмета за ID
+func remove_item_by_id(item_id: StringName, amount: int = 1) -> bool:
+	return remove_item(item_id, amount)
+
+
+## Видаляє вказану кількість предмета з інвентаря (підтримує як StringName/String ID, так і Resource).
 ## Повертає true, якщо вся кількість була успішно видалена.
 ## Якщо предметів менше ніж потрібно і allow_partial == false, інвентар не змінюється.
-func remove_item(item_id: StringName, amount: int, allow_partial: bool = false) -> bool:
+func remove_item(item_or_id: Variant, amount: int, allow_partial: bool = false) -> bool:
 	if amount <= 0:
 		return true
+
+	var item_id: StringName = &""
+	if item_or_id is StringName:
+		item_id = item_or_id
+	elif item_or_id is String:
+		item_id = StringName(item_or_id)
+	elif item_or_id is Resource:
+		item_id = _extract_item_id(item_or_id)
 
 	var total_available: int = get_item_count(item_id)
 	if total_available < amount and not allow_partial:

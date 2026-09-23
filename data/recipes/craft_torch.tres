@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="RecipeData" load_steps=6 format=3 uid="uid://saecula_recipe_torch"]
+
+[ext_resource type="Script" path="res://src/data/schemas/RecipeData.gd" id="1_recipe"]
+[ext_resource type="Script" path="res://src/data/schemas/ItemCost.gd" id="2_cost"]
+[ext_resource type="Resource" path="res://data/items/wood.tres" id="3_wood"]
+[ext_resource type="Resource" path="res://data/items/straw.tres" id="4_straw"]
+[ext_resource type="Resource" path="res://data/items/torch.tres" id="5_torch"]
+
+[sub_resource type="Resource" id="Cost_wood"]
+script = ExtResource("2_cost")
+item = ExtResource("3_wood")
+amount = 1
+
+[sub_resource type="Resource" id="Cost_straw"]
+script = ExtResource("2_cost")
+item = ExtResource("4_straw")
+amount = 1
+
+[resource]
+script = ExtResource("1_recipe")
+id = &"craft_torch"
+display_name = "Смолоскип"
+description = "Виготовлення 2 смолоскипів з 1 деревини та 1 сухої соломи (освітлює темряву в руці та на землі)."
+ingredients = [SubResource("Cost_wood"), SubResource("Cost_straw")]
+required_era = 0
+craft_time = 0.0
+result_item = ExtResource("5_torch")
+result_amount = 2

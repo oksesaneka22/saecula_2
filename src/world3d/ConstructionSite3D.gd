@@ -373,7 +373,7 @@ func cancel_construction() -> void:
 
 
 ## Універсальна точка входу взаємодії гравця або робітника
-func interact_construct(player_inventory: InventoryComponent = null) -> bool:
+func interact_construct(player_inventory: InventoryComponent = null, has_hammer: bool = false) -> bool:
 	if is_completed:
 		return false
 
@@ -392,9 +392,11 @@ func interact_construct(player_inventory: InventoryComponent = null) -> bool:
 		if any_delivered:
 			return true
 
-	# 2. Якщо матеріали зібрані — виконуємо будівельну роботу
+	# 2. Якщо матеріали зібрані — виконуємо будівельну роботу (5 ударів з молотком, 10 без молотка)
 	if is_materials_ready():
-		return build_work(1.5)
+		var total_work: float = maxf(1.0, building_data.build_time if building_data != null else 10.0)
+		var swing_progress: float = (total_work / 5.0) if has_hammer else (total_work / 10.0)
+		return build_work(swing_progress)
 
 	return false
 

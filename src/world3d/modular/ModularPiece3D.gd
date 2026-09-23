@@ -13,6 +13,7 @@ signal piece_removed(piece: ModularPiece3D)
 @export var cell_coord: Vector2i = Vector2i.ZERO
 @export var is_built: bool = false
 @export var is_door_open: bool = false
+var construction_progress_hits: int = 0
 @export var rotation_index: int = 0
 
 var required_materials: Dictionary = {} # StringName -> int
@@ -376,7 +377,7 @@ func show_temporary_message(text: String, col: Color = Color(1, 0.3, 0.3)) -> vo
 
 
 ## Взаємодія на [E] або клік миші (зведення частини або відкриття дверей)
-func interact_construct(inventory: Node) -> bool:
+func interact_construct(inventory: Node, has_hammer: bool = false) -> bool:
 	if is_built:
 		if piece_type == &"modular_door":
 			interact(null)
@@ -402,7 +403,22 @@ func interact_construct(inventory: Node) -> bool:
 				show_temporary_message("Потрібно: %s" % get_cost_text(), Color(1.0, 0.35, 0.35))
 				return false
 
-		# 3. Списання матеріалів
+	# 3. Механіка ударів/махів: 10 без молотка (+1 бал), 5 з молотком (+2 бали)
+	var hit_points := 2 if has_hammer else 1
+	construction_progress_hits += hit_points
+	var tw := create_tween()
+	tw.tween_property(self, "scale", Vector3(1.04, 0.96, 1.04), 0.08)
+	tw.tween_property(self, "scale", Vector3.ONE, 0.08)
+
+	if construction_progress_hits < 10:
+		var current_swings := int(ceil(float(construction_progress_hits) / (2.0 if has_hammer else 1.0)))
+		var max_swings := 5 if has_hammer else 10
+		var tool_text := "🔨 Молоток" if has_hammer else "🖐️ Без молотка"
+		show_temporary_message("Будівництво: %d/%d (%s)" % [current_swings, max_swings, tool_text], Color(0.85, 0.95, 1.0))
+		return false
+
+	# 4. Списання матеріалів при завершенні (10/10)
+	if inventory != null:
 		for item_id in required_materials.keys():
 			var needed: int = required_materials[item_id]
 			if inventory.has_method("remove_item_by_id"):
@@ -410,11 +426,12 @@ func interact_construct(inventory: Node) -> bool:
 			elif inventory.has_method("remove_item"):
 				inventory.remove_item(item_id, needed)
 
-	# 4. Завершення будівництва
+	# 5. Завершення будівництва
 	apply_built_state(true)
 	piece_constructed.emit(self)
 	if ModularManager != null:
 		ModularManager.notify_piece_built(self)
+	show_temporary_message("Збудовано! ✅", Color(0.4, 1.0, 0.4))
 	return true
 
 

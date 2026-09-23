@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="RecipeData" load_steps=5 format=3 uid="uid://saecula_recipe_rope"]
+
+[ext_resource type="Script" path="res://src/data/schemas/RecipeData.gd" id="1_recipe"]
+[ext_resource type="Script" path="res://src/data/schemas/ItemCost.gd" id="2_cost"]
+[ext_resource type="Resource" path="res://data/items/straw.tres" id="3_straw"]
+[ext_resource type="Resource" path="res://data/items/rope.tres" id="4_rope"]
+
+[sub_resource type="Resource" id="Cost_straw"]
+script = ExtResource("2_cost")
+item = ExtResource("3_straw")
+amount = 3
+
+[resource]
+script = ExtResource("1_recipe")
+id = &"craft_rope"
+display_name = "Мотузка"
+description = "Сплетіння міцної мотузки з 3 пучків сухої соломи для крафту інструментів."
+ingredients = [SubResource("Cost_straw")]
+required_era = 0
+craft_time = 0.0
+result_item = ExtResource("4_rope")
+result_amount = 1

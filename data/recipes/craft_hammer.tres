@@ -1,0 +1,34 @@
+[gd_resource type="Resource" script_class="RecipeData" load_steps=7 format=3 uid="uid://saecula_recipe_hammer"]
+
+[ext_resource type="Script" path="res://src/data/schemas/RecipeData.gd" id="1_recipe"]
+[ext_resource type="Script" path="res://src/data/schemas/ItemCost.gd" id="2_cost"]
+[ext_resource type="Resource" path="res://data/items/wood.tres" id="3_wood"]
+[ext_resource type="Resource" path="res://data/items/stone.tres" id="4_stone"]
+[ext_resource type="Resource" path="res://data/items/rope.tres" id="5_rope"]
+[ext_resource type="Resource" path="res://data/items/hammer.tres" id="6_hammer"]
+
+[sub_resource type="Resource" id="Cost_wood"]
+script = ExtResource("2_cost")
+item = ExtResource("3_wood")
+amount = 2
+
+[sub_resource type="Resource" id="Cost_stone"]
+script = ExtResource("2_cost")
+item = ExtResource("4_stone")
+amount = 1
+
+[sub_resource type="Resource" id="Cost_rope"]
+script = ExtResource("2_cost")
+item = ExtResource("5_rope")
+amount = 1
+
+[resource]
+script = ExtResource("1_recipe")
+id = &"craft_hammer"
+display_name = "Будівельний молоток"
+description = "Виготовлення надійного молотка з 2 деревини, 1 каменю та 1 мотузки (будує споруди за 5 махів замість 10)."
+ingredients = [SubResource("Cost_wood"), SubResource("Cost_stone"), SubResource("Cost_rope")]
+required_era = 0
+craft_time = 0.0
+result_item = ExtResource("6_hammer")
+result_amount = 1

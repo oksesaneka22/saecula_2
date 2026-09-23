@@ -45,6 +45,9 @@ const PATH_ITEM_STONE_AXE: String = "res://assets/textures/items/stone_axe.png"
 const PATH_ITEM_STONE_PICKAXE: String = "res://assets/textures/items/stone_pickaxe.png"
 const PATH_ITEM_CAMPFIRE: String = "res://assets/textures/items/campfire.png"
 const PATH_ITEM_SCYTHE: String = "res://assets/textures/items/scythe.png"
+const PATH_ITEM_TORCH: String = "res://assets/textures/items/torch.png"
+const PATH_ITEM_HAMMER: String = "res://assets/textures/items/hammer.png"
+const PATH_ITEM_ROPE: String = "res://assets/textures/items/rope.png"
 const PATH_ITEM_GENERIC: String = "res://assets/textures/items/generic_item.png"
 
 static var _cache: Dictionary = {}
@@ -125,5 +128,11 @@ static func get_item_texture_path(item_id: StringName) -> String:
 			return PATH_ITEM_CAMPFIRE
 		&"scythe":
 			return PATH_ITEM_SCYTHE
+		&"torch":
+			return PATH_ITEM_TORCH
+		&"hammer", &"stone_hammer":
+			return PATH_ITEM_HAMMER
+		&"rope":
+			return PATH_ITEM_ROPE
 		_:
 			return PATH_ITEM_GENERIC

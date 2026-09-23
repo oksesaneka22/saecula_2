@@ -84,6 +84,9 @@ func _ready() -> void:
 	# 20. Валідація адмін-панелі: видача предметів, зміна характеристик виживання, часу доби та супершвидкості
 	_test_admin_panel_ui()
 
+	# 21. Валідація смолоскипа (освітлення в руці та встановлення), будівельного молотка (10 махів без нього, 5 з ним) та мотузки
+	_test_torch_hammer_rope_mechanics()
+
 
 func _test_inventory_component(wood: Resource) -> void:
 	var test_inv: Node = InventoryComponentScript.new()
@@ -559,19 +562,22 @@ func _test_going_medieval_modular_construction() -> void:
 	wall_piece.interact_construct(test_inv)
 	assert(not wall_piece.is_built, "Wall cannot be built before floor is built")
 
-	# Будуємо підлогу
-	floor_piece.interact_construct(test_inv)
-	assert(floor_piece.is_built, "Floor must be built after interact_construct")
+	# Будуємо підлогу (10 махів без молотка)
+	for _i in range(10):
+		floor_piece.interact_construct(test_inv, false)
+	assert(floor_piece.is_built, "Floor must be built after interact_construct (10 swings)")
 	assert(ModularManager.has_built_floor(test_cell), "ModularManager must recognize built floor")
 	assert(test_inv.get_item_count(&"wood") == 9, "Floor cost 1 wood (10 - 1 = 9)")
 
-	# Тепер будуємо стіну
-	wall_piece.interact_construct(test_inv)
-	assert(wall_piece.is_built, "Wall must be built after floor is built")
+	# Тепер будуємо стіну (5 махів з молотком)
+	for _i in range(5):
+		wall_piece.interact_construct(test_inv, true)
+	assert(wall_piece.is_built, "Wall must be built after floor is built (5 swings with hammer)")
 	assert(test_inv.get_item_count(&"wood") == 7, "Wall cost 2 wood (9 - 2 = 7)")
 
 	# Будуємо стелю
-	roof_piece.interact_construct(test_inv)
+	for _i in range(5):
+		roof_piece.interact_construct(test_inv, true)
 	assert(roof_piece.is_built, "Roof must be built after wall is built")
 	assert(test_inv.get_item_count(&"wood") == 6, "Roof cost 1 wood (7 - 1 = 6)")
 	assert(test_inv.get_item_count(&"straw") == 8, "Roof cost 2 straw (10 - 2 = 8)")
@@ -579,9 +585,11 @@ func _test_going_medieval_modular_construction() -> void:
 	# 5. Тестування дверей (відчинення та зачинення на interact)
 	var door_cell := Vector2i(71, 70)
 	var door_floor = ModularManager.place_blueprint(&"modular_floor", door_cell)
-	door_floor.interact_construct(test_inv)
+	for _i in range(5):
+		door_floor.interact_construct(test_inv, true)
 	var door_piece = ModularManager.place_blueprint(&"modular_door", door_cell)
-	door_piece.interact_construct(test_inv)
+	for _i in range(5):
+		door_piece.interact_construct(test_inv, true)
 	assert(door_piece.is_built, "Door must be built")
 	assert(not door_piece.is_door_open, "Door starts closed")
 	assert(GridManager.is_cell_solid(door_cell), "Closed door blocks cell")
@@ -1147,3 +1155,120 @@ func _test_admin_panel_ui() -> void:
 	assert(admin_ui._is_open == false, "_is_open must be false after close()")
 
 	print("[Main] AdminPanelUI unit tests passed successfully!")
+func _test_torch_hammer_rope_mechanics() -> void:
+	print("[Main] Testing Torch (hand light & placed), Hammer (10 vs 5 swings) and Rope...")
+	# 1. Перевірка наявності предметів у базі
+	assert(ItemDatabase.has_item(&"torch"), "ItemDatabase must contain torch")
+	assert(ItemDatabase.has_item(&"hammer"), "ItemDatabase must contain hammer")
+	assert(ItemDatabase.has_item(&"rope"), "ItemDatabase must contain rope")
+
+	var torch_item = ItemDatabase.get_item(&"torch")
+	var hammer_item = ItemDatabase.get_item(&"hammer")
+	var rope_item = ItemDatabase.get_item(&"rope")
+
+	assert(torch_item.display_name == "Смолоскип", "Torch name must match")
+	assert(hammer_item.display_name == "Будівельний молоток", "Hammer name must match")
+	assert(rope_item.display_name == "Мотузка", "Rope name must match")
+
+	# 2. Перевірка рецептів крафту
+	var craft_inv: Node = InventoryComponentScript.new()
+	craft_inv.set("slot_count", 8)
+	add_child(craft_inv)
+
+	var rope_recipe = CraftingManager.get_recipe(&"craft_rope")
+	assert(rope_recipe != null, "Rope recipe must exist")
+	var hammer_recipe = CraftingManager.get_recipe(&"craft_hammer")
+	assert(hammer_recipe != null, "Hammer recipe must exist")
+	var torch_recipe = CraftingManager.get_recipe(&"craft_torch")
+	assert(torch_recipe != null, "Torch recipe must exist")
+
+	# Крафт мотузки: 3 соломи -> 1 мотузка
+	craft_inv.add_item_by_id(&"straw", 3)
+	assert(CraftingManager.can_craft(rope_recipe, craft_inv), "Must be able to craft rope with 3 straw")
+	assert(CraftingManager.craft_item(rope_recipe, craft_inv), "Crafting rope must succeed")
+	assert(craft_inv.get_item_count(&"rope") == 1, "Must have 1 rope after crafting")
+	assert(craft_inv.get_item_count(&"straw") == 0, "Straw must be consumed")
+
+	# Крафт молотка: 2 дерева, 1 камінь, 1 мотузка -> 1 молоток
+	craft_inv.add_item_by_id(&"wood", 2)
+	craft_inv.add_item_by_id(&"stone", 1)
+	assert(CraftingManager.can_craft(hammer_recipe, craft_inv), "Must be able to craft hammer with wood, stone and rope")
+	assert(CraftingManager.craft_item(hammer_recipe, craft_inv), "Crafting hammer must succeed")
+	assert(craft_inv.get_item_count(&"hammer") == 1, "Must have 1 hammer after crafting")
+
+	# Крафт смолоскипа: 1 дерево, 1 солома -> 2 смолоскипи
+	craft_inv.add_item_by_id(&"wood", 1)
+	craft_inv.add_item_by_id(&"straw", 1)
+	assert(CraftingManager.can_craft(torch_recipe, craft_inv), "Must be able to craft torch with wood and straw")
+	assert(CraftingManager.craft_item(torch_recipe, craft_inv), "Crafting torch must succeed")
+	assert(craft_inv.get_item_count(&"torch") == 2, "Must have 2 torches after crafting")
+
+	# 3. Перевірка смолоскипа в руці у гравця
+	var player = get_tree().get_first_node_in_group("player")
+	if player == null:
+		player = Player3DScene.instantiate()
+		add_child(player)
+
+	assert(player._torch_light != null, "Player must have _torch_light node")
+	assert(player._torch_light.visible == false, "Torch light must be initially off")
+
+	# Очищуємо інвентар та кладемо смолоскип у перший слот гравця
+	if player.inventory != null:
+		player.inventory.clear()
+		player.inventory.add_item(torch_item, 5)
+	player.select_hotbar_slot(0)
+	assert(player.is_holding_torch(), "Player must be recognized as holding torch")
+	player._process(0.016)
+	assert(player._torch_light.visible == true, "Torch light must be active while holding torch")
+	assert(player._torch_light.light_energy > 0.0, "Torch light must have positive energy")
+
+	# Перемикаємо слот на інший
+	player.select_hotbar_slot(7)
+	assert(not player.is_holding_torch(), "Player should not be holding torch in slot 7")
+	player._process(0.016)
+	assert(player._torch_light.visible == false, "Torch light must turn off when unequipped")
+
+	# 4. Перевірка встановлення та витрати смолоскипа (PlacedTorch3D)
+	player.select_hotbar_slot(0)
+	var before_place_count: int = player.inventory.get_item_count(&"torch")
+	assert(before_place_count >= 1, "Player must have torches to place")
+	# Симулюємо успішне списання через inventory.remove_item
+	var removed_ok: bool = player.inventory.remove_item(&"torch", 1)
+	assert(removed_ok, "Removing torch from inventory must succeed")
+	assert(player.inventory.get_item_count(&"torch") == before_place_count - 1, "Torch count must decrease by 1 upon placement")
+
+	var PlacedTorchScript = load("res://src/world3d/PlacedTorch3D.gd")
+	var placed_torch = PlacedTorchScript.new()
+	add_child(placed_torch)
+	assert(placed_torch.is_in_group("placed_torches"), "Placed torch must be in group placed_torches")
+	assert(placed_torch.is_in_group("interactable"), "Placed torch must be interactable")
+	assert(placed_torch._light != null and placed_torch._light.light_energy > 0.0, "Placed torch light must be active with positive energy")
+
+	# Підбір встановленого смолоскипа гравцем
+	var initial_torch_count = player.inventory.get_item_count(&"torch")
+	placed_torch.interact(player)
+	assert(player.inventory.get_item_count(&"torch") == initial_torch_count + 1, "Interacting with placed torch must pick it up")
+
+	# 5. Перевірка будівельного молотка: 10 махів без нього проти 5 махів з ним
+	var test_build_inv: Node = InventoryComponentScript.new()
+	test_build_inv.set("slot_count", 8)
+	add_child(test_build_inv)
+	test_build_inv.add_item_by_id(&"wood", 20)
+
+	# А) Без молотка -> рівно 10 махів
+	var floor_no_hammer = ModularManager.place_blueprint(&"modular_floor", Vector2i(90, 90))
+	for swing in range(9):
+		floor_no_hammer.interact_construct(test_build_inv, false)
+		assert(not floor_no_hammer.is_built, "Piece must NOT be built at swing %d/10 without hammer" % (swing + 1))
+	floor_no_hammer.interact_construct(test_build_inv, false)
+	assert(floor_no_hammer.is_built, "Piece MUST be built after exactly 10 swings without hammer")
+
+	# Б) З молотком -> рівно 5 махів
+	var floor_with_hammer = ModularManager.place_blueprint(&"modular_floor", Vector2i(91, 91))
+	for swing in range(4):
+		floor_with_hammer.interact_construct(test_build_inv, true)
+		assert(not floor_with_hammer.is_built, "Piece must NOT be built at swing %d/5 with hammer" % (swing + 1))
+	floor_with_hammer.interact_construct(test_build_inv, true)
+	assert(floor_with_hammer.is_built, "Piece MUST be built after exactly 5 swings with hammer")
+
+	print("[Main] Torch, Hammer and Rope unit tests passed successfully!")

@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ItemData" load_steps=2 format=3 uid="uid://saecula_item_rope"]
+
+[ext_resource type="Script" path="res://src/data/schemas/ItemData.gd" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+id = &"rope"
+display_name = "Мотузка"
+description = "Міцна мотузка, сплетена із сухої соломи. Використовується як важливий компонент у крафті спорядження та споруд."
+category = 1
+max_stack = 64
+tool_type = 0
+tier = 0
+tool_efficiency = 1.0

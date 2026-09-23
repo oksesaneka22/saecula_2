@@ -25,8 +25,8 @@ func _process(delta: float) -> void:
 	if _fire_light != null and is_instance_valid(_fire_light):
 		_flicker_time += delta
 		var noise_val: float = sin(_flicker_time * 11.0) * 0.35 + cos(_flicker_time * 23.0) * 0.2 + sin(_flicker_time * 5.0) * 0.15
-		_fire_light.light_energy = 3.2 + noise_val
-		_fire_light.omni_range = 16.0 + noise_val * 1.5
+		_fire_light.light_energy = 3.6 + noise_val
+		_fire_light.omni_range = 18.0 + noise_val * 1.5
 
 
 func _ready() -> void:
@@ -181,6 +181,8 @@ func _build_campfire_visual(size_m: Vector2) -> void:
 		3.0
 	)
 
+	flame_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+
 	var flame_h: float = clampf(ring_radius * 1.1, 1.2, 2.8)
 	var flame_mesh := CylinderMesh.new()
 	flame_mesh.top_radius = 0.0
@@ -189,6 +191,7 @@ func _build_campfire_visual(size_m: Vector2) -> void:
 	var flame_inst := MeshInstance3D.new()
 	flame_inst.mesh = flame_mesh
 	flame_inst.material_override = flame_mat
+	flame_inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	flame_inst.position = Vector3(0, flame_h * 0.5, 0)
 	_visual_root.add_child(flame_inst)
 
@@ -196,11 +199,12 @@ func _build_campfire_visual(size_m: Vector2) -> void:
 	_fire_light = OmniLight3D.new()
 	_fire_light.name = "CampfireLight"
 	_fire_light.light_color = Color(1.0, 0.62, 0.22)
-	_fire_light.light_energy = 3.2
-	_fire_light.omni_range = maxf(ring_radius * 5.0, 16.0)
-	_fire_light.omni_attenuation = 1.15
+	_fire_light.light_energy = 3.6
+	_fire_light.omni_range = maxf(ring_radius * 5.0, 18.0)
+	_fire_light.omni_attenuation = 1.0
 	_fire_light.shadow_enabled = true
-	_fire_light.position = Vector3(0, flame_h * 0.75, 0)
+	_fire_light.shadow_bias = 0.15
+	_fire_light.position = Vector3(0, flame_h + 0.35, 0)
 	_visual_root.add_child(_fire_light)
 
 

@@ -114,6 +114,19 @@ func _process(delta: float) -> void:
 # ------------------------------------------------------------------------------
 # Налаштування ландшафту та колізії землі 1000x1000
 # ------------------------------------------------------------------------------
+
+var _chunk_ground_mat: StandardMaterial3D = null
+
+func _get_chunk_ground_material() -> StandardMaterial3D:
+	if _chunk_ground_mat == null:
+		_chunk_ground_mat = TextureHelper.create_material(
+			TextureHelper.PATH_TERRAIN_GRASS,
+			Color("386641"),
+			0.95,
+			Vector3(float(CHUNK_SIZE), float(CHUNK_SIZE), 1.0)
+		)
+	return _chunk_ground_mat
+
 func _setup_ground() -> void:
 	var total_width_meters: float = float(map_tiles_width) * GridManager.TILE_SIZE_3D
 	var total_height_meters: float = float(map_tiles_height) * GridManager.TILE_SIZE_3D
@@ -122,7 +135,7 @@ func _setup_ground() -> void:
 		var plane_mesh: PlaneMesh = PlaneMesh.new()
 		plane_mesh.size = Vector2(total_width_meters, total_height_meters)
 		ground_mesh.mesh = plane_mesh
-		ground_mesh.position = Vector3(total_width_meters / 2.0, 0.0, total_height_meters / 2.0)
+		ground_mesh.position = Vector3(total_width_meters / 2.0, -0.05, total_height_meters / 2.0)
 
 		var ground_mat: StandardMaterial3D = TextureHelper.create_material(
 			TextureHelper.PATH_TERRAIN_GRASS,
@@ -337,10 +350,23 @@ func _load_chunk(ch: Vector2i) -> void:
 	resource_container.add_child(chunk_node)
 	_loaded_chunks[ch] = chunk_node
 
-	var water_quads: Array[Vector2i] = []
-	var spawn_center := Vector2i(map_tiles_width / 2, map_tiles_height / 2)
 	var start_x: int = ch.x * CHUNK_SIZE
 	var start_y: int = ch.y * CHUNK_SIZE
+
+	# Локальний меш поверхні для чанка 32x32 (64x64 м) для оптимальної кластеризації освітлення (OpenGL 32 світла на меш)
+	var chunk_ground := MeshInstance3D.new()
+	chunk_ground.name = "ChunkGround"
+	var pmesh := PlaneMesh.new()
+	pmesh.size = Vector2(float(CHUNK_SIZE) * GridManager.TILE_SIZE_3D, float(CHUNK_SIZE) * GridManager.TILE_SIZE_3D)
+	chunk_ground.mesh = pmesh
+	var chunk_center_x: float = (float(start_x) + float(CHUNK_SIZE) * 0.5) * GridManager.TILE_SIZE_3D
+	var chunk_center_z: float = (float(start_y) + float(CHUNK_SIZE) * 0.5) * GridManager.TILE_SIZE_3D
+	chunk_ground.position = Vector3(chunk_center_x, 0.0, chunk_center_z)
+	chunk_ground.material_override = _get_chunk_ground_material()
+	chunk_node.add_child(chunk_ground)
+
+	var water_quads: Array[Vector2i] = []
+	var spawn_center := Vector2i(map_tiles_width / 2, map_tiles_height / 2)
 
 	for lx in range(CHUNK_SIZE):
 		for ly in range(CHUNK_SIZE):
