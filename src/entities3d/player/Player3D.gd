@@ -8,6 +8,9 @@ extends CharacterBody3D
 signal active_slot_changed(slot_index: int)
 signal player_interacted(target: Node)
 signal energy_changed(current: float, max_val: float)
+signal hunger_changed(current: float, max_val: float)
+signal thirst_changed(current: float, max_val: float)
+signal player_died(reason: String)
 
 @export var walk_speed: float = 5.0
 @export var sprint_speed: float = 7.5
@@ -24,6 +27,17 @@ signal energy_changed(current: float, max_val: float)
 @export var place_block_energy_cost: float = 3.0
 @export var rest_regen_rate: float = 0.0
 
+## Параметри системи виживання: голод та спрага (0-100)
+@export var max_hunger: float = 100.0
+@export var current_hunger: float = 100.0
+@export var hunger_drain_per_sec: float = 0.05 ## ~100 од. за 33 хв
+
+@export var max_thirst: float = 100.0
+@export var current_thirst: float = 100.0
+@export var thirst_drain_per_sec: float = 0.08 ## ~100 од. за 20 хв
+
+var is_dead: bool = false
+var spawn_position: Vector3 = Vector3.ZERO
 var gravity: float = 18.0
 var is_active: bool = true
 var is_sleeping: bool = false
@@ -56,9 +70,14 @@ func _ready() -> void:
 		EventBus.hotbar_slot_selected.connect(_on_hotbar_slot_selected)
 		EventBus.day_passed.connect(func(_day): restore_energy(max_energy))
 
+	spawn_position = global_position
 	energy_changed.emit(current_energy, max_energy)
+	hunger_changed.emit(current_hunger, max_hunger)
+	thirst_changed.emit(current_thirst, max_thirst)
 	if EventBus != null:
 		EventBus.player_stats_changed.emit(100.0, 100.0, current_energy, max_energy)
+		if EventBus.has_signal("player_survival_changed"):
+			EventBus.player_survival_changed.emit(current_hunger, max_hunger, current_thirst, max_thirst)
 
 	# Надаємо гравцю стартовий комплект інструментів та матеріалів:
 	# Слот 1 (Wood) та Слот 2 (Stone) для миттєвого тестування будівництва на ПКМ!
@@ -137,13 +156,16 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 
-	# Вживання їжі (ягоди на ПКМ) або встановлення воксельного блоку (ПКМ як у Minecraft)
+	# Вживання їжі (ягоди на ПКМ), пиття води або встановлення блоку (ПКМ)
 	if event.is_action_pressed("secondary_action"):
-		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not is_sleeping:
+		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not is_sleeping and not is_dead:
 			if _try_consume_food():
 				get_viewport().set_input_as_handled()
 				return
 			if _try_place_block():
+				get_viewport().set_input_as_handled()
+				return
+			if _try_drink_water():
 				get_viewport().set_input_as_handled()
 				return
 
@@ -158,6 +180,11 @@ func _unhandled_input(event: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	if not is_active:
 		return
+
+	# Пасивне споживання голоду та спраги з часом
+	if not is_sleeping and not is_dead:
+		consume_hunger(hunger_drain_per_sec * delta)
+		consume_thirst(thirst_drain_per_sec * delta)
 
 	# Гравітація
 	if not is_on_floor():
@@ -202,9 +229,14 @@ func consume_energy(amount: float) -> bool:
 	if current_energy <= 0.0:
 		return false
 	current_energy = maxf(0.0, current_energy - amount)
+	spawn_position = global_position
 	energy_changed.emit(current_energy, max_energy)
+	hunger_changed.emit(current_hunger, max_hunger)
+	thirst_changed.emit(current_thirst, max_thirst)
 	if EventBus != null:
 		EventBus.player_stats_changed.emit(100.0, 100.0, current_energy, max_energy)
+		if EventBus.has_signal("player_survival_changed"):
+			EventBus.player_survival_changed.emit(current_hunger, max_hunger, current_thirst, max_thirst)
 	return true
 
 
@@ -213,14 +245,132 @@ func restore_energy(amount: float) -> void:
 	if current_energy >= max_energy:
 		return
 	current_energy = minf(max_energy, current_energy + amount)
+	spawn_position = global_position
 	energy_changed.emit(current_energy, max_energy)
+	hunger_changed.emit(current_hunger, max_hunger)
+	thirst_changed.emit(current_thirst, max_thirst)
 	if EventBus != null:
 		EventBus.player_stats_changed.emit(100.0, 100.0, current_energy, max_energy)
+		if EventBus.has_signal("player_survival_changed"):
+			EventBus.player_survival_changed.emit(current_hunger, max_hunger, current_thirst, max_thirst)
 
 
 ## Перевіряє наявність достатньої кількості енергії
 func has_energy(amount: float) -> bool:
 	return current_energy >= amount
+
+
+## Зменшує рівень голоду. При досягненні 0 спричиняє миттєву смерть.
+func consume_hunger(amount: float) -> bool:
+	if is_dead:
+		return false
+	current_hunger = maxf(current_hunger - amount, 0.0)
+	hunger_changed.emit(current_hunger, max_hunger)
+	if EventBus != null and EventBus.has_signal("player_survival_changed"):
+		EventBus.player_survival_changed.emit(current_hunger, max_hunger, current_thirst, max_thirst)
+	if current_hunger <= 0.0:
+		die("голоду")
+		return false
+	return true
+
+
+## Відновлює рівень голоду
+func restore_hunger(amount: float) -> void:
+	if is_dead:
+		return
+	current_hunger = minf(current_hunger + amount, max_hunger)
+	hunger_changed.emit(current_hunger, max_hunger)
+	if EventBus != null and EventBus.has_signal("player_survival_changed"):
+		EventBus.player_survival_changed.emit(current_hunger, max_hunger, current_thirst, max_thirst)
+
+
+## Зменшує рівень спраги. При досягненні 0 спричиняє миттєву смерть.
+func consume_thirst(amount: float) -> bool:
+	if is_dead:
+		return false
+	current_thirst = maxf(current_thirst - amount, 0.0)
+	thirst_changed.emit(current_thirst, max_thirst)
+	if EventBus != null and EventBus.has_signal("player_survival_changed"):
+		EventBus.player_survival_changed.emit(current_hunger, max_hunger, current_thirst, max_thirst)
+	if current_thirst <= 0.0:
+		die("спраги")
+		return false
+	return true
+
+
+## Відновлює рівень спраги
+func restore_thirst(amount: float) -> void:
+	if is_dead:
+		return
+	current_thirst = minf(current_thirst + amount, max_thirst)
+	thirst_changed.emit(current_thirst, max_thirst)
+	if EventBus != null and EventBus.has_signal("player_survival_changed"):
+		EventBus.player_survival_changed.emit(current_hunger, max_hunger, current_thirst, max_thirst)
+
+
+## Перевіряє, чи гравець дивиться на воду або знаходиться поруч із водоймою
+func is_looking_at_water() -> bool:
+	if GridManager == null:
+		return false
+	if interact_ray != null and interact_ray.is_colliding():
+		var hit_pos: Vector3 = interact_ray.get_collision_point()
+		var hit_cell: Vector2i = GridManager.world_to_map_3d(hit_pos)
+		if GridManager.is_water_cell(hit_cell):
+			return true
+	if fps_camera != null:
+		var cam_forward: Vector3 = -fps_camera.global_transform.basis.z
+		for dist in [1.5, 3.0, 4.5]:
+			var check_pos: Vector3 = fps_camera.global_position + cam_forward * dist
+			var cell: Vector2i = GridManager.world_to_map_3d(check_pos)
+			if GridManager.is_water_cell(cell):
+				return true
+	var p_cell: Vector2i = GridManager.world_to_map_3d(global_position)
+	if GridManager.is_water_cell(p_cell) or GridManager.is_near_water(p_cell, 1):
+		return true
+	return false
+
+
+## Спроба попити води з водойми
+func _try_drink_water() -> bool:
+	if not is_looking_at_water():
+		return false
+	if current_thirst >= max_thirst:
+		return false
+	restore_thirst(30.0)
+	_play_swing_animation()
+	print("[Player3D] 💧 Ви випили свіжої води з водойми. Спрага: %.1f / %.1f" % [current_thirst, max_thirst])
+	return true
+
+
+## Миттєва загибель гравця при виснаженні голоду або спраги
+func die(reason: String = "") -> void:
+	if is_dead:
+		return
+	is_dead = true
+	velocity = Vector3.ZERO
+	print("[Player3D] 💀 Гравець загинув від %s!" % reason)
+	if EventBus != null and EventBus.has_signal("player_died"):
+		EventBus.player_died.emit(reason)
+	player_died.emit(reason)
+	respawn()
+
+
+## Відродження гравця на точці спавну з повними запасами сил
+func respawn() -> void:
+	global_position = spawn_position
+	velocity = Vector3.ZERO
+	current_energy = max_energy
+	current_hunger = max_hunger
+	current_thirst = max_thirst
+	is_dead = false
+	energy_changed.emit(current_energy, max_energy)
+	hunger_changed.emit(current_hunger, max_hunger)
+	thirst_changed.emit(current_thirst, max_thirst)
+	if EventBus != null:
+		EventBus.player_stats_changed.emit(100.0, 100.0, current_energy, max_energy)
+		if EventBus.has_signal("player_survival_changed"):
+			EventBus.player_survival_changed.emit(current_hunger, max_hunger, current_thirst, max_thirst)
+	print("[Player3D] 🔄 Гравець відродився на базі! Усі характеристики відновлено.")
 
 
 func _show_energy_warning() -> void:
@@ -231,13 +381,16 @@ func _show_energy_warning() -> void:
 
 func _try_consume_food() -> bool:
 	var active_item_id: StringName = _get_active_item_id()
-	if active_item_id == &"berries" and current_energy < max_energy:
-		if inventory != null and inventory.get_item_count(&"berries") > 0:
-			if inventory.remove_item(&"berries", 1):
-				restore_energy(25.0)
-				_play_swing_animation()
-				print("[Player3D] З'їдено ягоди! Енергію відновлено: +25 (%d/%d)" % [int(current_energy), int(max_energy)])
-				return true
+	if active_item_id == &"berries":
+		if current_energy < max_energy or current_hunger < max_hunger or current_thirst < max_thirst:
+			if inventory != null and inventory.get_item_count(&"berries") > 0:
+				if inventory.remove_item(&"berries", 1):
+					restore_energy(25.0)
+					restore_hunger(15.0)
+					restore_thirst(5.0)
+					_play_swing_animation()
+					print("[Player3D] 🍓 З'їдено ягоди! Енергія: +25, Голод: +15, Спрага: +5")
+					return true
 	return false
 
 
@@ -465,9 +618,14 @@ func complete_sleep() -> void:
 	if fps_camera != null:
 		fps_camera.position = Vector3.ZERO
 		fps_camera.rotation = Vector3.ZERO
+	spawn_position = global_position
 	energy_changed.emit(current_energy, max_energy)
+	hunger_changed.emit(current_hunger, max_hunger)
+	thirst_changed.emit(current_thirst, max_thirst)
 	if EventBus != null:
 		EventBus.player_stats_changed.emit(100.0, 100.0, current_energy, max_energy)
+		if EventBus.has_signal("player_survival_changed"):
+			EventBus.player_survival_changed.emit(current_hunger, max_hunger, current_thirst, max_thirst)
 		if EventBus.has_signal("player_sleep_finished"):
 			EventBus.player_sleep_finished.emit()
 

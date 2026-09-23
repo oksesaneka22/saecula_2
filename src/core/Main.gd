@@ -11,6 +11,7 @@ const ModularPiece3DScript = preload("res://src/world3d/modular/ModularPiece3D.g
 const ItemSlotUIScript = preload("res://src/ui/hud/ItemSlotUI.gd")
 const EnergyBarUIScript = preload("res://src/ui/hud/EnergyBarUI.gd")
 const SleepOverlayUIScript = preload("res://src/ui/hud/SleepOverlayUI.gd")
+const SurvivalStatsUIScript = preload("res://src/ui/hud/SurvivalStatsUI.gd")
 
 func _ready() -> void:
 	# Підписуємося на сигнали EventBus для валідації шини
@@ -72,6 +73,9 @@ func _ready() -> void:
 
 	# 17. Валідація системи енергії (1000 од., дії, виснаження при 0, шкала EnergyBarUI)
 	_test_player_energy_system()
+
+	# 18. Валідація механік виживання: голод, спрага, пиття води з річки, загибель при 0 та SurvivalStatsUI
+	_test_player_survival_system()
 
 
 func _test_inventory_component(wood: Resource) -> void:
@@ -920,3 +924,90 @@ func _test_player_energy_system() -> void:
 	campfire_node.queue_free()
 	player.queue_free()
 	print("[Main] Player energy system, Sleep mechanics & SleepOverlayUI unit tests passed successfully!")
+
+
+func _test_player_survival_system() -> void:
+	print("[Main] Testing hunger, thirst, drinking water and instant death mechanics...")
+	var player = Player3DScene.instantiate()
+	add_child(player)
+	player.global_position = Vector3(15.0, 1.0, 15.0)
+
+	# 1. Початкові значення голоду та спраги
+	assert(player.max_hunger == 100.0, "Max hunger must be 100.0")
+	assert(player.current_hunger == 100.0, "Initial hunger must be 100.0")
+	assert(player.max_thirst == 100.0, "Max thirst must be 100.0")
+	assert(player.current_thirst == 100.0, "Initial thirst must be 100.0")
+
+	# 2. Витрата та відновлення голоду
+	var hunger_ok = player.consume_hunger(25.0)
+	assert(hunger_ok, "consume_hunger should return true")
+	assert(is_equal_approx(player.current_hunger, 75.0), "Hunger should drop to 75.0")
+	player.restore_hunger(15.0)
+	assert(is_equal_approx(player.current_hunger, 90.0), "Hunger should restore to 90.0")
+
+	# 3. Витрата та відновлення спраги
+	var thirst_ok = player.consume_thirst(40.0)
+	assert(thirst_ok, "consume_thirst should return true")
+	assert(is_equal_approx(player.current_thirst, 60.0), "Thirst should drop to 60.0")
+	player.restore_thirst(20.0)
+	assert(is_equal_approx(player.current_thirst, 80.0), "Thirst should restore to 80.0")
+
+	# 4. Вживання ягід відновлює енергію (+25), голод (+15) та спрагу (+5)
+	var berry_res = ItemDatabase.get_item(&"berries")
+	assert(berry_res != null, "ItemDatabase must have berries")
+	player.inventory.add_item(berry_res, 3)
+	player.consume_energy(50.0) # Енергія 950
+	# Симулюємо вибір ягід у слот
+	player.active_hotbar_slot = 0
+	var initial_slot = player.inventory.get_slot(0)
+	var old_item = initial_slot.item
+	var old_count = initial_slot.count
+	initial_slot.item = berry_res
+	initial_slot.count = 2
+
+	var consumed = player._try_consume_food()
+	assert(consumed, "Berries should be consumed on food action")
+	assert(is_equal_approx(player.current_energy, 975.0), "Berries must restore +25 energy")
+	assert(player.current_hunger > 90.0, "Berries must restore +15 hunger")
+	assert(player.current_thirst > 80.0, "Berries must restore +5 thirst")
+
+	# Відновлюємо слот
+	initial_slot.item = old_item
+	initial_slot.count = old_count
+
+	# 5. Пиття води з водойми
+	var water_cell := Vector2i(50, 50)
+	GridManager.register_water_cell(water_cell)
+	player.global_position = GridManager.map_to_world_3d(water_cell, 1.0)
+	assert(player.is_looking_at_water(), "Player at water cell must detect water")
+	player.current_thirst = 50.0
+	var drank = player._try_drink_water()
+	assert(drank, "Drinking near water cell must succeed")
+	assert(is_equal_approx(player.current_thirst, 80.0), "Drinking water restores +30 thirst")
+	GridManager.unregister_water_cell(water_cell)
+
+	# 6. Миттєва смерть при нульовому голоді
+	player.spawn_position = Vector3(10.0, 1.0, 10.0)
+	player.current_hunger = 2.0
+	player.consume_hunger(5.0) # падає до 0 -> die("голоду") -> respawn()
+	assert(is_equal_approx(player.current_hunger, 100.0), "Respawn must restore hunger to 100.0")
+	assert(is_equal_approx(player.current_thirst, 100.0), "Respawn must restore thirst to 100.0")
+	assert(is_equal_approx(player.current_energy, 1000.0), "Respawn must restore energy to 1000.0")
+
+	# 7. Миттєва смерть при нульовій спразі
+	player.current_thirst = 3.0
+	player.consume_thirst(10.0) # падає до 0 -> die("спраги") -> respawn()
+	assert(is_equal_approx(player.current_hunger, 100.0), "Respawn must restore hunger to 100.0")
+	assert(is_equal_approx(player.current_thirst, 100.0), "Respawn must restore thirst to 100.0")
+
+	# 8. Валідація інтерфейсу SurvivalStatsUI
+	var survival_ui = SurvivalStatsUIScript.new()
+	add_child(survival_ui)
+	assert(survival_ui.mouse_filter == Control.MOUSE_FILTER_IGNORE, "SurvivalStatsUI must not block mouse clicks")
+	assert(survival_ui.has_node("HBox"), "SurvivalStatsUI must contain HBox container")
+	assert(survival_ui.has_node("HBox/HungerContainer"), "SurvivalStatsUI must contain HungerContainer")
+	assert(survival_ui.has_node("HBox/ThirstContainer"), "SurvivalStatsUI must contain ThirstContainer")
+	survival_ui.queue_free()
+
+	player.queue_free()
+	print("[Main] Hunger, thirst, drinking water and instant death mechanics unit tests passed successfully!")

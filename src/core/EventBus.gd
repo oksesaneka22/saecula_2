@@ -37,7 +37,10 @@ signal energy_depleted_action_attempted
 signal player_interacted_with_world(target_node: Node, map_coords: Vector2i)
 
 ## Гравець загинув
-signal player_died
+signal player_died(reason: String)
+
+## Зміна показників виживання гравця (голод та спрага)
+signal player_survival_changed(current_hunger: float, max_hunger: float, current_thirst: float, max_thirst: float)
 
 
 # ------------------------------------------------------------------------------
