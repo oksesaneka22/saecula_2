@@ -615,6 +615,19 @@ func start_sleep(duration: float = 2.8) -> void:
 func complete_sleep() -> void:
 	is_sleeping = false
 	current_energy = max_energy
+
+	# Сон біля багаття перемотує час на ранок (07:00 наступного дня)
+	if GameManager != null:
+		if GameManager.in_game_time_seconds > 6.0 * 3600.0:
+			GameManager.current_day += 1
+			GameManager.in_game_time_seconds = 7.0 * 3600.0
+			if EventBus != null:
+				EventBus.day_passed.emit(GameManager.current_day)
+				EventBus.day_time_updated.emit(GameManager.get_current_hour(), GameManager.get_current_minute())
+		else:
+			GameManager.in_game_time_seconds = 7.0 * 3600.0
+			if EventBus != null:
+				EventBus.day_time_updated.emit(GameManager.get_current_hour(), GameManager.get_current_minute())
 	if fps_camera != null:
 		fps_camera.position = Vector3.ZERO
 		fps_camera.rotation = Vector3.ZERO

@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3 uid="uid://saecula_hud"]
+[gd_scene load_steps=12 format=3 uid="uid://saecula_hud"]
 
 [ext_resource type="Script" path="res://src/ui/hud/EnergyBarUI.gd" id="9_energy"]
 [ext_resource type="Script" path="res://src/ui/hud/HotbarUI.gd" id="1_hotbar"]
@@ -11,6 +11,7 @@
 [ext_resource type="Script" path="res://src/ui/hud/HUDActionBar.gd" id="8_actionbar"]
 [ext_resource type="Script" path="res://src/ui/hud/SleepOverlayUI.gd" id="10_sleep"]
 [ext_resource type="Script" path="res://src/ui/hud/SurvivalStatsUI.gd" id="11_survival"]
+[ext_resource type="Script" path="res://src/ui/hud/AdminPanelUI.gd" id="12_admin"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_banner"]
 bg_color = Color(0.08, 0.1, 0.12, 0.75)
@@ -117,7 +118,7 @@ anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -400.0
+offset_left = -530.0
 offset_top = -68.0
 offset_right = -16.0
 offset_bottom = -16.0
@@ -153,6 +154,12 @@ layout_mode = 2
 tooltip_text = "Відкрити інвентар (I)"
 text = "🎒 Інвентар [I]"
 
+[node name="AdminButton" type="Button" parent="HUDActionBar/HBoxContainer"]
+custom_minimum_size = Vector2(110, 42)
+layout_mode = 2
+tooltip_text = "Відкрити адмін-панель / меню налагодження (F1 або ~)"
+text = "⚙️ Адмінка [F1]"
+
 [node name="InventoryUI" type="Control" parent="."]
 visible = false
 layout_mode = 3
@@ -186,3 +193,13 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("10_sleep")
+[node name="AdminPanelUI" type="Control" parent="."]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("12_admin")

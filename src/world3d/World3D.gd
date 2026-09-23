@@ -45,6 +45,10 @@ var buildings_container: Node3D = null
 
 @onready var resource_container: Node3D = $ResourceContainer
 @onready var ground_mesh: MeshInstance3D = $Ground/GroundMesh
+@onready var world_environment: WorldEnvironment = $WorldEnvironment
+@onready var sun_light: DirectionalLight3D = $DirectionalLight3D
+var moon_light: DirectionalLight3D = null
+var _sky_material: ProceduralSkyMaterial = null
 
 
 func _ready() -> void:
@@ -93,11 +97,14 @@ func _ready() -> void:
 	# 9. Стартовий режим від 1-ї особи та стартовий майданчик вогнища
 	_apply_mode(GameManager.current_state)
 	_spawn_starter_construction_site()
+	_setup_day_night_cycle()
 
 
 var _chunk_check_timer: float = 0.0
 
 func _process(delta: float) -> void:
+	if GameManager != null:
+		_update_celestial_cycle(GameManager.in_game_time_seconds)
 	_chunk_check_timer += delta
 	if _chunk_check_timer >= 0.15:
 		_chunk_check_timer = 0.0
@@ -523,3 +530,117 @@ func spawn_construction_site(building: BuildingData, cell: Vector2i) -> Node3D:
 	if site.has_method("setup_site"):
 		site.setup_site(building, cell)
 	return site
+
+# ------------------------------------------------------------------------------
+# Система зміни дня та ночі, руху Сонця, Місяця та атмосферного освітлення
+# ------------------------------------------------------------------------------
+func _setup_day_night_cycle() -> void:
+	if sun_light != null:
+		sun_light.name = "SunLight"
+		sun_light.shadow_enabled = true
+		sun_light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+		sun_light.directional_shadow_max_distance = 65.0
+
+	# Створюємо джерело світла для Місяця
+	moon_light = DirectionalLight3D.new()
+	moon_light.name = "MoonLight"
+	moon_light.shadow_enabled = true
+	moon_light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	moon_light.directional_shadow_max_distance = 50.0
+	moon_light.light_color = Color(0.45, 0.6, 0.88)
+	moon_light.light_energy = 0.08
+	add_child(moon_light)
+
+	if world_environment != null and world_environment.environment != null:
+		world_environment.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+		if world_environment.environment.sky != null and world_environment.environment.sky.sky_material is ProceduralSkyMaterial:
+			_sky_material = world_environment.environment.sky.sky_material.duplicate()
+			world_environment.environment.sky.sky_material = _sky_material
+
+	var init_time: float = GameManager.in_game_time_seconds if GameManager != null else 8.0 * 3600.0
+	_update_celestial_cycle(init_time)
+
+
+## Оновлює позицію Сонця, Місяця, кольори неба та яскравість навколишнього світу відповідно до часу доби
+func _update_celestial_cycle(time_seconds: float) -> void:
+	var total_seconds: float = GameManager.SECONDS_PER_DAY if GameManager != null else 86400.0
+	var t: float = fmod(time_seconds, total_seconds) / total_seconds
+	# t = 0.0 о 00:00 (північ), t = 0.25 о 06:00 (світанок), t = 0.5 о 12:00 (полудень), t = 0.75 о 18:00 (захід)
+	var sun_angle_rad: float = (t - 0.25) * TAU
+	var sun_dir := Vector3(-cos(sun_angle_rad), sin(sun_angle_rad), 0.35).normalized()
+	var moon_dir := -sun_dir
+	var sun_altitude: float = sin(sun_angle_rad)
+
+	# 1. Позиціонування та орієнтація Сонця (DirectionalLight світить вздовж -Z)
+	if sun_light != null:
+		sun_light.rotation.x = -atan2(sun_dir.y, sqrt(sun_dir.x * sun_dir.x + sun_dir.z * sun_dir.z))
+		sun_light.rotation.y = atan2(sun_dir.x, sun_dir.z)
+
+	# 2. Позиціонування та орієнтація Місяця
+	if moon_light != null:
+		moon_light.rotation.x = -atan2(moon_dir.y, sqrt(moon_dir.x * moon_dir.x + moon_dir.z * moon_dir.z))
+		moon_light.rotation.y = atan2(moon_dir.x, moon_dir.z)
+
+	# 3. Розрахунок освітлення, кольорів неба та темряви залежно від висоти сонця
+	if sun_altitude > 0.15:
+		# === ДЕНЬ (Яскраве сонце, блакитне небо) ===
+		var day_factor: float = clampf((sun_altitude - 0.15) / 0.35, 0.0, 1.0)
+		if sun_light != null:
+			sun_light.visible = true
+			sun_light.light_energy = lerpf(0.6, 1.2, day_factor)
+			sun_light.light_color = Color(1.0, 0.8, 0.55).lerp(Color(1.0, 0.96, 0.9), day_factor)
+		if moon_light != null:
+			moon_light.visible = false
+			moon_light.light_energy = 0.0
+
+		if world_environment != null and world_environment.environment != null:
+			world_environment.environment.ambient_light_energy = lerpf(0.18, 0.45, day_factor)
+			world_environment.environment.ambient_light_color = Color(0.4, 0.3, 0.2).lerp(Color(0.65, 0.72, 0.8), day_factor)
+
+		if _sky_material != null:
+			_sky_material.sky_top_color = Color(0.25, 0.4, 0.7).lerp(Color(0.38, 0.65, 0.95), day_factor)
+			_sky_material.sky_horizon_color = Color(0.85, 0.6, 0.3).lerp(Color(0.72, 0.82, 0.91), day_factor)
+			_sky_material.ground_bottom_color = Color(0.12, 0.14, 0.12).lerp(Color(0.2, 0.25, 0.2), day_factor)
+			_sky_material.ground_horizon_color = Color(0.35, 0.28, 0.18).lerp(Color(0.65, 0.75, 0.7), day_factor)
+
+	elif sun_altitude >= -0.12:
+		# === СВІТАНОК / ЗАХІД СОНЦЯ (Сутінки) ===
+		var twilight_factor: float = clampf((sun_altitude + 0.12) / 0.27, 0.0, 1.0)
+		if sun_light != null:
+			sun_light.visible = (sun_altitude > -0.06)
+			sun_light.light_energy = clampf((sun_altitude + 0.06) / 0.21 * 0.6, 0.0, 0.6)
+			sun_light.light_color = Color(1.0, 0.45, 0.15)
+		if moon_light != null:
+			moon_light.visible = (sun_altitude < 0.04)
+			moon_light.light_energy = clampf((0.04 - sun_altitude) / 0.16 * 0.08, 0.0, 0.08)
+
+		if world_environment != null and world_environment.environment != null:
+			world_environment.environment.ambient_light_energy = lerpf(0.025, 0.18, twilight_factor)
+			world_environment.environment.ambient_light_color = Color(0.06, 0.05, 0.1).lerp(Color(0.4, 0.3, 0.2), twilight_factor)
+
+		if _sky_material != null:
+			_sky_material.sky_top_color = Color(0.03, 0.04, 0.09).lerp(Color(0.25, 0.4, 0.7), twilight_factor)
+			_sky_material.sky_horizon_color = Color(0.08, 0.06, 0.12).lerp(Color(0.95, 0.5, 0.2), twilight_factor)
+			_sky_material.ground_bottom_color = Color(0.01, 0.01, 0.015).lerp(Color(0.12, 0.14, 0.12), twilight_factor)
+			_sky_material.ground_horizon_color = Color(0.03, 0.03, 0.05).lerp(Color(0.35, 0.28, 0.18), twilight_factor)
+
+	else:
+		# === НІЧ (Дуже темний світ, вогнище - головне джерело світла) ===
+		var night_factor: float = clampf((-sun_altitude - 0.12) / 0.4, 0.0, 1.0)
+		if sun_light != null:
+			sun_light.visible = false
+			sun_light.light_energy = 0.0
+		if moon_light != null:
+			moon_light.visible = true
+			moon_light.light_energy = lerpf(0.06, 0.09, night_factor)
+			moon_light.light_color = Color(0.45, 0.6, 0.88)
+
+		if world_environment != null and world_environment.environment != null:
+			world_environment.environment.ambient_light_energy = lerpf(0.025, 0.015, night_factor)
+			world_environment.environment.ambient_light_color = Color(0.03, 0.04, 0.07)
+
+		if _sky_material != null:
+			_sky_material.sky_top_color = Color(0.008, 0.01, 0.02)
+			_sky_material.sky_horizon_color = Color(0.015, 0.02, 0.035)
+			_sky_material.ground_bottom_color = Color(0.004, 0.005, 0.008)
+			_sky_material.ground_horizon_color = Color(0.01, 0.015, 0.025)

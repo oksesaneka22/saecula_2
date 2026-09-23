@@ -6,6 +6,7 @@ extends Control
 @onready var build_button: Button = $HBoxContainer/BuildButton
 @onready var craft_button: Button = $HBoxContainer/CraftButton
 @onready var inventory_button: Button = $HBoxContainer/InventoryButton
+@onready var admin_button: Button = $HBoxContainer.get_node_or_null("AdminButton")
 
 
 func _ready() -> void:
@@ -15,6 +16,8 @@ func _ready() -> void:
 		craft_button.pressed.connect(_on_craft_button_pressed)
 	if inventory_button != null:
 		inventory_button.pressed.connect(_on_inventory_button_pressed)
+	if admin_button != null:
+		admin_button.pressed.connect(_on_admin_button_pressed)
 
 
 func _on_build_button_pressed() -> void:
@@ -57,7 +60,24 @@ func _on_inventory_button_pressed() -> void:
 			inv_ui.open()
 
 
+func _on_admin_button_pressed() -> void:
+	var hud = get_parent()
+	if hud == null:
+		return
+	var admin_ui = hud.get_node_or_null("AdminPanelUI")
+	if admin_ui != null:
+		if admin_ui.visible:
+			admin_ui.close()
+		else:
+			_close_other_windows(hud)
+			admin_ui.open()
+
+
 func _close_other_windows(hud: Node) -> void:
+	var admin_ui = hud.get_node_or_null("AdminPanelUI")
+	if admin_ui != null and admin_ui.visible:
+		admin_ui.close()
+
 	var build_menu = hud.get_node_or_null("BuildMenuUI")
 	if build_menu != null and build_menu.visible:
 		build_menu.close()

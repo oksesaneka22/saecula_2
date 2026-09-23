@@ -12,6 +12,7 @@ const ItemSlotUIScript = preload("res://src/ui/hud/ItemSlotUI.gd")
 const EnergyBarUIScript = preload("res://src/ui/hud/EnergyBarUI.gd")
 const SleepOverlayUIScript = preload("res://src/ui/hud/SleepOverlayUI.gd")
 const SurvivalStatsUIScript = preload("res://src/ui/hud/SurvivalStatsUI.gd")
+const AdminPanelUIScript = preload("res://src/ui/hud/AdminPanelUI.gd")
 
 func _ready() -> void:
 	# Підписуємося на сигнали EventBus для валідації шини
@@ -76,6 +77,12 @@ func _ready() -> void:
 
 	# 18. Валідація механік виживання: голод, спрага, пиття води з річки, загибель при 0 та SurvivalStatsUI
 	_test_player_survival_system()
+
+	# 19. Валідація зміни дня та ночі, руху Сонця і Місяця, темряви вночі та освітлення від табірного вогнища
+	_test_day_night_and_campfire_lighting()
+
+	# 20. Валідація адмін-панелі: видача предметів, зміна характеристик виживання, часу доби та супершвидкості
+	_test_admin_panel_ui()
 
 
 func _test_inventory_component(wood: Resource) -> void:
@@ -1011,3 +1018,132 @@ func _test_player_survival_system() -> void:
 
 	player.queue_free()
 	print("[Main] Hunger, thirst, drinking water and instant death mechanics unit tests passed successfully!")
+
+func _test_day_night_and_campfire_lighting() -> void:
+	print("[Main] Testing Day/Night cycle, celestial sun/moon movement, darkness and campfire light...")
+	var world = get_node_or_null("World3D")
+	assert(world != null, "World3D instance must exist in Main")
+	assert(world.sun_light != null, "Sun DirectionalLight3D must exist")
+	assert(world.moon_light != null, "Moon DirectionalLight3D must exist")
+	assert(world.world_environment != null, "WorldEnvironment must exist")
+
+	# 1. Полудень (12:00 = 43200 сек) - Сонце в зеніті, яскравий день
+	world._update_celestial_cycle(12.0 * 3600.0)
+	assert(world.sun_light.visible == true, "Sun must be visible at noon")
+	assert(world.sun_light.light_energy >= 0.8, "Sun light energy must be bright at noon")
+	assert(world.moon_light.visible == false, "Moon must be hidden at noon")
+	assert(world.world_environment.environment.ambient_light_energy > 0.3, "Ambient light must be bright at noon")
+
+	# 2. Північ (00:00 = 0 сек) - Повна темрява, Місяць на небі
+	world._update_celestial_cycle(0.0)
+	assert(world.sun_light.visible == false, "Sun must be hidden at midnight")
+	assert(world.sun_light.light_energy == 0.0, "Sun energy must be 0 at midnight")
+	assert(world.moon_light.visible == true, "Moon must be visible at midnight")
+	assert(world.moon_light.light_energy > 0.04, "Moon light must shine at midnight")
+	# Навколишній світ стає дуже темним (ambient energy <= 0.03)
+	assert(world.world_environment.environment.ambient_light_energy <= 0.03, "Ambient energy at night must be very dark (<= 0.03)")
+
+	# 3. Світанок (06:00 = 21600 сек) - Сонце сходить
+	world._update_celestial_cycle(6.0 * 3600.0)
+
+	# 4. Повернення до поточного ігрового часу
+	world._update_celestial_cycle(GameManager.in_game_time_seconds)
+
+	# 5. Перевірка вогнища як ключового джерела світла з тінями та мерехтінням
+	var campfire_entity = BuildingEntity3DScript.new()
+	add_child(campfire_entity)
+	var campfire_data = BuildingPlacementController.get_building(&"campfire")
+	assert(campfire_data != null, "Campfire building data must exist")
+	campfire_entity.setup_building(campfire_data, Vector2i(55, 55))
+	assert(campfire_entity._fire_light != null, "Campfire must create OmniLight3D")
+	assert(campfire_entity._fire_light.shadow_enabled == true, "Campfire light must cast dynamic shadows")
+	assert(campfire_entity._fire_light.omni_range >= 15.0, "Campfire light range must illuminate surrounding campsite (>= 15m)")
+	assert(campfire_entity._fire_light.light_energy >= 2.5, "Campfire light energy must be bright (>= 2.5)")
+
+	# Тестуємо мерехтіння вогнища в _process
+	campfire_entity._process(0.2)
+	assert(campfire_entity._flicker_time > 0.0, "Campfire flicker timer must progress")
+	campfire_entity.queue_free()
+
+	# 6. Перевірка перемотування часу до ранку (07:00) після сну біля вогнища
+	var player = Player3DScene.instantiate()
+	add_child(player)
+	GameManager.in_game_time_seconds = 23.0 * 3600.0 # 23:00 (глибока ніч)
+	var prev_day = GameManager.current_day
+	player.complete_sleep()
+	assert(GameManager.current_day == prev_day + 1, "Sleeping at night must advance to next day")
+	assert(is_equal_approx(GameManager.in_game_time_seconds, 7.0 * 3600.0), "Sleeping must advance time to 07:00 morning")
+	assert(is_equal_approx(player.current_energy, 1000.0), "Energy must be fully restored after sleep")
+	player.queue_free()
+
+	print("[Main] Day/Night cycle, celestial sun/moon movement, darkness and campfire light unit tests passed successfully!")
+func _test_admin_panel_ui() -> void:
+	print("[Main] Testing AdminPanelUI: item spawning, survival stats modification, time of day controls & cheats...")
+	var hud = get_node_or_null("HUD")
+	assert(hud != null, "HUD node must exist in Main")
+	var admin_ui = hud.get_node_or_null("AdminPanelUI")
+	assert(admin_ui != null, "AdminPanelUI node must exist in HUD")
+	assert(admin_ui.visible == false, "AdminPanelUI must be initially hidden")
+
+	# 1. Відкриття та закриття через toggle / open / close
+	admin_ui.open()
+	assert(admin_ui.visible == true, "AdminPanelUI must be visible after open()")
+	assert(admin_ui._is_open == true, "_is_open must be true after open()")
+
+	# 2. Тестування взаємодії з характеристиками гравця
+	var player = get_tree().get_first_node_in_group("player")
+	if player == null:
+		player = Player3DScene.instantiate()
+		add_child(player)
+
+	admin_ui._set_player_energy(350.0)
+	assert(is_equal_approx(player.current_energy, 350.0), "Admin panel must set player energy to 350")
+	admin_ui._mod_player_energy(100.0)
+	assert(is_equal_approx(player.current_energy, 450.0), "Admin panel +100 energy must yield 450")
+
+	admin_ui._set_player_hunger(42.0)
+	assert(is_equal_approx(player.current_hunger, 42.0), "Admin panel must set player hunger to 42")
+
+	admin_ui._set_player_thirst(73.0)
+	assert(is_equal_approx(player.current_thirst, 73.0), "Admin panel must set player thirst to 73")
+
+	admin_ui._restore_all_stats()
+	assert(is_equal_approx(player.current_energy, 1000.0), "Restore all stats must set energy to 1000")
+	assert(is_equal_approx(player.current_hunger, 100.0), "Restore all stats must set hunger to 100")
+	assert(is_equal_approx(player.current_thirst, 100.0), "Restore all stats must set thirst to 100")
+
+	# 3. Тестування видачі предметів та очищення інвентарю
+	admin_ui._clear_player_inventory()
+	assert(player.inventory.get_item_count(&"wood") == 0, "Inventory must be empty after clear")
+
+	var wood_item = ItemDatabase.get_item(&"wood")
+	assert(wood_item != null, "Item wood must exist")
+	admin_ui._give_item(wood_item, 10)
+	assert(player.inventory.get_item_count(&"wood") == 10, "Inventory must contain 10 wood after giving")
+
+	admin_ui._give_all_resources()
+	assert(player.inventory.get_item_count(&"stone") == 64, "Give all resources must give 64 stone")
+	assert(player.inventory.get_item_count(&"clay") == 64, "Give all resources must give 64 clay")
+	assert(player.inventory.get_item_count(&"straw") == 64, "Give all resources must give 64 straw")
+
+	# 4. Тестування керування часом доби
+	admin_ui._set_time_hours(14.0)
+	assert(GameManager.get_current_hour() == 14, "Setting time to 14.0 must make current hour 14")
+	admin_ui._shift_time_hours(3.0)
+	assert(GameManager.get_current_hour() == 17, "Shifting time by +3h from 14 must make current hour 17")
+
+	# 5. Тестування супершвидкості
+	assert(admin_ui._is_super_speed == false, "Super speed must be off initially")
+	admin_ui._toggle_super_speed()
+	assert(admin_ui._is_super_speed == true, "Super speed must be active after toggle")
+	assert(player.walk_speed > 10.0, "Walk speed must be accelerated in super speed mode")
+	admin_ui._toggle_super_speed()
+	assert(admin_ui._is_super_speed == false, "Super speed must be deactivated after second toggle")
+	assert(is_equal_approx(player.walk_speed, 5.0), "Walk speed must return to normal (5.0)")
+
+	# 6. Закриття адмін-панелі
+	admin_ui.close()
+	assert(admin_ui.visible == false, "AdminPanelUI must be hidden after close()")
+	assert(admin_ui._is_open == false, "_is_open must be false after close()")
+
+	print("[Main] AdminPanelUI unit tests passed successfully!")

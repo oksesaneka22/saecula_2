@@ -42,6 +42,9 @@ signal player_died(reason: String)
 ## Зміна показників виживання гравця (голод та спрага)
 signal player_survival_changed(current_hunger: float, max_hunger: float, current_thirst: float, max_thirst: float)
 
+## Запит на відкриття/закриття адмін-панелі (F1 або ~)
+signal admin_panel_toggle_requested
+
 
 # ------------------------------------------------------------------------------
 # 3. Події інвентаря та предметів (Inventory & Items)
