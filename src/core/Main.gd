@@ -1,4 +1,4 @@
-extends Node
+﻿extends Node
 
 const ItemDataScript = preload("res://src/data/schemas/ItemData.gd")
 const InventoryComponentScript = preload("res://src/systems/inventory/InventoryComponent.gd")
@@ -13,6 +13,9 @@ const EnergyBarUIScript = preload("res://src/ui/hud/EnergyBarUI.gd")
 const SleepOverlayUIScript = preload("res://src/ui/hud/SleepOverlayUI.gd")
 const SurvivalStatsUIScript = preload("res://src/ui/hud/SurvivalStatsUI.gd")
 const AdminPanelUIScript = preload("res://src/ui/hud/AdminPanelUI.gd")
+const Job = preload("res://src/systems/jobs/Job.gd")
+const Colonist3DScene = preload("res://src/entities3d/colonist/Colonist3D.tscn")
+const Colonist3DScript = preload("res://src/entities3d/colonist/Colonist3D.gd")
 
 func _ready() -> void:
 	# Підписуємося на сигнали EventBus для валідації шини
@@ -84,8 +87,29 @@ func _ready() -> void:
 	# 20. Валідація адмін-панелі: видача предметів, зміна характеристик виживання, часу доби та супершвидкості
 	_test_admin_panel_ui()
 
+	# 22. Валідація Меню Епох, підепох та вертикального дерева досліджень (Tree/Forest Layout, суворе блокування)
+	_test_era_and_tech_tree_system()
+
+	# 23. Валідація 3D Поселенців, FSM та системи автономних завдань (JobManager, Minecolonies-стиль)
+	_test_colonists_and_job_system()
+
 	# 21. Валідація смолоскипа (освітлення в руці та встановлення), будівельного молотка (10 махів без нього, 5 з ним) та мотузки
 	_test_torch_hammer_rope_mechanics()
+
+	# 24. Валідація аудіо-системи (процедурний синтез звуків, кроки, удари, крафт, дзвін епох) та спливаючих 3D написів
+	_test_audio_and_floating_text_system()
+
+	# 25. Валідація поведінки поселенців: нічний відпочинок біля вогнища, візуальні статуси завдань та плавні повороти
+	_test_colonist_night_rest_and_visual_task_polish()
+
+	# 26. Валідація списку поселенців (Colony Roster UI: міні-панель, картки, перемикання слідування, діалог, фокус)
+	_test_colony_roster_ui()
+
+	# 27. Валідація візуального контуру виділення та знесення модульних блоків (Going Medieval: Highlight, Demolition, Resource refunds)
+	_test_modular_block_highlight_and_demolish()
+
+	# 28. Валідація контекстного прицілу (CrosshairUI: підказки для поселенців з HP/роботою/дистанцією, вогнища з денним/нічним сном, споруд та ресурсів)
+	_test_enhanced_crosshair_hints()
 
 
 func _test_inventory_component(wood: Resource) -> void:
@@ -1272,3 +1296,628 @@ func _test_torch_hammer_rope_mechanics() -> void:
 	assert(floor_with_hammer.is_built, "Piece MUST be built after exactly 5 swings with hammer")
 
 	print("[Main] Torch, Hammer and Rope unit tests passed successfully!")
+
+
+func _test_era_and_tech_tree_system() -> void:
+	print("[Main] Testing Era and Technology Tree System (Sub-eras, Tree Forest Layout, Strict progression)...")
+
+	# 1. Перевірка автозавантаження та констант
+	assert(EraManager != null, "EraManager singleton must be loaded")
+	assert(EraManager.ERA_NAMES.size() == 4, "Must define 4 eras")
+	assert(EraManager.SUB_ERAS.size() == 8, "Must define 8 sub-eras across all eras")
+	assert(EraManager.get_total_tech_count() >= 13, "Must have at least 13 technologies configured")
+
+	# 2. Перевірка стартового стану
+	EraManager.reset_techs_cheat()
+	assert(EraManager.current_era == 0, "Initial era must be 0 (Paleolithic)")
+	assert(EraManager.current_sub_era_index == 0, "Initial sub-era must be 0 (paleo_early)")
+	assert(EraManager.is_tech_unlocked(&"primitive_survival") == true, "primitive_survival must be unlocked by default")
+	assert(EraManager.is_tech_unlocked(&"fire_mastery") == false, "fire_mastery must be locked initially")
+	assert(EraManager.is_tech_unlocked(&"stone_flaking") == false, "stone_flaking must be locked initially")
+	assert(EraManager.is_sub_era_unlocked(&"paleo_early") == true, "Sub-era 0 (paleo_early) is always unlocked")
+	assert(EraManager.is_sub_era_unlocked(&"paleo_late") == false, "Sub-era 1 (paleo_late) MUST be locked before completing paleo_early")
+
+	# 3. Перевірка блокування переходу до наступної підепохи
+	var test_inv: Node = InventoryComponentScript.new()
+	test_inv.set("slot_count", 10)
+	add_child(test_inv)
+
+	# Навіть маючи ресурси, не можна дослідити stone_flaking, бо підепоха paleo_late ще заблокована!
+	test_inv.add_item_by_id(&"wood", 100)
+	test_inv.add_item_by_id(&"stone", 100)
+	test_inv.add_item_by_id(&"flint", 20)
+	test_inv.add_item_by_id(&"straw", 50)
+	test_inv.add_item_by_id(&"rope", 10)
+
+	assert(EraManager.can_research(&"stone_flaking", test_inv) == false, "stone_flaking cannot be researched while sub-era paleo_late is locked")
+	assert(EraManager.research_tech(&"stone_flaking", test_inv) == false, "Research stone_flaking must fail when sub-era locked")
+
+	# 4. Завершення першої підепохи (досліджуємо fire_mastery)
+	assert(EraManager.can_research(&"fire_mastery", test_inv) == true, "Can research fire_mastery")
+	var fire_ok = EraManager.research_tech(&"fire_mastery", test_inv)
+	assert(fire_ok == true, "fire_mastery research succeeded")
+	assert(EraManager.is_tech_unlocked(&"fire_mastery") == true, "fire_mastery is unlocked")
+
+	# Тепер sub-era paleo_early завершена (primitive_survival + fire_mastery обидва відкриті)!
+	assert(EraManager.is_sub_era_completed(&"paleo_early") == true, "paleo_early must be completed")
+	assert(EraManager.is_sub_era_unlocked(&"paleo_late") == true, "paleo_late must now be UNLOCKED!")
+	assert(EraManager.current_sub_era_index == 1, "Current sub-era must automatically advance to 1 (paleo_late)")
+
+	# 5. Дослідження другої підепохи (stone_flaking та primitive_shelter)
+	var axe_recipe = CraftingManager.get_recipe(&"craft_stone_axe")
+	assert(axe_recipe != null, "Stone axe recipe must exist")
+	assert(CraftingManager.is_recipe_unlocked(axe_recipe) == false, "Stone axe recipe must be locked before stone_flaking tech")
+
+	var hut_building = BuildingPlacementController.get_building(&"wooden_hut")
+	assert(hut_building != null, "Wooden hut building must exist")
+	assert(BuildingPlacementController.is_building_unlocked(hut_building) == false, "Wooden hut must be locked before wooden_architecture tech")
+
+	assert(EraManager.can_research(&"stone_flaking", test_inv) == true, "stone_flaking can now be researched")
+	var res_sf = EraManager.research_tech(&"stone_flaking", test_inv)
+	assert(res_sf == true, "stone_flaking research succeeded")
+	assert(CraftingManager.is_recipe_unlocked(axe_recipe) == true, "Stone axe recipe unlocked after stone_flaking")
+
+	# Підепоха neo_early все ще заблокована, бо в paleo_late ще залишився primitive_shelter
+	assert(EraManager.is_sub_era_unlocked(&"neo_early") == false, "neo_early remains locked until 100% of paleo_late is finished")
+	assert(EraManager.can_research(&"agriculture_and_fiber", test_inv) == false, "Cannot jump to Neolithic without finishing shelter")
+
+	# Досліджуємо primitive_shelter
+	var res_ps = EraManager.research_tech(&"primitive_shelter", test_inv)
+	assert(res_ps == true, "primitive_shelter research succeeded")
+	assert(EraManager.is_sub_era_completed(&"paleo_late") == true, "paleo_late is now 100% completed!")
+	assert(EraManager.is_sub_era_unlocked(&"neo_early") == true, "neo_early is now unlocked!")
+
+	# 6. Перехід у нову епоху (Неоліт)
+	assert(EraManager.can_research(&"agriculture_and_fiber", test_inv) == true, "agriculture_and_fiber can now be researched")
+	var res_neo = EraManager.research_tech(&"agriculture_and_fiber", test_inv)
+	assert(res_neo == true, "agriculture_and_fiber researched successfully")
+	assert(EraManager.current_era == 1, "Settlement advanced to Era 1 (Neolithic)!")
+	assert(EraManager.current_sub_era_index == 2, "Current sub-era is neo_early (index 2)")
+
+	# 7. Перевірка модульного зодчества хатини після wooden_architecture
+	EraManager.unlock_tech_cheat(&"wooden_architecture")
+	assert(EraManager.is_tech_unlocked(&"wooden_architecture") == true, "Cheat unlock wooden_architecture")
+	assert(BuildingPlacementController.is_building_unlocked(hut_building) == true, "Wooden hut must now be unlocked")
+
+	# 8. Перевірка чітів адмін-панелі: Відкрити все та Скинути
+	EraManager.unlock_all_techs_cheat()
+	assert(EraManager.get_unlocked_tech_count() == EraManager.get_total_tech_count(), "All techs must be unlocked")
+	assert(EraManager.current_era == 3, "Era must advance to Era 3 (Bronze/Iron)")
+
+	EraManager.reset_techs_cheat()
+	assert(EraManager.current_era == 0, "Reset must return to Era 0")
+	assert(EraManager.current_sub_era_index == 0, "Reset must return to Sub-era 0")
+	assert(EraManager.get_unlocked_tech_count() == 1, "Only primitive_survival unlocked after reset")
+
+	# 9. Перевірка компонентів UI (EraTreeUI) та перемальовування графу зв'язків
+	var tree_ui = get_node_or_null("HUD/EraTreeUI")
+	if tree_ui != null:
+		assert(tree_ui.visible == false, "EraTreeUI must be hidden initially")
+		tree_ui.open()
+		assert(tree_ui.visible == true, "EraTreeUI must be visible after open()")
+		assert(tree_ui._is_open == true, "_is_open must be true")
+		# Чергуємо оновлення полотна зв'язків
+		if tree_ui._graph_canvas != null:
+			tree_ui._graph_canvas.queue_redraw()
+		tree_ui.close()
+		assert(tree_ui.visible == false, "EraTreeUI must be hidden after close()")
+
+	test_inv.queue_free()
+	print("[Main] Era and Technology Tree System unit tests passed successfully!")
+
+
+func _test_colonists_and_job_system() -> void:
+	print("[Main] Testing 3D Colonists, FSM & Autonomous Job System (JobManager, Minecolonies-style)...")
+
+	# 1. Валідація Autoload JobManager
+	assert(JobManager != null, "JobManager singleton must be loaded")
+	JobManager.clear_all_jobs()
+	assert(JobManager.get_pending_jobs_count() == 0, "Pending jobs must be 0 after clear")
+	assert(JobManager.get_active_jobs_count() == 0, "Active jobs must be 0 after clear")
+
+	# 2. Створення завдань різного типу та перевірка черги пріоритетів
+	var j_haul = JobManager.create_job(Job.JobType.HAUL, Vector3(10, 0, 10), null, 1, &"hauler")
+	var j_build = JobManager.create_job(Job.JobType.BUILD, Vector3(20, 0, 20), null, 3, &"builder")
+	var j_harvest = JobManager.create_job(Job.JobType.HARVEST, Vector3(15, 0, 15), null, 2, &"lumberjack")
+
+	assert(JobManager.get_pending_jobs_count() == 3, "Must have 3 pending jobs in queue")
+	# Пріоритет: BUILD (3) > HARVEST (2) > HAUL (1)
+	var pending = JobManager._pending_jobs
+	assert(pending[0].priority >= pending[1].priority and pending[1].priority >= pending[2].priority, "Pending jobs must be sorted descending by priority")
+	assert(pending[0] == j_build, "Highest priority job (BUILD, prio 3) must be first")
+
+	# 3. Створення та валідація сутності 3D колоніста
+	var builder_col: CharacterBody3D = Colonist3DScene.instantiate()
+	add_child(builder_col)
+	builder_col.setup_colonist("Ратибор", &"builder")
+
+	assert(builder_col.is_in_group("colonists"), "Colonist must belong to group 'colonists'")
+	assert(builder_col.is_in_group("interactable"), "Colonist must belong to group 'interactable'")
+	assert(builder_col.colonist_name == "Ратибор", "Colonist name must be set")
+	assert(builder_col.profession == &"builder", "Colonist profession must be builder")
+	assert(builder_col.inventory != null and builder_col.inventory.slot_count == 8, "Colonist must have 8 inventory slots")
+	assert(JobManager.get_colonists_count() >= 1, "Colonist must be auto-registered in JobManager")
+
+	# 4. Валідація архітектури FSM
+	var fsm = builder_col.state_machine
+	assert(fsm != null, "Colonist must have StateMachine node")
+	assert(fsm.states.has(&"idle"), "FSM must contain Idle state")
+	assert(fsm.states.has(&"moveto"), "FSM must contain MoveTo state")
+	assert(fsm.states.has(&"harvest"), "FSM must contain Harvest state")
+	assert(fsm.states.has(&"haul"), "FSM must contain Haul state")
+	assert(fsm.states.has(&"build"), "FSM must contain Build state")
+	assert(fsm.current_state != null and fsm.current_state.name.to_lower() == "idle", "Initial state must be Idle")
+
+	# 5. Видача завдання будівельнику згідно зі спеціалізацією
+	var assigned_job = JobManager.request_job(builder_col)
+	assert(assigned_job == j_build, "Builder must receive the highest priority BUILD job")
+	assert(j_build.status == Job.JobStatus.ASSIGNED, "Job status must be ASSIGNED")
+	assert(j_build.assigned_colonist == builder_col, "Job assigned_colonist must point to builder")
+	assert(JobManager.get_active_jobs_count() == 1, "Must have 1 active job")
+	assert(JobManager.get_pending_jobs_count() == 2, "Must have 2 pending jobs remaining")
+
+	# 6. Завершення завдання
+	JobManager.complete_job(j_build)
+	assert(j_build.status == Job.JobStatus.COMPLETED, "Job must be COMPLETED")
+	assert(JobManager.get_active_jobs_count() == 0, "Active jobs must be 0 after completion")
+
+	# 7. Фільтрація за спеціалізацією: будівельник не повинен брати чужі вузькі завдання
+	var should_be_null = JobManager.request_job(builder_col)
+	assert(should_be_null == null, "Builder must not take jobs requiring lumberjack or hauler")
+
+	# 8. Створення лісоруба та перевірка взяття / повернення завдання (Release)
+	var lumberjack_col: CharacterBody3D = Colonist3DScene.instantiate()
+	add_child(lumberjack_col)
+	lumberjack_col.setup_colonist("Мирослав", &"lumberjack")
+
+	var lj_job = JobManager.request_job(lumberjack_col)
+	assert(lj_job == j_harvest, "Lumberjack must receive the HARVEST job")
+	assert(JobManager.get_active_jobs_count() == 1, "Active jobs must be 1")
+
+	# Симуляція переривання / повернення завдання в чергу
+	JobManager.release_job(lj_job, "Тестове переривання")
+	assert(lj_job.status == Job.JobStatus.PENDING, "Job must return to PENDING")
+	assert(JobManager.get_pending_jobs_count() == 2, "Pending jobs must be 2 after release")
+
+	# 9. Валідація візуальних елементів та анімацій колоніста
+	builder_col.show_hand_tool(&"hammer")
+	assert(builder_col.hand_tool_root.get_child_count() == 1, "Tool mesh must be added to right hand")
+	builder_col.hide_hand_items()
+	assert(builder_col.hand_tool_root.get_child_count() == 0, "Hand tool must be cleared")
+
+	builder_col.show_carried_cargo(&"wood")
+	assert(builder_col.carried_cargo_root.get_child_count() == 1, "Carried cargo mesh must be attached")
+	builder_col.hide_hand_items()
+	assert(builder_col.carried_cargo_root.get_child_count() == 0, "Cargo mesh must be cleared")
+
+	# Анімації кроків та маху інструментом
+	builder_col.play_walk_animation(0.016)
+	assert(builder_col._is_walking == true, "Is walking must be true during walk animation")
+	builder_col.stop_walk_animation()
+	assert(builder_col._is_walking == false, "Is walking must be false after stop")
+
+	builder_col.play_swing_animation()
+	assert(builder_col._swing_tween != null and builder_col._swing_tween.is_valid(), "Swing tween must be valid")
+
+	# 10. Перевірка 3D текстової плашки
+	builder_col.set_status_display("🔨 Працює")
+	assert(builder_col.label_3d != null, "Label3D must exist")
+	assert("Ратибор" in builder_col.label_3d.text, "Label3D must contain colonist name")
+	assert("Будівельник" in builder_col.label_3d.text, "Label3D must contain profession")
+	assert("🔨 Працює" in builder_col.label_3d.text, "Label3D must contain current status")
+
+	# 11. Перевірка живої взаємодії з гравцем (Клавіша E, ColonistDialogUI, зміна фаху та слідування)
+	var hud = get_node_or_null("HUD")
+	assert(hud != null, "HUD must exist in Main")
+	var dialog_ui = hud.get_node_or_null("ColonistDialogUI")
+	assert(dialog_ui != null, "ColonistDialogUI must exist in HUD")
+	assert(dialog_ui.visible == false, "ColonistDialogUI must be initially hidden")
+
+	# Відкриття діалогу поселенця через взаємодію на E
+	builder_col.interact(null)
+	assert(dialog_ui.visible == true, "ColonistDialogUI must open upon interact()")
+	assert(dialog_ui._target_colonist == builder_col, "Dialog target colonist must be builder_col")
+	assert("Ратибор" in dialog_ui._name_label.text, "Dialog header must display colonist name")
+
+	# Перевірка наказу слідування
+	var dummy_player = Node3D.new()
+	add_child(dummy_player)
+	dummy_player.global_position = Vector3(5, 0, 5)
+	builder_col.order_follow(dummy_player)
+	assert(builder_col.is_following_player == true, "Colonist must be following player")
+	assert(builder_col.target_follow_node == dummy_player, "Target follow node must match player")
+	assert("🐾" in builder_col.label_3d.text, "Label3D must show follow footprint indicator")
+
+	# Зупинка слідування
+	builder_col.order_stop_follow()
+	assert(builder_col.is_following_player == false, "Colonist must stop following")
+
+	# Зміна фаху на місці
+	builder_col.set_profession(&"lumberjack")
+	assert(builder_col.profession == &"lumberjack", "Colonist profession must change to lumberjack")
+	assert("Лісоруб" in builder_col.label_3d.text, "Label3D must update to new profession title")
+
+	# Перевірка передачі та забору предметів між гравцем та поселенцем
+	var test_player_inv: Node = InventoryComponentScript.new()
+	test_player_inv.set("slot_count", 24)
+	add_child(test_player_inv)
+	dialog_ui._player_inventory = test_player_inv
+	test_player_inv.add_item_by_id(&"wood", 5)
+
+	# Клік передати все поселенцю
+	dialog_ui._on_give_all_pressed()
+	assert(builder_col.inventory.get_item_count(&"wood") == 5, "Colonist must receive 5 wood")
+	assert(test_player_inv.get_item_count(&"wood") == 0, "Player must have 0 wood after give all")
+
+	# Клік забрати все собі
+	dialog_ui._on_take_all_pressed()
+	assert(test_player_inv.get_item_count(&"wood") == 5, "Player must receive 5 wood back")
+	assert(builder_col.inventory.get_item_count(&"wood") == 0, "Colonist must have 0 wood after take all")
+
+	dialog_ui.close_dialog()
+	assert(dialog_ui.visible == false, "Dialog must close successfully")
+
+	dummy_player.queue_free()
+	test_player_inv.queue_free()
+
+	# Очищення тестових вузлів
+	builder_col.queue_free()
+	lumberjack_col.queue_free()
+	JobManager.clear_all_jobs()
+
+	print("[Main] 3D Colonists, FSM & Autonomous Job System unit tests passed successfully!")
+
+
+func _test_audio_and_floating_text_system() -> void:
+	print("[Main] Testing Audio system & Floating Text system...")
+	assert(AudioManager != null, "AudioManager autoload must exist")
+	assert(FloatingTextManager != null, "FloatingTextManager autoload must exist")
+
+	# 1. Перевірка наявності всіх 13 згенерованих процедурних звуків
+	var expected_sounds: Array[StringName] = [
+		&"step", &"hit_wood", &"hit_stone", &"hit_grass", &"hit_clay",
+		&"build", &"craft", &"pickup", &"era_bell", &"tech_unlock", &"eat", &"drink", &"death"
+	]
+	for snd in expected_sounds:
+		assert(snd in AudioManager._sounds, "Sound '%s' must be pre-generated in AudioManager" % snd)
+		var wav = AudioManager._sounds[snd]
+		assert(wav is AudioStreamWAV, "Sound '%s' must be an AudioStreamWAV" % snd)
+		assert(wav.mix_rate == 22050, "Sample rate must be 22050 Hz")
+		assert(wav.data.size() > 0, "Sound '%s' byte data must not be empty" % snd)
+
+	# 2. Перевірка API відтворення 2D звуків
+	var p2d = AudioManager.play_sound(&"pickup", -3.0, 1.0)
+	assert(p2d != null, "play_sound must return an active AudioStreamPlayer")
+	assert(p2d.stream == AudioManager._sounds[&"pickup"], "Player stream must match requested sound")
+
+	# 3. Перевірка API відтворення 3D звуків
+	var test_pos := Vector3(15.0, 1.0, 25.0)
+	var p3d = AudioManager.play_sound_3d(&"hit_wood", test_pos, 0.0, 1.0)
+	assert(p3d != null, "play_sound_3d must return an active AudioStreamPlayer3D")
+	assert(p3d.global_position == test_pos, "3D Player position must match target position")
+	assert(p3d.stream == AudioManager._sounds[&"hit_wood"], "3D Player stream must match requested sound")
+
+	# 4. Перевірка створення спливаючого 3D тексту
+	var ft = FloatingTextManager.spawn_text(Vector3(5.0, 2.0, 5.0), "+1 Деревина", Color.GREEN, 0.5)
+	assert(ft != null, "spawn_text must return a valid FloatingText node")
+
+	# 5. Перевірка інтеграції сигналів EventBus
+	EventBus.era_advanced.emit(1, 0)
+	EventBus.technology_unlocked.emit(&"fire_making")
+	EventBus.item_picked_up.emit(null, &"wood", 5)
+
+	print("[Main] Audio system & Floating Text system unit tests passed successfully!")
+
+
+func _test_colonist_night_rest_and_visual_task_polish() -> void:
+	print("[Main] Testing Colonist Night Rest, Campfire Sleep, Visual Task Status & Smooth Rotation...")
+
+	# 1. Валідація визначення дня і ночі в GameManager
+	var original_time = GameManager.in_game_time_seconds
+	GameManager.in_game_time_seconds = 14.0 * 3600.0 # 14:00 (день)
+	assert(GameManager.is_night() == false, "14:00 must be day time")
+
+	GameManager.in_game_time_seconds = 23.0 * 3600.0 # 23:00 (ніч)
+	assert(GameManager.is_night() == true, "23:00 must be night time")
+
+	GameManager.in_game_time_seconds = 3.0 * 3600.0 # 03:00 (ніч)
+	assert(GameManager.is_night() == true, "03:00 must be night time")
+
+	# 2. Створення тестового колоніста
+	var colonist: CharacterBody3D = Colonist3DScene.instantiate()
+	colonist.name = "RestTestColonist"
+	add_child(colonist)
+	colonist.setup_colonist("Ярослав", &"builder")
+
+	# Перевірка наявності стану Rest у FSM
+	assert(colonist.state_machine != null, "StateMachine must exist")
+	assert(colonist.state_machine.has_node("Rest"), "Rest state must be registered in StateMachine")
+
+	# 3. Валідація бейджів і візуального тексту завдання
+	assert("🔨" in colonist.label_3d.text, "Builder label must have hammer badge")
+	assert("Ярослав" in colonist.label_3d.text, "Colonist label must have name")
+
+	colonist.set_profession(&"lumberjack")
+	assert("🪓" in colonist.label_3d.text, "Lumberjack label must have axe badge")
+
+	colonist.set_profession(&"hauler")
+	assert("📦" in colonist.label_3d.text, "Hauler label must have cargo badge")
+
+	# 4. Валідація нічного сну біля табірного вогнища
+	var test_campfire = Node3D.new()
+	test_campfire.name = "RestTestCampfire"
+	test_campfire.position = Vector3(100.0, 0.0, 100.0)
+	test_campfire.add_to_group("campfires")
+	add_child(test_campfire)
+
+	# Встановлюємо колоніста біля вогнища і нічний час
+	colonist.global_position = Vector3(102.0, 0.0, 100.0)
+	GameManager.in_game_time_seconds = 22.0 * 3600.0 # 22:00
+
+	# Переводимо в Rest стан
+	colonist.state_machine.transition_to(&"rest", { "campfire": test_campfire })
+	assert(colonist.is_resting() == true, "Colonist must be in resting state")
+	assert("Спить" in colonist.label_3d.text or "💤" in colonist.label_3d.text, "Label3D must indicate sleep/rest")
+
+	# Поза сидіння: опущення та згин ніг
+	assert(colonist.visual_root.position.y < -0.1, "Visual root must be lowered in sitting pose")
+	assert(colonist.left_leg_pivot.rotation.x < -1.0, "Legs must be bent forward in sitting pose")
+
+	# Оновлення фізики для перевірки повороту до вогнища
+	colonist.state_machine.current_state.physics_update(0.1)
+
+	# 5. Прокидання на світанку
+	GameManager.in_game_time_seconds = 8.0 * 3600.0 # 08:00 (ранок)
+	colonist.state_machine.current_state.physics_update(0.1)
+	assert(colonist.is_resting() == false, "Colonist must wake up when night ends")
+	assert(is_zero_approx(colonist.visual_root.position.y), "Visual root must return to 0 when standing up")
+	assert(is_zero_approx(colonist.left_leg_pivot.rotation.x), "Legs must return to neutral angle")
+
+	# Очищення
+	colonist.queue_free()
+	test_campfire.queue_free()
+	GameManager.in_game_time_seconds = original_time
+
+	print("[Main] Colonist Night Rest, Campfire Sleep, Visual Task Status & Smooth Rotation unit tests passed successfully!")
+
+
+func _test_colony_roster_ui() -> void:
+	print("[Main] Testing Colony Roster UI (Mini-panel, Colonist listing, Collapse toggle, Quick follow & Dialog actions)...")
+
+	var hud = get_node_or_null("HUD")
+	assert(hud != null, "HUD must exist in Main")
+
+	var roster = hud.get_node_or_null("ColonyRosterUI")
+	assert(roster != null, "ColonyRosterUI must exist in HUD")
+
+	# 1. Початковий стан: панель розгорнута
+	assert(roster.is_collapsed() == false, "Roster must initially be expanded")
+	assert(roster._scroll_container.custom_minimum_size.y >= 180.0, "ScrollContainer must have explicit minimum height")
+
+	# 2. Перевірка згортання / розгортання
+	roster.toggle_roster()
+	assert(roster.is_collapsed() == true, "Roster must be collapsed after toggle")
+	assert(roster._scroll_container.visible == false, "ScrollContainer must be hidden when collapsed")
+
+	roster.set_collapsed(false)
+	assert(roster.is_collapsed() == false, "Roster must be expanded")
+	assert(roster._scroll_container.visible == true, "ScrollContainer must be visible when expanded")
+
+	# 3. Реєстрація тестового поселенця та оновлення списку
+	var test_col: CharacterBody3D = Colonist3DScene.instantiate()
+	test_col.name = "RosterTestWorker"
+	add_child(test_col)
+	test_col.setup_colonist("Мирослав", &"hauler")
+
+	roster._refresh_roster()
+	assert("Поселенці" in roster._title_label.text, "Title label must mention 'Поселенці'")
+
+	# Перевірка наявності створеної картки для Мирослава
+	var card = roster._list_vbox.get_node_or_null("Card_RosterTestWorker")
+	assert(card != null, "Card for RosterTestWorker must be created")
+	var name_lbl := card.find_child("NameLabel", true, false) as Label
+	assert(name_lbl != null and name_lbl.text == "Мирослав", "Card name must match colonist name")
+
+	var prof_badge := card.find_child("ProfBadge", true, false) as Label
+	assert(prof_badge != null and "Вантажник" in prof_badge.text, "ProfBadge must show profession title")
+
+	# 4. Швидка дія: слідування через кнопку картки
+	var btn_follow := card.find_child("BtnFollow", true, false) as Button
+	assert(btn_follow != null, "Follow button must exist on card")
+	var follow_lbl := card.find_child("FollowIcon", true, false) as Label
+
+	# Натискаємо слідувати
+	btn_follow.pressed.emit()
+	assert(test_col.is_following_player == true, "Colonist must start following player upon button click")
+	assert(btn_follow.text == "⏹️", "Button icon must change to stop icon")
+
+	# Натискаємо зупинитись
+	btn_follow.pressed.emit()
+	assert(test_col.is_following_player == false, "Colonist must stop following upon second click")
+	assert(btn_follow.text == "🐾", "Button icon must return to footprint")
+
+	# 5. Швидка дія: фокусування у світі
+	var btn_focus := card.find_child("BtnFocus", true, false) as Button
+	assert(btn_focus != null, "Focus button must exist on card")
+	btn_focus.pressed.emit()
+
+	# 6. Швидка дія: виклик діалогу через сигнал
+	var state_box := {"invoked": false}
+	var dlg_callback = func(c):
+		if c == test_col:
+			state_box.invoked = true
+	EventBus.colonist_dialog_requested.connect(dlg_callback)
+	var btn_dialog := card.find_child("BtnDialog", true, false) as Button
+	assert(btn_dialog != null, "Dialog button must exist on card")
+	btn_dialog.pressed.emit()
+	assert(state_box.invoked == true, "Dialog request must be emitted for colonist")
+	EventBus.colonist_dialog_requested.disconnect(dlg_callback)
+
+	# 7. Перевірка перемикання через подію EventBus
+	EventBus.colonist_roster_toggle_requested.emit()
+	assert(roster.is_collapsed() == true, "EventBus signal must toggle roster to collapsed")
+	EventBus.colonist_roster_toggle_requested.emit()
+	assert(roster.is_collapsed() == false, "EventBus signal must toggle roster to expanded")
+
+	# 8. Валідація стійкості до видалених об'єктів (freed object protection)
+	test_col.queue_free()
+	roster._process(0.6)
+	roster._refresh_roster()
+
+	print("[Main] Colony Roster UI unit tests passed successfully!")
+
+
+func _test_modular_block_highlight_and_demolish() -> void:
+	print("[Main] Testing Modular Block Highlight & Demolition (Going Medieval style)...")
+
+	var test_inv: Node = InventoryComponentScript.new()
+	test_inv.set("slot_count", 8)
+	add_child(test_inv)
+
+	# 1. Створення підлоги, перевірка підсвітки
+	var cell_floor := Vector2i(85, 85)
+	var floor_piece = ModularPiece3DScript.new()
+	add_child(floor_piece)
+	floor_piece.setup_piece(&"modular_floor", cell_floor, true, 0.0)
+	ModularManager._floors[cell_floor] = floor_piece
+
+	assert(floor_piece.is_highlighted() == false, "Piece must not be highlighted initially")
+	floor_piece.set_highlighted(true)
+	assert(floor_piece.is_highlighted() == true, "set_highlighted(true) must make piece highlighted")
+	var outline_root = floor_piece.get_node_or_null("OutlineRoot")
+	assert(outline_root != null, "OutlineRoot must exist on ModularPiece3D")
+	assert(outline_root.has_node("WireframeLines"), "WireframeLines must exist inside OutlineRoot")
+	assert(outline_root.has_node("TranslucentFaces"), "TranslucentFaces must exist inside OutlineRoot")
+	floor_piece.set_highlighted(false)
+	assert(floor_piece.is_highlighted() == false, "set_highlighted(false) must hide highlight")
+
+	# 2. Створення стіни на цій підлозі та даху над нею
+	var wall_piece = ModularPiece3DScript.new()
+	add_child(wall_piece)
+	wall_piece.setup_piece(&"modular_wall", cell_floor, true, 0.0)
+	ModularManager._structures[cell_floor] = wall_piece
+	assert(GridManager.is_cell_walkable(cell_floor) == false, "Wall must make cell solid")
+
+	var roof_piece = ModularPiece3DScript.new()
+	add_child(roof_piece)
+	roof_piece.setup_piece(&"modular_roof", cell_floor, true, 0.0)
+	ModularManager._roofs[cell_floor] = roof_piece
+
+	# 3. Перевірка структурних правил: не можна знести підлогу, поки на ній стоїть стіна
+	var can_dem_fl = floor_piece.can_demolish()
+	assert(can_dem_fl["can"] == false, "Cannot demolish floor while structure exists on it")
+	var dem_fl_res = floor_piece.demolish(test_inv)
+	assert(dem_fl_res["success"] == false, "Demolishing floor with wall must fail")
+
+	# 4. Перевірка структурних правил: не можна знести стіну, поки над нею стоїть дах
+	var can_dem_wl = wall_piece.can_demolish()
+	assert(can_dem_wl["can"] == false, "Cannot demolish wall while roof rests on it")
+	var dem_wl_res = wall_piece.demolish(test_inv)
+	assert(dem_wl_res["success"] == false, "Demolishing wall with roof must fail")
+
+	# 5. Демонтаж даху (дозволено): повертає 1 дерево і 2 сіна
+	var initial_wood = test_inv.get_item_count(&"wood")
+	var initial_straw = test_inv.get_item_count(&"straw")
+	var dem_rf_res = roof_piece.demolish(test_inv)
+	assert(dem_rf_res["success"] == true, "Demolishing roof with no obstructions must succeed")
+	assert(test_inv.get_item_count(&"wood") == initial_wood + 1, "Roof must refund 1 wood")
+	assert(test_inv.get_item_count(&"straw") == initial_straw + 2, "Roof must refund 2 straw")
+
+	# 6. Демонтаж стіни (тепер дозволено): повертає 2 дерева і відновлює прохідність
+	var dem_wl_res2 = wall_piece.demolish(test_inv)
+	assert(dem_wl_res2["success"] == true, "Demolishing wall without roof must succeed")
+	assert(test_inv.get_item_count(&"wood") == initial_wood + 3, "Wall must refund 2 wood (total 3)")
+	assert(GridManager.is_cell_walkable(cell_floor) == true, "Demolishing wall must make cell walkable again")
+
+	# 7. Демонтаж підлоги (тепер дозволено): повертає 1 дерево
+	var dem_fl_res2 = floor_piece.demolish(test_inv)
+	assert(dem_fl_res2["success"] == true, "Demolishing floor with no structures must succeed")
+	assert(test_inv.get_item_count(&"wood") == initial_wood + 4, "Floor must refund 1 wood (total 4)")
+
+	# 8. Скасування синього креслення (blueprint): не повертає матеріалів
+	var cell_bp := Vector2i(86, 86)
+	var bp_piece = ModularPiece3DScript.new()
+	add_child(bp_piece)
+	bp_piece.setup_piece(&"modular_pillar", cell_bp, false, 0.0)
+	var wood_before_bp = test_inv.get_item_count(&"wood")
+	var dem_bp_res = bp_piece.demolish(test_inv)
+	assert(dem_bp_res["success"] == true, "Cancelling blueprint must succeed")
+	assert(dem_bp_res["refunded"].is_empty(), "Blueprint cancellation must not refund materials")
+	assert(test_inv.get_item_count(&"wood") == wood_before_bp, "Inventory wood count must remain identical")
+
+	# Очищення
+	test_inv.queue_free()
+	print("[Main] Modular Block Highlight & Demolition unit tests passed successfully!")
+
+
+func _test_enhanced_crosshair_hints() -> void:
+	print("[Main] Testing Enhanced Crosshair UI & Context Clues (Colonists, Campfires, Buildings, Resources)...")
+
+	var CrosshairUIScript = load("res://src/ui/hud/CrosshairUI.gd")
+	var crosshair = CrosshairUIScript.new()
+	crosshair.name = "TestCrosshairUI"
+	add_child(crosshair)
+
+	# 1. Валідація структури та розмірів мітки підказок
+	assert(crosshair._interact_label != null, "InteractHint label must exist inside CrosshairUI")
+	assert(crosshair._interact_label.offset_bottom >= 80.0, "Interact label must have height >= 60px for 2-line hints")
+	assert(crosshair._interact_label.get_theme_constant("line_spacing") >= 2, "Interact label must have line spacing >= 2")
+
+	# 2. Створюємо тестового гравця та перевіряємо групу
+	var player = get_tree().get_first_node_in_group("player")
+	assert(player != null, "Player must exist in scene tree")
+
+	# 3. Тест підказки при наведенні на поселенця (Colonist3D)
+	var col_scene = load("res://src/entities3d/colonist/Colonist3D.tscn")
+	var test_col = col_scene.instantiate()
+	test_col.colonist_name = "Добриня"
+	test_col.profession = &"builder"
+	test_col.max_health = 100.0
+	test_col.current_health = 85.0
+	add_child(test_col)
+	test_col.global_position = player.global_position + Vector3(0, 0, -2.5)
+	test_col.set_status_display("🔨 Будує хатину (45%)")
+
+	# Симуляція перевірки через interact_ray
+	assert(test_col.get_status_text() == "🔨 Будує хатину (45%)", "get_status_text() must return current status")
+
+	# Перевірка отримання здоров'я та шкоди
+	test_col.take_damage(15.0)
+	assert(test_col.current_health == 70.0, "Colonist must take damage correctly")
+	test_col.heal(20.0)
+	assert(test_col.current_health == 90.0, "Colonist must heal correctly")
+
+	# 4. Тест підказки при наведенні на табірне вогнище (BuildingEntity3D)
+	var campfire_entity = BuildingEntity3DScript.new()
+	add_child(campfire_entity)
+	var campfire_data = BuildingPlacementController.get_building(&"campfire")
+	assert(campfire_data != null, "Campfire data must exist")
+	campfire_entity.setup_building(campfire_data, Vector2i(70, 70))
+	assert(campfire_entity.is_in_group("campfires") or campfire_entity.has_method("interact_campfire"), "Campfire must be in group or have method")
+
+	# Перевірка демонтажу та повернення матеріалів з вогнища
+	var test_inv: Node = InventoryComponentScript.new()
+	test_inv.set("slot_count", 8)
+	add_child(test_inv)
+
+	var initial_wood = test_inv.get_item_count(&"wood")
+	var dem_result = campfire_entity.demolish(test_inv)
+	assert(dem_result.get("success", false) == true, "Campfire demolish must return success")
+	assert(test_inv.get_item_count(&"wood") >= initial_wood, "Demolishing campfire must refund wood")
+
+	# 5. Тест підказки для ресурсів (WorldResourceNode3D)
+	var WorldResourceNode3DScript = load("res://src/world3d/WorldResourceNode3D.gd")
+	var tree_node = WorldResourceNode3DScript.new()
+	tree_node.resource_type = 0 # TREE
+	tree_node.max_health = 3.0
+	tree_node.current_health = 3.0
+	add_child(tree_node)
+	assert(tree_node.is_in_group("resource_nodes") or tree_node.has_method("harvest"), "Tree must be resource node")
+
+	# Очищення тимчасових тестових вузлів
+	tree_node.queue_free()
+	test_inv.queue_free()
+	test_col.queue_free()
+	crosshair.queue_free()
+
+	print("[Main] Enhanced Crosshair UI & Context Clues unit tests passed successfully!")

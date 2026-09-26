@@ -1,5 +1,6 @@
 class_name AdminPanelUI
 extends Control
+const Job = preload("res://src/systems/jobs/Job.gd")
 
 ## AdminPanelUI: Багатофункціональна панель розробника / адмін-панель (F1 або ~).
 ## Дозволяє миттєво видавати будь-які предмети, змінювати голод, спрагу та енергію,
@@ -18,6 +19,9 @@ var _lbl_hunger: Label = null
 var _lbl_thirst: Label = null
 var _lbl_time: Label = null
 var _btn_super_speed: Button = null
+var _lbl_colonists_count: Label = null
+var _lbl_jobs_pending: Label = null
+var _lbl_jobs_active: Label = null
 
 var _update_timer: float = 0.0
 
@@ -145,6 +149,9 @@ func _setup_ui() -> void:
 
 	# 3. Вкладка "Видача предметів"
 	_setup_items_tab()
+
+	# 4. Вкладка "Поселенці та Завдання"
+	_setup_colonists_tab()
 
 
 # ------------------------------------------------------------------------------
@@ -369,6 +376,14 @@ func _refresh_display() -> void:
 		if _lbl_thirst != null and "current_thirst" in player:
 			_lbl_thirst.text = "💧 Спрага: %d / %d" % [int(ceil(player.current_thirst)), int(player.max_thirst)]
 
+	if JobManager != null:
+		if _lbl_colonists_count != null:
+			_lbl_colonists_count.text = "👥 Зареєстровано жителів у колонії: %d" % JobManager.get_colonists_count()
+		if _lbl_jobs_pending != null:
+			_lbl_jobs_pending.text = "⏳ Завдань у черзі (Pending): %d" % JobManager.get_pending_jobs_count()
+		if _lbl_jobs_active != null:
+			_lbl_jobs_active.text = "🔨 Завдань виконується (Active): %d" % JobManager.get_active_jobs_count()
+
 	if _lbl_time != null and GameManager != null:
 		var hour = GameManager.get_current_hour()
 		var icon = "☀️" if (hour >= 6 and hour < 20) else "🌙"
@@ -553,3 +568,134 @@ func _clear_player_inventory() -> void:
 	if player.inventory.has_signal("inventory_updated"):
 		player.inventory.inventory_updated.emit()
 	print("[AdminPanel] 🗑️ Інвентар гравця повністю очищено.")
+
+
+# ------------------------------------------------------------------------------
+# 4. Вкладка поселенців та черги завдань (Colonists & Jobs)
+# ------------------------------------------------------------------------------
+func _setup_colonists_tab() -> void:
+	var scroll := ScrollContainer.new()
+	scroll.name = "👥 Поселенці"
+	_tab_container.add_child(scroll)
+
+	var vbox := VBoxContainer.new()
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vbox.add_theme_constant_override("separation", 14)
+	scroll.add_child(vbox)
+
+	# Статистика колонії
+	var stats_group := VBoxContainer.new()
+	stats_group.add_theme_constant_override("separation", 6)
+	vbox.add_child(stats_group)
+
+	var header := Label.new()
+	header.text = "🏛️ Стан колонії та робочої сили"
+	header.add_theme_font_size_override("font_size", 14)
+	header.modulate = Color("f39c12")
+	stats_group.add_child(header)
+
+	_lbl_colonists_count = Label.new()
+	_lbl_colonists_count.text = "👥 Зареєстровано жителів у колонії: 0"
+	stats_group.add_child(_lbl_colonists_count)
+
+	_lbl_jobs_pending = Label.new()
+	_lbl_jobs_pending.text = "⏳ Завдань у черзі (Pending): 0"
+	stats_group.add_child(_lbl_jobs_pending)
+
+	_lbl_jobs_active = Label.new()
+	_lbl_jobs_active.text = "🔨 Завдань виконується (Active): 0"
+	stats_group.add_child(_lbl_jobs_active)
+
+	# Призов колоністів
+	var spawn_header := Label.new()
+	spawn_header.text = "➕ Призов нових колоністів (спавн поруч з гравцем):"
+	spawn_header.add_theme_font_size_override("font_size", 14)
+	spawn_header.modulate = Color("e0a96d")
+	vbox.add_child(spawn_header)
+
+	var spawn_grid := GridContainer.new()
+	spawn_grid.columns = 2
+	spawn_grid.add_theme_constant_override("h_separation", 10)
+	spawn_grid.add_theme_constant_override("v_separation", 8)
+	vbox.add_child(spawn_grid)
+
+	_create_btn(spawn_grid, "🔨 Будівельник (Builder)", func(): _spawn_colonist_admin(&"builder"))
+	_create_btn(spawn_grid, "🪓 Лісоруб (Lumberjack)", func(): _spawn_colonist_admin(&"lumberjack"))
+	_create_btn(spawn_grid, "📦 Вантажник (Hauler)", func(): _spawn_colonist_admin(&"hauler"))
+	_create_btn(spawn_grid, "🌾 Поселенець (Settler)", func(): _spawn_colonist_admin(&"settler"))
+
+	# Керування завданнями
+	var jobs_header := Label.new()
+	jobs_header.text = "📋 Швидкі тестові завдання для колоністів:"
+	jobs_header.add_theme_font_size_override("font_size", 14)
+	jobs_header.modulate = Color("e0a96d")
+	vbox.add_child(jobs_header)
+
+	var jobs_row := HBoxContainer.new()
+	jobs_row.add_theme_constant_override("separation", 10)
+	vbox.add_child(jobs_row)
+
+	_create_btn(jobs_row, "🌲 Зрубати найближче дерево", func(): _create_harvest_tree_job())
+	_create_btn(jobs_row, "📦 Доставити предмети на склад", func(): _create_haul_drops_job())
+	_create_btn(jobs_row, "🧹 Очистити всі завдання", func(): _clear_all_jobs())
+
+
+func _spawn_colonist_admin(profession: StringName) -> void:
+	var world = get_tree().get_first_node_in_group("world_3d")
+	var player = _get_player()
+	var spawn_pos: Vector3 = Vector3(500.0, 0.1, 500.0)
+	if player != null:
+		spawn_pos = player.global_position + Vector3(randf_range(-2.0, 2.0), 0.0, randf_range(-2.0, 2.0))
+
+	if world != null and world.has_method("spawn_colonist"):
+		var col = world.spawn_colonist(spawn_pos, "", profession)
+		print("[AdminPanel] 👥 Призвано колоніста '%s' (%s)" % [col.name, profession])
+	else:
+		var col_scene = load("res://src/entities3d/colonist/Colonist3D.tscn")
+		var col = col_scene.instantiate()
+		col.position = spawn_pos
+		get_tree().root.add_child(col)
+		col.setup_colonist("", profession)
+		print("[AdminPanel] 👥 Призвано колоніста '%s' (%s)" % [col.name, profession])
+	_refresh_display()
+
+
+func _create_harvest_tree_job() -> void:
+	if JobManager == null:
+		return
+	var player = _get_player()
+	var player_pos: Vector3 = player.global_position if player != null else Vector3.ZERO
+	var trees = get_tree().get_nodes_in_group("resource_nodes")
+	var closest_tree: Node = null
+	var min_dist: float = INF
+	for t in trees:
+		if t is Node3D and is_instance_valid(t) and t.get("resource_type") == 0:
+			var d = player_pos.distance_to(t.global_position)
+			if d < min_dist:
+				min_dist = d
+				closest_tree = t
+
+	if closest_tree != null:
+		JobManager.create_job(Job.JobType.HARVEST, (closest_tree as Node3D).global_position, closest_tree, 2, &"lumberjack")
+		print("[AdminPanel] 🌲 Створено завдання рубки дерева: ", closest_tree.name)
+	_refresh_display()
+
+
+func _create_haul_drops_job() -> void:
+	if JobManager == null:
+		return
+	var drops = get_tree().get_nodes_in_group("dropped_items")
+	var count: int = 0
+	for d in drops:
+		if d is Node3D and is_instance_valid(d):
+			JobManager.create_job(Job.JobType.HAUL, d.global_position, d, 1, &"hauler")
+			count += 1
+	print("[AdminPanel] 📦 Створено %d завдань доставки на склад." % count)
+	_refresh_display()
+
+
+func _clear_all_jobs() -> void:
+	if JobManager != null:
+		JobManager.clear_all_jobs()
+		print("[AdminPanel] 🧹 Всі завдання очищено.")
+	_refresh_display()

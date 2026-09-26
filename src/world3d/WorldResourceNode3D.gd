@@ -371,6 +371,16 @@ func _play_hit_effect() -> void:
 	_shake_tween.tween_property(visual_root, "scale", _original_scale * Vector3(0.95, 1.05, 0.95), 0.05)
 	_shake_tween.tween_property(visual_root, "scale", _original_scale, 0.06)
 
+	if AudioManager != null:
+		var snd: StringName = &"hit_wood"
+		match resource_type:
+			ResourceType.TREE: snd = &"hit_wood"
+			ResourceType.ROCK, ResourceType.FLINT: snd = &"hit_stone"
+			ResourceType.GRASS: snd = &"hit_grass"
+			ResourceType.CLAY: snd = &"hit_clay"
+			ResourceType.BUSH: snd = &"hit_grass"
+		AudioManager.play_sound_3d(snd, global_position, 0.0, randf_range(0.92, 1.08))
+
 
 func _destroy_and_drop() -> void:
 	GridManager.unregister_occupant(get_cell(), true)

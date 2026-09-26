@@ -65,6 +65,34 @@ func get_recipes_for_era(era_index: int) -> Array[Resource]:
 
 
 ## Перевіряє, чи вистачає в інвентарі всіх необхідних інгредієнтів для крафту
+
+## Перевіряє, чи рецепт розблокований у дереві технологій / епосі
+func is_recipe_unlocked(recipe: Resource) -> bool:
+	if recipe == null:
+		return false
+	if EraManager == null:
+		return true
+
+	var r_id: Variant = recipe.get("id")
+	var req_era: Variant = recipe.get("required_era")
+	var era_val: int = req_era if (req_era is int) else 0
+
+	# 1. Якщо рецепт прямо прив'язаний до технології у дереві епох
+	for tech in EraManager.get_all_techs():
+		if tech.unlocks_recipes.has(r_id):
+			return EraManager.is_tech_unlocked(tech.id)
+
+	# 2. Якщо окремої технології немає, перевіряємо по епосі
+	return era_val <= EraManager.get_current_era()
+
+
+func get_unlocked_recipes() -> Array[Resource]:
+	var list: Array[Resource] = []
+	for r in _recipes.values():
+		if is_recipe_unlocked(r):
+			list.append(r)
+	return list
+
 func can_craft(recipe: Resource, inventory: Node) -> bool:
 	if recipe == null or inventory == null:
 		return false
@@ -120,4 +148,6 @@ func craft_item(recipe: Resource, inventory: Node) -> bool:
 		print("[CraftingManager] Увага: %d предметів не помістилося в інвентар!" % remainder)
 
 	recipe_crafted.emit(recipe, result_item, result_amount - remainder)
+	if AudioManager != null:
+		AudioManager.play_sound(&"craft", 0.0, 1.0)
 	return true

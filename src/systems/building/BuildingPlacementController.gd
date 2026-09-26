@@ -72,6 +72,33 @@ func get_all_buildings() -> Array[BuildingData]:
 
 
 ## Чи активний зараз режим встановлення креслення
+
+## Перевіряє, чи споруда розблокована у дереві технологій / епосі
+func is_building_unlocked(bld: BuildingData) -> bool:
+	if bld == null:
+		return false
+	if EraManager == null:
+		return true
+
+	var b_id: StringName = bld.id
+	var era_val: int = bld.required_era
+
+	# 1. Якщо споруда прямо прив'язана до технології у дереві епох
+	for tech in EraManager.get_all_techs():
+		if tech.unlocks_buildings.has(b_id):
+			return EraManager.is_tech_unlocked(tech.id)
+
+	# 2. Якщо окремої технології немає, перевіряємо по епосі
+	return era_val <= EraManager.get_current_era()
+
+
+func get_unlocked_buildings() -> Array[BuildingData]:
+	var list: Array[BuildingData] = []
+	for b in _buildings.values():
+		if is_building_unlocked(b):
+			list.append(b)
+	return list
+
 func is_placing() -> bool:
 	return _is_placing
 

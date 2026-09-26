@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/entities3d/colonist/Colonist3D.gd" id="1_colonist"]
+
+[node name="Colonist3D" type="CharacterBody3D"]
+script = ExtResource("1_colonist")

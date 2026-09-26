@@ -1,4 +1,4 @@
-; Engine configuration file.
+﻿; Engine configuration file.
 ; It's best edited using the editor UI and not directly,
 ; but it can also be edited by hand.
 
@@ -24,6 +24,10 @@ BuildingPlacementController="*res://src/systems/building/BuildingPlacementContro
 LogisticsManager="*res://src/systems/logistics/LogisticsManager.gd"
 BlockManager="*res://src/systems/blocks/BlockManager.gd"
 ModularManager="*res://src/systems/modular/ModularManager.gd"
+EraManager="*res://src/systems/era/EraManager.gd"
+JobManager="*res://src/systems/jobs/JobManager.gd"
+AudioManager="*res://src/core/AudioManager.gd"
+FloatingTextManager="*res://src/ui/hud/FloatingTextManager.gd"
 
 [display]
 
@@ -102,6 +106,11 @@ inventory_toggle={
 crafting_toggle={
 "deadzone": 0.5,
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":67,"key_label":0,"unicode":99,"location":0,"echo":false,"script":null)
+]
+}
+era_tree_toggle={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":84,"key_label":0,"unicode":116,"location":0,"echo":false,"script":null)
 ]
 }
 build_mode_toggle={

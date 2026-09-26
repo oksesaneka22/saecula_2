@@ -172,5 +172,7 @@ func _pickup() -> void:
 		var inv = _target_player.get_node("InventoryComponent")
 		if inv.has_method("add_item_by_id"):
 			inv.add_item_by_id(item_id, amount)
+		if EventBus != null and EventBus.has_signal("item_picked_up"):
+			EventBus.item_picked_up.emit(_target_player, item_id, amount)
 
 	queue_free()

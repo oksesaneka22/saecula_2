@@ -6,6 +6,8 @@ extends Control
 @onready var build_button: Button = $HBoxContainer/BuildButton
 @onready var craft_button: Button = $HBoxContainer/CraftButton
 @onready var inventory_button: Button = $HBoxContainer/InventoryButton
+@onready var eratree_button: Button = $HBoxContainer.get_node_or_null("EraTreeButton")
+@onready var roster_button: Button = $HBoxContainer.get_node_or_null("RosterButton")
 @onready var admin_button: Button = $HBoxContainer.get_node_or_null("AdminButton")
 
 
@@ -16,6 +18,10 @@ func _ready() -> void:
 		craft_button.pressed.connect(_on_craft_button_pressed)
 	if inventory_button != null:
 		inventory_button.pressed.connect(_on_inventory_button_pressed)
+	if eratree_button != null:
+		eratree_button.pressed.connect(_on_eratree_button_pressed)
+	if roster_button != null:
+		roster_button.pressed.connect(_on_roster_button_pressed)
 	if admin_button != null:
 		admin_button.pressed.connect(_on_admin_button_pressed)
 
@@ -60,10 +66,27 @@ func _on_inventory_button_pressed() -> void:
 			inv_ui.open()
 
 
+func _on_eratree_button_pressed() -> void:
+	var hud = get_parent()
+	if hud == null:
+		return
+	var era_ui = hud.get_node_or_null("EraTreeUI")
+	if era_ui != null:
+		if era_ui.visible:
+			era_ui.close()
+		else:
+			_close_other_windows(hud)
+			era_ui.open()
+
+
 func _on_admin_button_pressed() -> void:
 	var hud = get_parent()
 	if hud == null:
 		return
+	var era_ui = hud.get_node_or_null("EraTreeUI")
+	if era_ui != null and era_ui.visible:
+		era_ui.close()
+
 	var admin_ui = hud.get_node_or_null("AdminPanelUI")
 	if admin_ui != null:
 		if admin_ui.visible:
@@ -74,6 +97,10 @@ func _on_admin_button_pressed() -> void:
 
 
 func _close_other_windows(hud: Node) -> void:
+	var era_ui = hud.get_node_or_null("EraTreeUI")
+	if era_ui != null and era_ui.visible:
+		era_ui.close()
+
 	var admin_ui = hud.get_node_or_null("AdminPanelUI")
 	if admin_ui != null and admin_ui.visible:
 		admin_ui.close()
@@ -93,3 +120,8 @@ func _close_other_windows(hud: Node) -> void:
 	var storage_ui = hud.get_node_or_null("StorageUI")
 	if storage_ui != null and storage_ui.visible:
 		storage_ui.close()
+
+
+func _on_roster_button_pressed() -> void:
+	if EventBus != null and EventBus.has_signal("colonist_roster_toggle_requested"):
+		EventBus.colonist_roster_toggle_requested.emit()

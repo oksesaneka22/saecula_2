@@ -3,7 +3,7 @@ extends Node3D
 ## World3D: Головна 3D сцена світу Saecula.
 ## Керує 3D простором, процедурною генерацією безмежного лісу (1000x1000 тайлів)
 ## з природними звивистими річками, лісовими озерами, скельними пасмами, галявинами,
-## береговими родовищами глини та кремнію, чанковим стрімінгом (Chunk Streaming),
+## береговими родовищами глини та кременю, чанковим стрімінгом (Chunk Streaming),
 ## будівельними майданчиками (ConstructionSite3D), спорудами (BuildingEntity3D)
 ## та перемиканням режимів: First-Person (гравець) <-> Top-Down RTS (менеджмент/будівництво).
 
@@ -14,6 +14,7 @@ const Player3DScene = preload("res://src/entities3d/player/Player3D.tscn")
 const RTSCamera3DScene = preload("res://src/core3d/RTSCamera3D.tscn")
 const BuildingGhost3DScene = preload("res://src/world3d/BuildingGhost3D.tscn")
 const ConstructionSite3DScene = preload("res://src/world3d/ConstructionSite3D.tscn")
+const Colonist3DScene = preload("res://src/entities3d/colonist/Colonist3D.tscn")
 
 # ------------------------------------------------------------------------------
 # Параметри карти та процедурної генерації
@@ -42,6 +43,7 @@ var player: CharacterBody3D = null
 var rts_camera: Node3D = null
 var building_ghost: Node3D = null
 var buildings_container: Node3D = null
+var colonists_container: Node3D = null
 
 @onready var resource_container: Node3D = $ResourceContainer
 @onready var ground_mesh: MeshInstance3D = $Ground/GroundMesh
@@ -52,6 +54,8 @@ var _sky_material: ProceduralSkyMaterial = null
 
 
 func _ready() -> void:
+	add_to_group("world_3d")
+
 	# 1. Ініціалізація глобальної навігаційної та просторової сітки
 	GridManager.initialize_grid(map_tiles_width, map_tiles_height)
 
@@ -98,6 +102,7 @@ func _ready() -> void:
 	_apply_mode(GameManager.current_state)
 	_spawn_starter_construction_site()
 	_setup_day_night_cycle()
+	_spawn_starter_colonist()
 
 
 var _chunk_check_timer: float = 0.0
@@ -391,7 +396,7 @@ func _load_chunk(ch: Vector2i) -> void:
 			if not GridManager.is_cell_walkable(cell):
 				continue
 
-			# 1. Прибережна смуга (1..3 тайли від води): родовища глини та кремнію
+			# 1. Прибережна смуга (1..3 тайли від води): родовища глини та кременю
 			if GridManager.is_near_water(cell, 3):
 				if (gx * 53 + gy * 79) % 6 == 0:
 					var sn: float = _shore_noise.get_noise_2d(gx, gy)
@@ -556,6 +561,39 @@ func spawn_construction_site(building: BuildingData, cell: Vector2i) -> Node3D:
 	if site.has_method("setup_site"):
 		site.setup_site(building, cell)
 	return site
+
+func _spawn_starter_colonist() -> void:
+	if colonists_container == null:
+		colonists_container = Node3D.new()
+		colonists_container.name = "Colonists"
+		add_child(colonists_container)
+	var spawn_cell: Vector2i = Vector2i(map_tiles_width / 2, map_tiles_height / 2)
+	var starter_pos: Vector3 = GridManager.map_to_world_3d(spawn_cell + Vector2i(2, -2), 0.1)
+	spawn_colonist(starter_pos, "Добриня", &"builder")
+	var starter_pos_2: Vector3 = GridManager.map_to_world_3d(spawn_cell + Vector2i(-2, -2), 0.1)
+	spawn_colonist(starter_pos_2, "Ратибор", &"lumberjack")
+	var starter_pos_3: Vector3 = GridManager.map_to_world_3d(spawn_cell + Vector2i(0, -3), 0.1)
+	spawn_colonist(starter_pos_3, "Злата", &"hauler")
+
+
+func spawn_colonist(pos: Vector3, colonist_name: String = "", profession: StringName = &"settler") -> Node3D:
+	if colonists_container == null:
+		colonists_container = Node3D.new()
+		colonists_container.name = "Colonists"
+		add_child(colonists_container)
+
+	var colonist = Colonist3DScene.instantiate()
+	colonist.position = pos
+	var names_pool = ["Добриня", "Ратибор", "Мирослав", "Злата", "Любомир", "Орест", "Богдан", "Велемир", "Лада", "Світозар"]
+	var c_name: String = colonist_name if not colonist_name.is_empty() else names_pool[randi() % names_pool.size()]
+	colonist.name = "Colonist_" + c_name
+	colonist.colonist_name = c_name
+	colonist.profession = profession
+	colonists_container.add_child(colonist)
+	if colonist.has_method("setup_colonist"):
+		colonist.setup_colonist(c_name, profession)
+	return colonist
+
 
 # ------------------------------------------------------------------------------
 # Система зміни дня та ночі, руху Сонця, Місяця та атмосферного освітлення

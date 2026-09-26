@@ -448,8 +448,8 @@ func interact(player: Node = null) -> void:
 		interact_storage(player)
 
 
-## Демонтує будівлю, звільняє клітинки сітки та надсилає сигнал
-func demolish() -> void:
+## Демонтує будівлю, звільняє клітинки сітки, повертає ресурси та надсилає сигнал
+func demolish(player_inventory: Node = null) -> Dictionary:
 	if is_in_group("campfires"):
 		remove_from_group("campfires")
 	if LogisticsManager != null and inventory != null:
@@ -457,5 +457,23 @@ func demolish() -> void:
 	for c in occupied_cells:
 		GridManager.unregister_occupant(c, true)
 
-	EventBus.building_demolished.emit(self, building_data.id, origin_cell)
+	var bld_name: String = building_data.display_name if building_data != null else "Споруда"
+	var refunded: Dictionary = {}
+	if player_inventory != null and building_data != null and "construction_cost" in building_data:
+		for cost in building_data.construction_cost:
+			if cost != null and "item" in cost and "amount" in cost and cost.item != null:
+				var item_id: StringName = cost.item.id
+				refunded[item_id] = cost.amount
+				if player_inventory.has_method("add_item_by_id"):
+					player_inventory.add_item_by_id(item_id, cost.amount)
+				elif player_inventory.has_method("add_item"):
+					player_inventory.add_item(cost.item, cost.amount)
+
+	if AudioManager != null:
+		AudioManager.play_sound_3d(&"demolish", global_position, 0.0, randf_range(0.95, 1.05))
+	if FloatingTextManager != null:
+		FloatingTextManager.spawn_info(global_position + Vector3(0, 1.5, 0), "♻️ Знесено %s" % bld_name, Color("FFAA00"))
+
+	EventBus.building_demolished.emit(self, building_data.id if building_data != null else &"", origin_cell)
 	queue_free()
+	return {"success": true, "name": bld_name, "refunded": refunded}

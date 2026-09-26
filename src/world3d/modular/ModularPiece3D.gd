@@ -27,6 +27,10 @@ var _label_3d: Label3D = null
 var _holo_mat: StandardMaterial3D = null
 var _time_passed: float = 0.0
 
+var _outline_root: Node3D = null
+var _outline_line_mat: StandardMaterial3D = null
+var _outline_fill_mat: StandardMaterial3D = null
+
 const TextureHelper = preload("res://src/core3d/TextureHelper.gd")
 
 
@@ -138,6 +142,7 @@ func _rebuild_mesh() -> void:
 		&"modular_roof":
 			_build_roof_geometry(current_mat)
 
+	_build_outline()
 	_setup_label()
 
 
@@ -335,6 +340,7 @@ func apply_blueprint_state() -> void:
 	if _visual_root != null:
 		_set_material_recursive(_visual_root, _holo_mat)
 	_update_label_text()
+	_update_outline_materials()
 
 
 func apply_built_state(animate: bool = true) -> void:
@@ -351,6 +357,7 @@ func apply_built_state(animate: bool = true) -> void:
 		GridManager.set_cell_solid(cell_coord, not is_door_open)
 
 	_update_label_text()
+	_update_outline_materials()
 
 	if animate:
 		var tween := create_tween()
@@ -449,3 +456,182 @@ func interact(_player: Node = null) -> void:
 
 		GridManager.set_cell_solid(cell_coord, not is_door_open)
 		_update_label_text()
+
+
+# ------------------------------------------------------------------------------
+# Візуальний контур виділення блоку (Highlight / Wireframe Cage)
+# ------------------------------------------------------------------------------
+func _get_bounds_info() -> Dictionary:
+	match piece_type:
+		&"modular_floor":
+			return {"size": Vector3(1.02, 0.10, 1.02), "center": Vector3(0.0, 0.04, 0.0)}
+		&"modular_pillar":
+			return {"size": Vector3(1.02, 2.02, 1.02), "center": Vector3(0.0, 1.0, 0.0)}
+		&"modular_wall":
+			return {"size": Vector3(1.02, 2.02, 0.22), "center": Vector3(0.0, 1.0, 0.0)}
+		&"modular_door":
+			return {"size": Vector3(1.02, 2.12, 0.22), "center": Vector3(0.0, 1.05, 0.0)}
+		&"modular_roof":
+			return {"size": Vector3(1.02, 0.14, 1.02), "center": Vector3(0.0, 2.06, 0.0)}
+		_:
+			return {"size": Vector3(1.02, 1.02, 1.02), "center": Vector3(0.0, 0.5, 0.0)}
+
+
+func _build_outline() -> void:
+	if _outline_root != null:
+		_outline_root.queue_free()
+
+	_outline_root = Node3D.new()
+	_outline_root.name = "OutlineRoot"
+	_outline_root.visible = false
+	add_child(_outline_root)
+
+	var info := _get_bounds_info()
+	var b_size: Vector3 = info["size"]
+	var b_center: Vector3 = info["center"]
+
+	_outline_line_mat = StandardMaterial3D.new()
+	_outline_line_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_outline_line_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_outline_line_mat.render_priority = 10
+
+	_outline_fill_mat = StandardMaterial3D.new()
+	_outline_fill_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_outline_fill_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_outline_fill_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_outline_fill_mat.render_priority = 9
+
+	_update_outline_materials()
+
+	# 1. Wireframe box lines (12 edges)
+	var line_mesh := _create_wireframe_box_mesh(b_size, b_center)
+	var line_inst := MeshInstance3D.new()
+	line_inst.name = "WireframeLines"
+	line_inst.mesh = line_mesh
+	line_inst.material_override = _outline_line_mat
+	_outline_root.add_child(line_inst)
+
+	# 2. Subtle translucent face box
+	var fill_mesh := BoxMesh.new()
+	fill_mesh.size = b_size
+	var fill_inst := MeshInstance3D.new()
+	fill_inst.name = "TranslucentFaces"
+	fill_inst.mesh = fill_mesh
+	fill_inst.position = b_center
+	fill_inst.material_override = _outline_fill_mat
+	_outline_root.add_child(fill_inst)
+
+
+func _create_wireframe_box_mesh(b_size: Vector3, b_center: Vector3) -> ArrayMesh:
+	var half := b_size * 0.5
+	var min_p := b_center - half
+	var max_p := b_center + half
+
+	var c0 := Vector3(min_p.x, min_p.y, min_p.z)
+	var c1 := Vector3(max_p.x, min_p.y, min_p.z)
+	var c2 := Vector3(max_p.x, min_p.y, max_p.z)
+	var c3 := Vector3(min_p.x, min_p.y, max_p.z)
+
+	var c4 := Vector3(min_p.x, max_p.y, min_p.z)
+	var c5 := Vector3(max_p.x, max_p.y, min_p.z)
+	var c6 := Vector3(max_p.x, max_p.y, max_p.z)
+	var c7 := Vector3(min_p.x, max_p.y, max_p.z)
+
+	var verts := PackedVector3Array([
+		# Нижня грань
+		c0, c1,  c1, c2,  c2, c3,  c3, c0,
+		# Верхня грань
+		c4, c5,  c5, c6,  c6, c7,  c7, c4,
+		# 4 вертикальні ребра
+		c0, c4,  c1, c5,  c2, c6,  c3, c7
+	])
+
+	var arr_mesh := ArrayMesh.new()
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arr_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_LINES, arrays)
+	return arr_mesh
+
+
+func _update_outline_materials() -> void:
+	if _outline_line_mat != null:
+		var line_col: Color = Color("FFD166") if is_built else Color("06D6A0")
+		line_col.a = 0.95
+		_outline_line_mat.albedo_color = line_col
+	if _outline_fill_mat != null:
+		var fill_col: Color = Color(1.0, 0.82, 0.4, 0.12) if is_built else Color(0.02, 0.84, 0.63, 0.12)
+		_outline_fill_mat.albedo_color = fill_col
+
+
+func set_highlighted(highlight: bool) -> void:
+	if _outline_root != null:
+		_outline_root.visible = highlight
+		if highlight:
+			_update_outline_materials()
+
+
+func is_highlighted() -> bool:
+	return _outline_root != null and _outline_root.visible
+
+
+# ------------------------------------------------------------------------------
+# Механіка знесення та демонтажу блоків (Going Medieval Demolition & Refunds)
+# ------------------------------------------------------------------------------
+## Перевірка чи можна демонтувати блок відповідно до ієрархії Going Medieval
+func can_demolish() -> Dictionary:
+	if piece_type == &"modular_floor":
+		if ModularManager != null and ModularManager.has_structure(cell_coord):
+			return {"can": false, "reason": "Спочатку знесіть стіни або опори на цій підлозі!"}
+	elif piece_type in [&"modular_wall", &"modular_pillar"]:
+		if ModularManager != null and ModularManager.has_built_roof(cell_coord):
+			return {"can": false, "reason": "Спочатку знесіть дах над цією секцією!"}
+	return {"can": true, "reason": ""}
+
+
+## Демонтаж модульного блоку з повним поверненням ресурсів у інвентар
+func demolish(player_inventory: Node = null) -> Dictionary:
+	var check := can_demolish()
+	if not check["can"]:
+		show_temporary_message(check["reason"], Color(1.0, 0.35, 0.35))
+		return {"success": false, "reason": check["reason"], "refunded": {}}
+
+	var refunded: Dictionary = {}
+	if is_built:
+		refunded = required_materials.duplicate()
+		if player_inventory != null:
+			for item_id in refunded.keys():
+				var count: int = refunded[item_id]
+				if player_inventory.has_method("add_item_by_id"):
+					player_inventory.add_item_by_id(item_id, count)
+				elif player_inventory.has_method("add_item"):
+					player_inventory.add_item(item_id, count)
+		if AudioManager != null:
+			AudioManager.play_sound_3d(&"demolish", global_position, 0.0, randf_range(0.95, 1.05))
+		if FloatingTextManager != null:
+			var refund_text := "♻️ Демонтовано (+%s)" % get_cost_text()
+			FloatingTextManager.spawn_info(global_position + Vector3(0, 1.5, 0), refund_text, Color("FFAA00"))
+		if piece_type == &"modular_wall" or (piece_type == &"modular_door" and not is_door_open):
+			GridManager.set_cell_solid(cell_coord, false)
+	else:
+		# Скасування синього креслення
+		if JobManager != null and JobManager.has_method("cancel_jobs_for_target"):
+			JobManager.cancel_jobs_for_target(self, "Креслення скасовано")
+		if AudioManager != null:
+			AudioManager.play_sound_3d(&"hit_wood", global_position, -4.0, 1.3)
+		if FloatingTextManager != null:
+			FloatingTextManager.spawn_info(global_position + Vector3(0, 1.0, 0), "❌ Креслення скасовано", Color("E74C3C"))
+
+	is_built = false
+	if ModularManager != null:
+		if ModularManager._floors.get(cell_coord) == self:
+			ModularManager._floors.erase(cell_coord)
+		if ModularManager._structures.get(cell_coord) == self:
+			ModularManager._structures.erase(cell_coord)
+		if ModularManager._roofs.get(cell_coord) == self:
+			ModularManager._roofs.erase(cell_coord)
+		ModularManager._all_pieces.erase(self)
+
+	piece_removed.emit(self)
+	queue_free()
+	return {"success": true, "reason": "", "refunded": refunded}

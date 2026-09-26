@@ -48,6 +48,8 @@ var _swing_tween: Tween = null
 const BlockGhost3DScript = preload("res://src/world3d/blocks/BlockGhost3D.gd")
 var block_ghost: Node3D = null
 var _torch_light: OmniLight3D = null
+var _step_distance: float = 0.0
+var _current_targeted_modular_piece: Node = null
 
 @onready var head: Node3D = $Head
 @onready var fps_camera: Camera3D = $Head/FPSCamera
@@ -205,6 +207,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 
+	# Демонтаж / скасування модульного блоку на клавішу X
+	if event is InputEventKey and event.is_pressed() and not event.is_echo() and event.keycode == KEY_X:
+		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not is_sleeping and not is_dead:
+			if _try_demolish_targeted_piece():
+				get_viewport().set_input_as_handled()
+				return
+
 
 func _physics_process(delta: float) -> void:
 	if not is_active:
@@ -243,6 +252,22 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 	_update_block_ghost()
+	_update_targeted_modular_piece()
+
+	# Аудіо кроків персонажа
+	if is_on_floor():
+		var horiz_vel := Vector2(velocity.x, velocity.z).length()
+		if horiz_vel > 0.4:
+			_step_distance += horiz_vel * delta
+			var threshold: float = 1.6 if not (wants_sprint and can_sprint) else 1.35
+			if _step_distance >= threshold:
+				_step_distance = 0.0
+				if AudioManager != null:
+					AudioManager.play_sound(&"step", -10.0, randf_range(0.92, 1.08))
+		else:
+			_step_distance = 0.0
+	else:
+		_step_distance = 0.0
 
 
 func select_hotbar_slot(slot_index: int) -> void:
@@ -367,6 +392,10 @@ func _try_drink_water() -> bool:
 		return false
 	restore_thirst(30.0)
 	_play_swing_animation()
+	if AudioManager != null:
+		AudioManager.play_sound(&"drink", 0.0, randf_range(0.95, 1.05))
+	if FloatingTextManager != null:
+		FloatingTextManager.spawn_info(global_position + Vector3(0, 1.8, 0), "💧 Спрага втамована (+30)", Color("3498DB"))
 	print("[Player3D] 💧 Ви випили свіжої води з водойми. Спрага: %.1f / %.1f" % [current_thirst, max_thirst])
 	return true
 
@@ -418,6 +447,10 @@ func _try_consume_food() -> bool:
 					restore_hunger(15.0)
 					restore_thirst(5.0)
 					_play_swing_animation()
+					if AudioManager != null:
+						AudioManager.play_sound(&"eat", 0.0, randf_range(0.95, 1.05))
+					if FloatingTextManager != null:
+						FloatingTextManager.spawn_info(global_position + Vector3(0, 1.8, 0), "🍓 +25 Енергія  +15 Ситість", Color("2ECC71"))
 					print("[Player3D] 🍓 З'їдено ягоди! Енергія: +25, Голод: +15, Спрага: +5")
 					return true
 	return false
@@ -448,6 +481,9 @@ func _try_interact_or_harvest() -> void:
 				collider.show_temporary_message("Недостатньо енергії!", Color(1.0, 0.3, 0.3))
 			return
 		var has_hammer := has_hammer_equipped()
+		if AudioManager != null:
+			var target_pos: Vector3 = collider.global_position if collider is Node3D else global_position
+			AudioManager.play_sound_3d(&"build", target_pos, 0.0, randf_range(0.95, 1.05))
 		if collider.interact_construct(inventory, has_hammer):
 			consume_energy(construct_energy_cost)
 		else:
@@ -554,6 +590,8 @@ func _try_place_block() -> bool:
 	var block = BlockManager.place_block(active_item_id, target_coord)
 	consume_energy(place_block_energy_cost)
 	_play_swing_animation()
+	if AudioManager != null:
+		AudioManager.play_sound_3d(&"build", place_pos, -2.0, randf_range(0.95, 1.05))
 	print("[Player3D] Встановлено блок '%s' на позиції %s" % [active_item_id, str(target_coord)])
 	return true
 
@@ -759,3 +797,33 @@ func _try_place_torch() -> bool:
 	_play_swing_animation()
 	print("[Player3D] 🕯️ Смолоскип встановлено у світі на позиції %v (витрачено 1 шт.)" % hit_pos)
 	return true
+
+
+func _update_targeted_modular_piece() -> void:
+	var target: Node = null
+	if interact_ray != null and interact_ray.is_colliding():
+		var col = interact_ray.get_collider()
+		if col != null and (col.is_in_group("modular_pieces") or col.has_method("set_highlighted")):
+			target = col
+
+	if _current_targeted_modular_piece != target:
+		if _current_targeted_modular_piece != null and is_instance_valid(_current_targeted_modular_piece):
+			if _current_targeted_modular_piece.has_method("set_highlighted"):
+				_current_targeted_modular_piece.set_highlighted(false)
+		_current_targeted_modular_piece = target
+		if _current_targeted_modular_piece != null and is_instance_valid(_current_targeted_modular_piece):
+			if _current_targeted_modular_piece.has_method("set_highlighted"):
+				_current_targeted_modular_piece.set_highlighted(true)
+
+
+func _try_demolish_targeted_piece() -> bool:
+	if interact_ray == null or not interact_ray.is_colliding():
+		return false
+	var collider = interact_ray.get_collider()
+	if collider != null and collider.has_method("demolish"):
+		_play_swing_animation()
+		var res: Dictionary = collider.demolish(inventory)
+		if res.get("success", false) and current_energy > 0.0:
+			consume_energy(2.0)
+		return true
+	return false

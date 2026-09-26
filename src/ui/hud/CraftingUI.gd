@@ -204,14 +204,27 @@ func _create_recipe_row(recipe: Resource) -> Control:
 	req_label.add_theme_color_override("font_color", Color(0.7, 0.8, 0.9) if can_craft else Color(0.85, 0.45, 0.45))
 	info_vbox.add_child(req_label)
 
+	# Перевірка статусу дослідження в Дереві Епох
+	var is_unlocked: bool = CraftingManager.is_recipe_unlocked(recipe) if CraftingManager != null else true
+
+	if not is_unlocked:
+		panel.modulate = Color(0.65, 0.65, 0.7, 0.7)
+		req_label.text = "🔒 Потрібно дослідити у Дереві Епох [T]"
+		req_label.add_theme_color_override("font_color", Color(1.0, 0.55, 0.35))
+
 	# Кнопка скрафтити
 	var craft_btn = Button.new()
-	craft_btn.text = "Скрафтити"
-	craft_btn.custom_minimum_size = Vector2(105, 36)
-	craft_btn.disabled = not can_craft
+	if not is_unlocked:
+		craft_btn.text = "🔒 Заблоковано"
+		craft_btn.disabled = true
+	else:
+		craft_btn.text = "Скрафтити"
+		craft_btn.disabled = not can_craft
+
+	craft_btn.custom_minimum_size = Vector2(120, 36)
 
 	craft_btn.pressed.connect(func():
-		if _inventory != null and CraftingManager.craft_item(recipe, _inventory):
+		if is_unlocked and _inventory != null and CraftingManager.craft_item(recipe, _inventory):
 			_refresh_recipes_ui()
 	)
 	hbox.add_child(craft_btn)

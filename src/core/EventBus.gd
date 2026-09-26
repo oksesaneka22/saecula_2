@@ -121,6 +121,15 @@ signal colonist_profession_changed(colonist_node: Node, new_profession: StringNa
 ## Житель змінив стан FSM
 signal colonist_state_changed(colonist_node: Node, new_state_name: StringName)
 
+## Запит на відкриття інтерфейсу діалогу / картки поселенця
+signal colonist_dialog_requested(colonist_node: Node)
+
+## Інтерфейс картки поселенця закрито
+signal colonist_dialog_closed
+
+## Запит на відкриття/закриття списку поселенців (Roster)
+signal colonist_roster_toggle_requested
+
 
 # ------------------------------------------------------------------------------
 # 7. Події розвитку та епох (Era Progression & Tech)

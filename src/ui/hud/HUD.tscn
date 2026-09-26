@@ -12,6 +12,9 @@
 [ext_resource type="Script" path="res://src/ui/hud/SleepOverlayUI.gd" id="10_sleep"]
 [ext_resource type="Script" path="res://src/ui/hud/SurvivalStatsUI.gd" id="11_survival"]
 [ext_resource type="Script" path="res://src/ui/hud/AdminPanelUI.gd" id="12_admin"]
+[ext_resource type="Script" path="res://src/ui/hud/EraTreeUI.gd" id="13_eratree"]
+[ext_resource type="Script" path="res://src/ui/hud/ColonistDialogUI.gd" id="14_colonist_dlg"]
+[ext_resource type="Script" path="res://src/ui/hud/ColonyRosterUI.gd" id="15_roster"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_banner"]
 bg_color = Color(0.08, 0.1, 0.12, 0.75)
@@ -118,7 +121,7 @@ anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -530.0
+offset_left = -840.0
 offset_top = -68.0
 offset_right = -16.0
 offset_bottom = -16.0
@@ -153,6 +156,18 @@ custom_minimum_size = Vector2(110, 42)
 layout_mode = 2
 tooltip_text = "Відкрити інвентар (I)"
 text = "🎒 Інвентар [I]"
+
+[node name="EraTreeButton" type="Button" parent="HUDActionBar/HBoxContainer"]
+custom_minimum_size = Vector2(136, 42)
+layout_mode = 2
+tooltip_text = "Відкрити дерево епох та технологій (T)"
+text = "🏛️ Епохи [T]"
+
+[node name="RosterButton" type="Button" parent="HUDActionBar/HBoxContainer"]
+custom_minimum_size = Vector2(136, 42)
+layout_mode = 2
+tooltip_text = "Згорнути / розгорнути панель поселенців (K)"
+text = "👥 Поселенці [K]"
 
 [node name="AdminButton" type="Button" parent="HUDActionBar/HBoxContainer"]
 custom_minimum_size = Vector2(110, 42)
@@ -203,3 +218,31 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("12_admin")
+[node name="EraTreeUI" type="Control" parent="."]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("13_eratree")
+[node name="ColonistDialogUI" type="Control" parent="."]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("14_colonist_dlg")
+
+[node name="ColonyRosterUI" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 0
+offset_left = 16.0
+offset_top = 70.0
+offset_right = 296.0
+offset_bottom = 360.0
+script = ExtResource("15_roster")

@@ -252,17 +252,30 @@ func _create_building_card(bld: BuildingData) -> Control:
 	var cost_vbox = _build_cost_display(bld)
 	info_vbox.add_child(cost_vbox)
 
+	# Перевірка статусу дослідження в Дереві Епох
+	var is_unlocked: bool = BuildingPlacementController.is_building_unlocked(bld) if BuildingPlacementController != null else true
+
+	if not is_unlocked:
+		card_panel.modulate = Color(0.65, 0.65, 0.7, 0.7)
+
 	# 3. Права колонка: Кнопка розміщення креслення
 	var btn_vbox = VBoxContainer.new()
 	btn_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	hbox.add_child(btn_vbox)
 
 	var place_btn = Button.new()
-	place_btn.text = "📐 Встановити\nкреслення"
+	if not is_unlocked:
+		place_btn.text = "🔒 Потрібне\nдослідження [T]"
+		place_btn.disabled = true
+	else:
+		place_btn.text = "📐 Встановити\nкреслення"
+		place_btn.disabled = false
+
 	place_btn.custom_minimum_size = Vector2(140, 48)
 	place_btn.pressed.connect(func():
-		close()
-		BuildingPlacementController.start_placement(bld)
+		if is_unlocked:
+			close()
+			BuildingPlacementController.start_placement(bld)
 	)
 	btn_vbox.add_child(place_btn)
 
