@@ -60,6 +60,14 @@ func set_collapsed(collapsed: bool) -> void:
 		_scroll_container.visible = not _is_collapsed
 	if _collapse_btn != null:
 		_collapse_btn.text = "▼" if _is_collapsed else "▲"
+	if not _is_collapsed:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		_refresh_roster()
+	else:
+		var player = get_tree().get_first_node_in_group("player")
+		var is_modal: bool = player.has_method("is_any_modal_open") and player.is_any_modal_open() if player != null else false
+		if not is_modal:
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func is_collapsed() -> bool:
@@ -268,7 +276,13 @@ func _create_colonist_card(colonist: Node) -> PanelContainer:
 	top_line.add_child(prof_badge)
 
 	# Рядок статусу завдання
-	var status_text: String = colonist.get("_status_text") if colonist.get("_status_text") != null else "☕ Вільний"
+	var status_text: String = ""
+	if colonist.has_method("get_status_text") and colonist.get_status_text() != "":
+		status_text = colonist.get_status_text()
+	elif colonist.get("_status_text") != null and str(colonist.get("_status_text")) != "":
+		status_text = str(colonist.get("_status_text"))
+	else:
+		status_text = "☕ Вільний"
 	var status_lbl := Label.new()
 	status_lbl.name = "StatusLabel"
 	status_lbl.text = status_text
@@ -328,8 +342,15 @@ func _update_active_statuses() -> void:
 
 		var col: Object = col_raw
 		var status_lbl := card.find_child("StatusLabel", true, false) as Label
-		if status_lbl != null and col.get("_status_text") != null:
-			status_lbl.text = str(col.get("_status_text"))
+		if status_lbl != null:
+			var st_val: String = ""
+			if col.has_method("get_status_text") and col.get_status_text() != "":
+				st_val = col.get_status_text()
+			elif col.get("_status_text") != null and str(col.get("_status_text")) != "":
+				st_val = str(col.get("_status_text"))
+			else:
+				st_val = "☕ Вільний"
+			status_lbl.text = st_val
 
 		var follow_lbl := card.find_child("FollowIcon", true, false) as Label
 		var btn_follow := card.find_child("BtnFollow", true, false) as Button

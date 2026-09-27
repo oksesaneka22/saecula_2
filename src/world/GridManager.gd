@@ -46,11 +46,12 @@ func initialize_grid(width: int, height: int) -> void:
 	astar_grid.cell_size = Vector2(TILE_SIZE, TILE_SIZE)
 	astar_grid.offset = Vector2(TILE_SIZE / 2.0, TILE_SIZE / 2.0)
 
-	# Для тайлової пісочниці 4-напрямний або евклідовий рух.
-	# DIAGONAL_MODE_NEVER запобігає зрізанню кутів крізь тверді стіни.
-	astar_grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_NEVER
-	astar_grid.default_compute_heuristic = AStarGrid2D.HEURISTIC_MANHATTAN
-	astar_grid.default_estimate_heuristic = AStarGrid2D.HEURISTIC_MANHATTAN
+	# Для тайлової пісочниці діагональний рух з обмеженням зрізання кутів.
+	# DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES дозволяє природний плавний діагональний рух,
+	# але повністю запобігає зрізанню кутів крізь тверді стіни, дерева чи скелі.
+	astar_grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+	astar_grid.default_compute_heuristic = AStarGrid2D.HEURISTIC_OCTILE
+	astar_grid.default_estimate_heuristic = AStarGrid2D.HEURISTIC_OCTILE
 	astar_grid.update()
 
 	grid_initialized.emit(grid_width, grid_height)
@@ -171,14 +172,31 @@ func get_world_path(from_world: Vector2, to_world: Vector2) -> PackedVector2Arra
 	if not is_within_bounds(from_cell) or not is_within_bounds(to_cell):
 		return PackedVector2Array()
 
-	if astar_grid.is_point_solid(to_cell):
+	if from_cell == to_cell:
+		if not astar_grid.is_point_solid(to_cell):
+			return PackedVector2Array([map_to_world(to_cell)])
 		to_cell = get_closest_walkable_neighbor(from_cell, to_cell)
 		if to_cell == Vector2i(-1, -1):
 			return PackedVector2Array()
+		return PackedVector2Array([map_to_world(to_cell)])
+
+	var from_was_solid: bool = astar_grid.is_point_solid(from_cell)
+	if from_was_solid:
+		astar_grid.set_point_solid(from_cell, false)
+
+	if astar_grid.is_point_solid(to_cell):
+		to_cell = get_closest_walkable_neighbor(from_cell, to_cell)
+		if to_cell == Vector2i(-1, -1):
+			if from_was_solid:
+				astar_grid.set_point_solid(from_cell, true)
+			return PackedVector2Array()
 
 	var id_path: Array[Vector2i] = astar_grid.get_id_path(from_cell, to_cell)
-	var world_path: PackedVector2Array = PackedVector2Array()
 
+	if from_was_solid:
+		astar_grid.set_point_solid(from_cell, true)
+
+	var world_path: PackedVector2Array = PackedVector2Array()
 	for cell in id_path:
 		world_path.append(map_to_world(cell))
 
@@ -193,38 +211,69 @@ func get_world_path_3d(from_world: Vector3, to_world: Vector3, y: float = 0.0) -
 	if not is_within_bounds(from_cell) or not is_within_bounds(to_cell):
 		return PackedVector3Array()
 
-	if astar_grid.is_point_solid(to_cell):
+	if from_cell == to_cell:
+		if not astar_grid.is_point_solid(to_cell):
+			return PackedVector3Array([map_to_world_3d(to_cell, y)])
 		to_cell = get_closest_walkable_neighbor(from_cell, to_cell)
 		if to_cell == Vector2i(-1, -1):
 			return PackedVector3Array()
+		return PackedVector3Array([map_to_world_3d(to_cell, y)])
+
+	# Якщо початкова точка виявилась усередині перешкоди (наприклад, колоніст зачепив контур дерева/стіни),
+	# тимчасово робимо її прохідною для A*, щоб дозволити знайти шлях евакуації назовні
+	var from_was_solid: bool = astar_grid.is_point_solid(from_cell)
+	if from_was_solid:
+		astar_grid.set_point_solid(from_cell, false)
+
+	if astar_grid.is_point_solid(to_cell):
+		to_cell = get_closest_walkable_neighbor(from_cell, to_cell)
+		if to_cell == Vector2i(-1, -1):
+			if from_was_solid:
+				astar_grid.set_point_solid(from_cell, true)
+			return PackedVector3Array()
 
 	var id_path: Array[Vector2i] = astar_grid.get_id_path(from_cell, to_cell)
-	var world_path: PackedVector3Array = PackedVector3Array()
 
+	if from_was_solid:
+		astar_grid.set_point_solid(from_cell, true)
+
+	# Якщо шлях не знайдено (наприклад, кінцева зона заблокована бар'єром),
+	# шукаємо найближчу доступну точку в радіусі
+	if id_path.is_empty() and from_cell != to_cell:
+		var fallback_cell := get_closest_walkable_neighbor(from_cell, to_cell, 4)
+		if fallback_cell != Vector2i(-1, -1) and fallback_cell != to_cell:
+			id_path = astar_grid.get_id_path(from_cell, fallback_cell)
+
+	var world_path: PackedVector3Array = PackedVector3Array()
 	for cell in id_path:
 		world_path.append(map_to_world_3d(cell, y))
 
 	return world_path
 
 
-## Знаходить найближчу вільну клітинку з 4 кардинальних сусідів (Up, Down, Left, Right)
-func get_closest_walkable_neighbor(from_cell: Vector2i, target_cell: Vector2i) -> Vector2i:
-	var neighbors: Array[Vector2i] = [
-		target_cell + Vector2i.UP,
-		target_cell + Vector2i.DOWN,
-		target_cell + Vector2i.LEFT,
-		target_cell + Vector2i.RIGHT
-	]
-
+## Знаходить найближчу вільну клітинку з радіального оточення (до max_radius тайлів)
+func get_closest_walkable_neighbor(from_cell: Vector2i, target_cell: Vector2i, max_radius: int = 3) -> Vector2i:
 	var best_neighbor: Vector2i = Vector2i(-1, -1)
-	var min_dist: float = INF
+	var min_score: float = INF
 
-	for neighbor in neighbors:
-		if is_cell_walkable(neighbor):
-			var dist: float = Vector2(from_cell).distance_to(Vector2(neighbor))
-			if dist < min_dist:
-				min_dist = dist
-				best_neighbor = neighbor
+	for radius in range(1, max_radius + 1):
+		var ring_candidates: Array[Vector2i] = []
+		for dx in range(-radius, radius + 1):
+			for dy in range(-radius, radius + 1):
+				if abs(dx) == radius or abs(dy) == radius:
+					ring_candidates.append(target_cell + Vector2i(dx, dy))
+
+		for candidate in ring_candidates:
+			if is_cell_walkable(candidate):
+				var dist_from: float = Vector2(from_cell).distance_to(Vector2(candidate))
+				var dist_target: float = Vector2(target_cell).distance_to(Vector2(candidate))
+				var score: float = dist_from + (dist_target * 1.2)
+				if score < min_score:
+					min_score = score
+					best_neighbor = candidate
+
+		if best_neighbor != Vector2i(-1, -1):
+			break
 
 	return best_neighbor
 

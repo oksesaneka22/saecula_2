@@ -17,11 +17,28 @@ const Job = preload("res://src/systems/jobs/Job.gd")
 const Colonist3DScene = preload("res://src/entities3d/colonist/Colonist3D.tscn")
 const Colonist3DScript = preload("res://src/entities3d/colonist/Colonist3D.gd")
 
+@export var run_unit_tests: bool = false
+
 func _ready() -> void:
 	# Підписуємося на сигнали EventBus для валідації шини
 	EventBus.game_state_changed.connect(_on_game_state_changed)
 	EventBus.day_time_updated.connect(_on_day_time_updated)
 
+	var cmd_args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
+	var force_tests := run_unit_tests or ("--run-tests" in cmd_args) or ("--test" in cmd_args)
+	var skip_tests := ("--skip-tests" in cmd_args) or ("--no-tests" in cmd_args)
+	var is_headless := DisplayServer.get_name() == "headless"
+
+	var should_run_tests: bool = (force_tests or (is_headless and not skip_tests)) and not skip_tests
+	if should_run_tests:
+		print("[Main] === ЗАПУСК АВТОМАТИЧНИХ ТЕСТІВ (Unit Tests) ===")
+		_run_all_unit_tests()
+		print("[Main] === УСІ ТЕСТИ УСПІШНО ПРОЙДЕНО ===")
+	else:
+		print("[Main] 🎮 Запуск гри у звичайному режимі (юніт-тести пропущено).")
+
+
+func _run_all_unit_tests() -> void:
 	# 1. Валідація доступу до GridManager
 	assert(GridManager != null, "GridManager autoload must be available")
 	var sample_path_3d: PackedVector3Array = GridManager.get_world_path_3d(Vector3(0, 0, 0), Vector3(20, 0, 20))
@@ -110,6 +127,9 @@ func _ready() -> void:
 
 	# 28. Валідація контекстного прицілу (CrosshairUI: підказки для поселенців з HP/роботою/дистанцією, вогнища з денним/нічним сном, споруд та ресурсів)
 	_test_enhanced_crosshair_hints()
+
+	# 29. Валідація покращеного пошуку шляху та обходу фізичних перешкод поселенцями (GridManager, AStarGrid2D діагоналі, solid-start recovery, Whisker raycasts, slide deflection)
+	_test_colonist_obstacle_avoidance_and_pathfinding()
 
 
 func _test_inventory_component(wood: Resource) -> void:
@@ -1921,3 +1941,67 @@ func _test_enhanced_crosshair_hints() -> void:
 	crosshair.queue_free()
 
 	print("[Main] Enhanced Crosshair UI & Context Clues unit tests passed successfully!")
+
+
+func _test_colonist_obstacle_avoidance_and_pathfinding() -> void:
+	print("[Main] Testing Colonist Pathfinding & Obstacle Avoidance (GridManager & ColonistMoveToState3D)...")
+
+	# 1. Перевірка обходу суцільної перешкоди (стіни) у 3D
+	var wall_x: int = 15
+	var wall_cells: Array[Vector2i] = []
+	for wy in range(10, 16):
+		var wc := Vector2i(wall_x, wy)
+		wall_cells.append(wc)
+		GridManager.set_cell_solid(wc, true)
+
+	var from_pos := Vector3(13.5, 0.0, 12.5)
+	var to_pos := Vector3(17.5, 0.0, 12.5)
+	var wall_path: PackedVector3Array = GridManager.get_world_path_3d(from_pos, to_pos, 0.0)
+	assert(wall_path.size() > 0, "AStarGrid2D must find path around vertical wall obstacle")
+
+	# Перевірка що жодна точка маршруту не проходить крізь суцільні тайли стіни
+	for pt in wall_path:
+		var map_c: Vector2i = GridManager.world_to_map_3d(pt)
+		assert(not wall_cells.has(map_c), "Path waypoint must never step on a solid wall tile!")
+
+	# 2. Перевірка відновлення при старті всередині твердого тайлу (Solid-Start Recovery)
+	var start_cell := GridManager.world_to_map_3d(from_pos)
+	GridManager.set_cell_solid(start_cell, true)
+	var escape_path: PackedVector3Array = GridManager.get_world_path_3d(from_pos, to_pos, 0.0)
+	assert(escape_path.size() > 0, "get_world_path_3d must recover and pathfind out when start cell is solid")
+	assert(GridManager.is_cell_solid(start_cell) == true, "Solid start cell must have its solid state restored")
+	GridManager.set_cell_solid(start_cell, false)
+
+	# 3. Перевірка радіального пошуку прохідного сусіда навколо товстої перешкоди (3x3)
+	var block_center := Vector2i(25, 25)
+	var thick_cells: Array[Vector2i] = []
+	for bx in range(-1, 2):
+		for by in range(-1, 2):
+			var tc := block_center + Vector2i(bx, by)
+			thick_cells.append(tc)
+			GridManager.set_cell_solid(tc, true)
+
+	var neighbor_cell := GridManager.get_closest_walkable_neighbor(Vector2i(20, 25), block_center, 3)
+	assert(neighbor_cell != Vector2i(-1, -1), "Must find walkable neighbor around 3x3 solid cluster")
+	assert(GridManager.is_cell_walkable(neighbor_cell), "Selected neighbor must be genuinely walkable")
+	assert(not thick_cells.has(neighbor_cell), "Selected neighbor must be outside the solid cluster")
+
+	# Очищення тестових клітинок сітки
+	for wc in wall_cells:
+		GridManager.set_cell_solid(wc, false)
+	for tc in thick_cells:
+		GridManager.set_cell_solid(tc, false)
+
+	# 4. Перевірка методів стану ColonistMoveToState3D (Whisker raycasts & deflection)
+	var MoveStateClass = load("res://src/entities3d/colonist/states/ColonistMoveToState3D.gd")
+	var move_state = MoveStateClass.new()
+	assert(move_state.has_method("_detect_obstacle_avoidance"), "MoveTo state must implement _detect_obstacle_avoidance")
+	assert(move_state.has_method("_has_clear_line_of_sight"), "MoveTo state must implement _has_clear_line_of_sight")
+
+	var test_dir := Vector3(1.0, 0.0, 0.0)
+	var deflected: Vector3 = move_state._detect_obstacle_avoidance(test_dir)
+	assert(deflected.length() > 0.0, "Obstacle avoidance vector must be non-zero")
+	assert(abs(deflected.length() - 1.0) < 0.05, "Obstacle avoidance vector must be normalized")
+	move_state.queue_free()
+
+	print("[Main] Colonist Pathfinding & Obstacle Avoidance unit tests passed successfully!")

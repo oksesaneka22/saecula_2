@@ -200,10 +200,26 @@ func _unhandled_input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 				return
 
+	# Вільний курсор миші (ALT) або повернення у FPS режим при кліку у світі
+	if event is InputEventKey and event.is_pressed() and not event.is_echo() and event.keycode == KEY_ALT:
+		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		else:
+			if not is_any_modal_open():
+				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		get_viewport().set_input_as_handled()
+		return
+
+	if event is InputEventMouseButton and event.is_pressed() and event.button_index == MOUSE_BUTTON_LEFT:
+		if Input.mouse_mode == Input.MOUSE_MODE_VISIBLE and not is_any_modal_open():
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+			get_viewport().set_input_as_handled()
+			return
+
 	# Взаємодія / Збір ресурсів / Будівництво / Сон біля вогнища (ЛКМ або клавіша E як взаємодія зі стореджом)
 	if event.is_action_pressed("primary_action") or event.is_action_pressed("interact"):
 		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not is_sleeping:
-			_try_interact_or_harvest()
+			_try_interact_or_harvest(event.is_action_pressed("interact"))
 			get_viewport().set_input_as_handled()
 			return
 
@@ -456,7 +472,7 @@ func _try_consume_food() -> bool:
 	return false
 
 
-func _try_interact_or_harvest() -> void:
+func _try_interact_or_harvest(is_interact_key: bool = false) -> void:
 	# Анімація помаху головою/камерою
 	_play_swing_animation()
 
@@ -468,6 +484,16 @@ func _try_interact_or_harvest() -> void:
 		return
 
 	player_interacted.emit(collider)
+
+	# 0. Якщо це поселенець (Colonist3D): відкриваємо діалог ТІЛЬКИ на клавішу E
+	if collider.is_in_group("colonists") or (collider is CharacterBody3D and collider.has_method("get_profession_name")):
+		if is_interact_key:
+			if collider.has_method("interact"):
+				collider.interact(self)
+		else:
+			if AudioManager != null:
+				AudioManager.play_sound(&"step", -4.0, 1.2)
+		return
 
 	# 1. Якщо це модульний блок (ModularPiece3D) або будівельний майданчик (ConstructionSite3D)
 	if collider.has_method("interact_construct"):
@@ -826,4 +852,15 @@ func _try_demolish_targeted_piece() -> bool:
 		if res.get("success", false) and current_energy > 0.0:
 			consume_energy(2.0)
 		return true
+	return false
+
+func is_any_modal_open() -> bool:
+	var hud = get_tree().get_first_node_in_group("hud")
+	if hud == null and get_parent() != null:
+		hud = get_parent().get_node_or_null("HUD")
+	if hud != null:
+		for modal_name in ["InventoryUI", "CraftingUI", "BuildMenuUI", "EraTreeUI", "ColonistDialogUI", "AdminPanelUI", "StorageUI"]:
+			var modal = hud.get_node_or_null(modal_name)
+			if modal != null and modal.visible:
+				return true
 	return false

@@ -19,6 +19,8 @@ var _player_inventory: Node = null
 var _player_slots: Array[Control] = []
 var _colonist_slots: Array[Control] = []
 
+var _opened_at_msec: int = 0
+var _hp_label: Label = null
 var _name_label: Label = null
 var _status_label: Label = null
 var _follow_btn: Button = null
@@ -63,7 +65,8 @@ func _build_ui_layout() -> void:
 	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
 	backdrop.gui_input.connect(func(ev: InputEvent):
 		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
-			close_dialog()
+			if Time.get_ticks_msec() - _opened_at_msec > 180:
+				close_dialog()
 	)
 	add_child(backdrop)
 
@@ -99,6 +102,12 @@ func _build_ui_layout() -> void:
 	_name_label.add_theme_font_size_override("font_size", 18)
 	_name_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.5))
 	header_hbox.add_child(_name_label)
+
+	_hp_label = Label.new()
+	_hp_label.text = "❤️ 100/100 HP"
+	_hp_label.add_theme_font_size_override("font_size", 14)
+	_hp_label.add_theme_color_override("font_color", Color(0.9, 0.35, 0.35))
+	header_hbox.add_child(_hp_label)
 
 	var close_btn := Button.new()
 	close_btn.text = " ✕ "
@@ -279,6 +288,7 @@ func open_dialog(colonist_node: Node) -> void:
 	if _player_inventory != null and not _player_inventory.inventory_updated.is_connected(refresh_ui):
 		_player_inventory.inventory_updated.connect(refresh_ui)
 
+	_opened_at_msec = Time.get_ticks_msec()
 	_update_colonist_info()
 
 	visible = true
@@ -316,8 +326,19 @@ func _update_colonist_info() -> void:
 	var c_prof: String = _target_colonist.get_profession_name() if _target_colonist.has_method("get_profession_name") else ""
 	_name_label.text = "👤 %s [%s]" % [c_name, c_prof]
 
-	var cur_status: String = _target_colonist._status_text if "_status_text" in _target_colonist else "Вільний"
+	var cur_status: String = ""
+	if _target_colonist.has_method("get_status_text") and _target_colonist.get_status_text() != "":
+		cur_status = _target_colonist.get_status_text()
+	elif "_status_text" in _target_colonist and _target_colonist._status_text != "":
+		cur_status = _target_colonist._status_text
+	else:
+		cur_status = "Вільний"
 	_status_label.text = cur_status
+
+	if _hp_label != null:
+		var cur_hp: int = int(_target_colonist.get("current_health")) if "current_health" in _target_colonist else 100
+		var max_hp: int = int(_target_colonist.get("max_health")) if "max_health" in _target_colonist else 100
+		_hp_label.text = "❤️ %d/%d HP" % [cur_hp, max_hp]
 
 	# Вибір поточного індексу професії
 	var p_code: StringName = _target_colonist.profession if "profession" in _target_colonist else &"settler"
