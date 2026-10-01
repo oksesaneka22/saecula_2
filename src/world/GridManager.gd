@@ -237,12 +237,7 @@ func get_world_path_3d(from_world: Vector3, to_world: Vector3, y: float = 0.0) -
 	if from_was_solid:
 		astar_grid.set_point_solid(from_cell, true)
 
-	# Якщо шлях не знайдено (наприклад, кінцева зона заблокована бар'єром),
-	# шукаємо найближчу доступну точку в радіусі
-	if id_path.is_empty() and from_cell != to_cell:
-		var fallback_cell := get_closest_walkable_neighbor(from_cell, to_cell, 4)
-		if fallback_cell != Vector2i(-1, -1) and fallback_cell != to_cell:
-			id_path = astar_grid.get_id_path(from_cell, fallback_cell)
+
 
 	var world_path: PackedVector3Array = PackedVector3Array()
 	for cell in id_path:

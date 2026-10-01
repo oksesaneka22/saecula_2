@@ -128,6 +128,15 @@ func _run_all_unit_tests() -> void:
 	# 28. Валідація контекстного прицілу (CrosshairUI: підказки для поселенців з HP/роботою/дистанцією, вогнища з денним/нічним сном, споруд та ресурсів)
 	_test_enhanced_crosshair_hints()
 
+	# 30. Валідація виправлень та покращень будівельників, добувачів та менеджменту робіт (ColonistBuildState3D, ColonistHarvestState3D, ColonistMoveToState3D, JobManager)
+	_test_colonist_jobs_and_states_polish()
+
+	# 31. Валідація розширеного радіусу будівництва (4.5м), пріоритетів конструкцій та перевірки досяжності шляху
+	_test_colonist_build_radius_and_reachability()
+
+	# 32. Валідація відкриття сховища (Stockpile BuildingEntity3D), взаємодії з інвентарем та розділення з багаттям (Player3D, CrosshairUI, StorageUI)
+	_test_stockpile_interaction_and_storage_ui()
+
 	# 29. Валідація покращеного пошуку шляху та обходу фізичних перешкод поселенцями (GridManager, AStarGrid2D діагоналі, solid-start recovery, Whisker raycasts, slide deflection)
 	_test_colonist_obstacle_avoidance_and_pathfinding()
 
@@ -2005,3 +2014,268 @@ func _test_colonist_obstacle_avoidance_and_pathfinding() -> void:
 	move_state.queue_free()
 
 	print("[Main] Colonist Pathfinding & Obstacle Avoidance unit tests passed successfully!")
+
+
+func _test_colonist_jobs_and_states_polish() -> void:
+	print("[Main] Testing Colonist Jobs, Build/Harvest States and JobManager Polish...")
+
+	# 1. JobManager: запобігання видачі завдань з об`єктами у черзі на видалення (is_queued_for_deletion)
+	var dummy_target := Node.new()
+	add_child(dummy_target)
+	var dummy_job := JobManager.create_job(
+		Job.JobType.BUILD,
+		Vector3(10, 0, 10),
+		dummy_target,
+		99
+	)
+	assert(dummy_job != null, "Job must be created")
+	dummy_target.queue_free()
+
+	var test_worker := Colonist3DScript.new()
+	add_child(test_worker)
+	test_worker.name = "TestPolishWorker"
+	test_worker.profession = &"builder"
+
+	var assigned = JobManager.request_job(test_worker)
+	assert(assigned != dummy_job, "Job with target queued for deletion must not be assigned")
+	if assigned != null:
+		JobManager.release_job(assigned)
+
+	# 2. ColonistMoveToState3D: перевірка горизонтальної дистанції з вертикальним допуском (XZ arrival)
+	var MoveStateClass = load("res://src/entities3d/colonist/states/ColonistMoveToState3D.gd")
+	var move_state = MoveStateClass.new()
+	move_state.actor = test_worker
+	test_worker.global_position = Vector3(10.0, 1.5, 10.0)
+	move_state.target_position = Vector3(10.3, 0.0, 10.3)
+	var horiz_d: float = Vector2(test_worker.global_position.x - move_state.target_position.x, test_worker.global_position.z - move_state.target_position.z).length()
+	var vert_d: float = absf(test_worker.global_position.y - move_state.target_position.y)
+	assert(horiz_d <= move_state.arrival_distance and vert_d <= 2.2, "Must satisfy horizontal arrival conditions")
+	move_state.queue_free()
+
+	# 3. ColonistHarvestState3D: відповідність знарядь праці та назв ресурсів (глина, кремінь, ягоди)
+	var HarvestStateClass = load("res://src/entities3d/colonist/states/ColonistHarvestState3D.gd")
+	var harvest_state = HarvestStateClass.new()
+	harvest_state.actor = test_worker
+
+	var WorldResourceNode3DScript = load("res://src/world3d/WorldResourceNode3D.gd")
+	var clay_res = WorldResourceNode3DScript.new()
+	clay_res.resource_type = 3 # CLAY
+	add_child(clay_res)
+	harvest_state.enter({"target_node": clay_res})
+	assert(test_worker._status_text.contains("глину"), "Status display must mention clay for resource_type 3")
+
+	var flint_res = WorldResourceNode3DScript.new()
+	flint_res.resource_type = 4 # FLINT
+	add_child(flint_res)
+	harvest_state.enter({"target_node": flint_res})
+	assert(test_worker._status_text.contains("кремінь"), "Status display must mention flint for resource_type 4")
+
+	var bush_res = WorldResourceNode3DScript.new()
+	bush_res.resource_type = 2 # BUSH
+	add_child(bush_res)
+	harvest_state.enter({"target_node": bush_res})
+	assert(test_worker._status_text.contains("ягоди"), "Status display must mention berries for resource_type 2")
+
+	harvest_state.exit()
+	clay_res.queue_free()
+	flint_res.queue_free()
+	bush_res.queue_free()
+	harvest_state.queue_free()
+
+	# 4. ColonistBuildState3D: будівництво модульних блоків та обробка нестачі матеріалів
+	var BuildStateClass = load("res://src/entities3d/colonist/states/ColonistBuildState3D.gd")
+	var build_state = BuildStateClass.new()
+	build_state.actor = test_worker
+
+	var modular_cell := Vector2i(92, 92)
+	var modular_floor = ModularPiece3DScript.new()
+	add_child(modular_floor)
+	modular_floor.setup_piece(&"modular_floor", modular_cell, false, 0.0)
+	modular_floor.required_materials = { &"wood": 1 }
+
+	# Видаємо будівельнику деревину
+	test_worker.inventory.add_item_by_id(&"wood", 5)
+	test_worker.profession = &"builder"
+	build_state.enter({"target_node": modular_floor})
+	assert(build_state.target_site == modular_floor, "Build state must accept ModularPiece3D as target")
+
+	# Виконуємо крок будівництва
+	build_state._perform_build_step()
+	assert(modular_floor.construction_progress_hits == 2, "Builder with hammer must advance modular piece hits by 2")
+
+	# Перевірка вивільнення завдання при тривалій відсутності матеріалів
+	build_state.missing_material_retries = 2
+	var mock_missing: Dictionary = { &"iron_ingot": 99 }
+	var fetched: bool = build_state._try_fetch_materials_to_inventory(mock_missing)
+	assert(fetched == false, "Must return false when materials cannot be fetched from stockpiles")
+
+	build_state.exit()
+	modular_floor.queue_free()
+	build_state.queue_free()
+	test_worker.queue_free()
+
+	print("[Main] Colonist Jobs, Build/Harvest States and JobManager Polish unit tests passed successfully!")
+
+
+func _test_colonist_build_radius_and_reachability() -> void:
+	print("[Main] Testing Colonist Build Radius (4.5m), Structural Priorities & Reachability...")
+
+	# 1. Перевірка радіусу будівництва 4.5м у Colonist3D.assign_job
+	var test_worker := Colonist3DScript.new()
+	add_child(test_worker)
+	test_worker.name = "TestRadiusWorker"
+	test_worker.profession = &"builder"
+
+	var build_target := Node3D.new()
+	add_child(build_target)
+	build_target.global_position = Vector3(50.0, 0.0, 50.0)
+
+	var b_job := JobManager.create_job(Job.JobType.BUILD, build_target.global_position, build_target, 3, &"builder")
+	test_worker.assign_job(b_job)
+	assert(test_worker.current_job == b_job, "Worker must have b_job assigned")
+	var move_state = test_worker.state_machine.get_node_or_null("MoveTo")
+	if move_state != null:
+		assert(move_state.arrival_distance == 4.5, "Build job arrival_distance must be 4.5m")
+		assert(move_state.next_state_name == &"build", "Next state must be build")
+
+	# 2. Перевірка пріоритетів модульних конструкцій у JobManager._on_construction_site_placed
+	JobManager.clear_all_jobs()
+	var floor_piece = ModularPiece3DScript.new()
+	add_child(floor_piece)
+	floor_piece.setup_piece(&"modular_floor", Vector2i(100, 100), false, 0.0)
+
+	var wall_piece = ModularPiece3DScript.new()
+	add_child(wall_piece)
+	wall_piece.setup_piece(&"modular_wall", Vector2i(100, 100), false, 0.0)
+
+	var roof_piece = ModularPiece3DScript.new()
+	add_child(roof_piece)
+	roof_piece.setup_piece(&"modular_roof", Vector2i(100, 100), false, 0.0)
+
+	# Викликаємо розміщення майданчиків
+	JobManager._on_construction_site_placed(floor_piece, &"modular_floor", Vector2i(100, 100))
+	JobManager._on_construction_site_placed(wall_piece, &"modular_wall", Vector2i(100, 100))
+	JobManager._on_construction_site_placed(roof_piece, &"modular_roof", Vector2i(100, 100))
+
+	var pending_jobs = JobManager._pending_jobs
+	assert(pending_jobs.size() == 3, "Must have 3 pending modular jobs")
+	# Очікувані пріоритети: floor (5) > wall (4) > roof (2)
+	var floor_job: Job = null
+	var wall_job: Job = null
+	var roof_job: Job = null
+	for j in pending_jobs:
+		if j.target_node == floor_piece:
+			floor_job = j
+		elif j.target_node == wall_piece:
+			wall_job = j
+		elif j.target_node == roof_piece:
+			roof_job = j
+
+	assert(floor_job != null and floor_job.priority == 5, "Floor piece must have priority 5")
+	assert(wall_job != null and wall_job.priority == 4, "Wall piece must have priority 4")
+	assert(roof_job != null and roof_job.priority == 2, "Roof piece must have priority 2")
+
+	# 3. Перевірка блокування видачі стіни/даху в request_job доки немає підлоги
+	# Спочатку підлога НЕ збудована
+	assert(not ModularManager.has_built_floor(Vector2i(100, 100)), "Floor is not yet built")
+	# Видаємо завдання робітнику — він ПОВИНЕН отримати саме floor_job, а не wall чи roof
+	test_worker.global_position = Vector3(100.0, 0.0, 100.0)
+	var assigned_1 = JobManager.request_job(test_worker)
+	assert(assigned_1 == floor_job, "Worker must be assigned floor_job first because walls and roofs are structurally locked")
+	JobManager.release_job(assigned_1)
+
+	# 4. Перевірка фільтрації заблокованого шляху (Pathfinding Reachability)
+	JobManager.clear_all_jobs()
+	# Створюємо оточену стінами клітинку
+	var walled_cell := Vector2i(40, 40)
+	var surround = [
+		Vector2i(39, 39), Vector2i(40, 39), Vector2i(41, 39),
+		Vector2i(39, 40),                   Vector2i(41, 40),
+		Vector2i(39, 41), Vector2i(40, 41), Vector2i(41, 41)
+	]
+	for sc in surround:
+		GridManager.set_cell_solid(sc, true)
+
+	# Недосяжне завдання всередині периметру
+	var unreachable_target := Node3D.new()
+	add_child(unreachable_target)
+	unreachable_target.global_position = GridManager.map_to_world_3d(walled_cell, 0.0)
+	var unreach_job := JobManager.create_job(Job.JobType.BUILD, unreachable_target.global_position, unreachable_target, 5, &"builder")
+
+	# Досяжне завдання ззовні з меншим пріоритетом (4)
+	var reachable_target := Node3D.new()
+	add_child(reachable_target)
+	reachable_target.global_position = Vector3(25.0, 0.0, 25.0)
+	var reach_job := JobManager.create_job(Job.JobType.BUILD, reachable_target.global_position, reachable_target, 4, &"builder")
+
+	# Робітник знаходиться далеко від закритої зони (наприклад, на 20, 20)
+	test_worker.global_position = Vector3(20.0, 0.0, 20.0)
+	var chosen = JobManager.request_job(test_worker)
+	assert(chosen == reach_job, "Worker must skip unreachable enclosed job and choose reachable job")
+	JobManager.release_job(chosen)
+
+	# 5. Перевірка встановлення кулдауну при звільненні недосяжного завдання
+	JobManager.release_job(unreach_job, "Немає шляху до цілі (заблоковано)")
+	assert(unreach_job.has_meta("unreachable_until"), "Job released with 'Немає шляху' must receive unreachable_until metadata")
+	assert(unreach_job.get_meta("unreachable_until") > Time.get_ticks_msec(), "unreachable_until must be in the future")
+
+	# 6. Очищення тестових ресурсів
+	for sc in surround:
+		GridManager.set_cell_solid(sc, false)
+
+	unreachable_target.queue_free()
+	reachable_target.queue_free()
+	build_target.queue_free()
+	floor_piece.queue_free()
+	wall_piece.queue_free()
+	roof_piece.queue_free()
+	test_worker.queue_free()
+	JobManager.clear_all_jobs()
+
+	print("[Main] Colonist Build Radius (4.5m), Structural Priorities & Reachability unit tests passed successfully!")
+
+
+func _test_stockpile_interaction_and_storage_ui() -> void:
+	print("[Main] Testing Stockpile vs Campfire Interaction & StorageUI opening...")
+
+	# 1. Створюємо вогнище та склад
+	var campfire_entity = BuildingEntity3DScript.new()
+	add_child(campfire_entity)
+	var campfire_data = BuildingPlacementController.get_building(&"campfire")
+	assert(campfire_data != null, "Campfire data must exist")
+	campfire_entity.setup_building(campfire_data, Vector2i(10, 10))
+
+	var stockpile_entity = BuildingEntity3DScript.new()
+	add_child(stockpile_entity)
+	var stockpile_data = BuildingPlacementController.get_building(&"stockpile")
+	assert(stockpile_data != null, "Stockpile data must exist")
+	stockpile_entity.setup_building(stockpile_data, Vector2i(20, 20))
+
+	# 2. Перевірка приналежності до груп та ідентифікаторів
+	assert(campfire_entity.is_in_group("campfires"), "Campfire must be in group 'campfires'")
+	assert(not stockpile_entity.is_in_group("campfires"), "Stockpile must NOT be in group 'campfires'")
+	assert(stockpile_entity.is_in_group("buildings"), "Stockpile must be in group 'buildings'")
+	assert(stockpile_entity.inventory != null, "Stockpile must have inventory component")
+	assert(stockpile_entity.building_data.id == &"stockpile", "Stockpile id must be 'stockpile'")
+
+	# 3. Перевірка виклику відкриття сховища через interact
+	var storage_box: Array = [null]
+	var on_storage_req = func(target_node: Node):
+		storage_box[0] = target_node
+	EventBus.storage_ui_requested.connect(on_storage_req)
+
+	stockpile_entity.interact(null)
+	assert(storage_box[0] == stockpile_entity, "Interacting with stockpile must emit storage_ui_requested with self")
+
+	# Вогнище не повинно випромінювати storage_ui_requested
+	storage_box[0] = null
+	campfire_entity.interact(null)
+	assert(storage_box[0] == null, "Interacting with campfire must NOT emit storage_ui_requested")
+
+	EventBus.storage_ui_requested.disconnect(on_storage_req)
+
+	# 4. Очищення
+	campfire_entity.queue_free()
+	stockpile_entity.queue_free()
+
+	print("[Main] Stockpile vs Campfire Interaction & StorageUI unit tests passed successfully!")

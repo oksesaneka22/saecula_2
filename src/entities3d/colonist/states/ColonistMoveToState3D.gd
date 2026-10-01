@@ -41,6 +41,15 @@ func enter(msg: Dictionary = {}) -> void:
 			dest_str = "Вогнище"
 		actor.set_status_display("🏃 Йде до: %s" % dest_str)
 
+	# Якщо колоніст вже знаходиться в радіусі взаємодії — миттєве прибуття
+	if actor != null:
+		var init_h: float = Vector2(actor.global_position.x - target_position.x, actor.global_position.z - target_position.z).length()
+		var init_v: float = absf(actor.global_position.y - target_position.y)
+		var max_v_init: float = 3.5 if next_state_name == &"build" else 2.2
+		if init_h <= arrival_distance and init_v <= max_v_init:
+			_reach_destination()
+			return
+
 	_calculate_path()
 	current_path_index = 0
 	repath_timer = 0.0
@@ -63,15 +72,17 @@ func physics_update(delta: float) -> void:
 	if not actor.is_on_floor():
 		actor.velocity.y -= 19.6 * delta
 
-	# 1. Перевірка досягнення кінцевої цілі
-	var dist_to_target: float = actor.global_position.distance_to(target_position)
-	if dist_to_target <= arrival_distance:
+	# 1. Перевірка досягнення кінцевої цілі (горизонтальна XZ-дистанція з вертикальним допуском)
+	var horiz_dist_to_target: float = Vector2(actor.global_position.x - target_position.x, actor.global_position.z - target_position.z).length()
+	var vert_dist_to_target: float = absf(actor.global_position.y - target_position.y)
+	var max_vert: float = 3.5 if next_state_name == &"build" else 2.2
+	if horiz_dist_to_target <= arrival_distance and vert_dist_to_target <= max_vert:
 		_reach_destination()
 		return
 
 	# 2. Якщо шляху немає або дійшли кінця списку точок
 	if path_points.is_empty() or current_path_index >= path_points.size():
-		if dist_to_target <= arrival_distance + 1.5:
+		if horiz_dist_to_target <= arrival_distance + 1.5 and vert_dist_to_target <= 2.5:
 			_move_towards(target_position, delta)
 		else:
 			# Спробуємо перерахувати шлях
@@ -80,8 +91,9 @@ func physics_update(delta: float) -> void:
 				repath_timer = 0.0
 				_calculate_path()
 				if path_points.is_empty():
-					# Якщо все одно недосяжна, підійдемо максимально близько
-					_move_towards(target_position, delta)
+					# Шляху немає! Не біжимо в стіну, а вивільняємо завдання і обираємо інше
+					_abort_unreachable_job("Немає шляху до цілі (заблоковано)")
+					return
 		return
 
 	# 3. Вибір поточної та оптимізація прямої видимості (String Pulling)
@@ -101,10 +113,13 @@ func physics_update(delta: float) -> void:
 	if dist_to_waypoint <= 0.6:
 		current_path_index += 1
 		if current_path_index >= path_points.size():
-			if dist_to_target <= arrival_distance + 1.2:
+			if horiz_dist_to_target <= arrival_distance + 1.2 and vert_dist_to_target <= 2.5:
 				_reach_destination()
 			else:
 				_calculate_path()
+				if path_points.is_empty():
+					_abort_unreachable_job("Немає шляху до цілі (заблоковано)")
+					return
 			return
 		current_waypoint = path_points[current_path_index]
 
@@ -126,13 +141,13 @@ func physics_update(delta: float) -> void:
 		_last_progress_pos = actor.global_position
 		_time_since_progress_check = 0.0
 
-		if moved_dist < 0.12 and dist_to_target > arrival_distance:
+		if moved_dist < 0.12 and not (horiz_dist_to_target <= arrival_distance and vert_dist_to_target <= 2.2):
 			stuck_timer += 0.35
 			if stuck_timer >= 1.05:
 				stuck_timer = 0.0
 				# Стратегія 1: Якщо ціль поряд (наприклад, дерево чи споруда заблокували підхід до центру),
 				# вважаємо ціль успішно досягнутою
-				if dist_to_target <= arrival_distance + 1.4:
+				if horiz_dist_to_target <= arrival_distance + 1.4 and vert_dist_to_target <= 2.5:
 					_reach_destination()
 					return
 
@@ -140,8 +155,11 @@ func physics_update(delta: float) -> void:
 				if current_path_index + 1 < path_points.size():
 					current_path_index += 1
 				else:
-					# Стратегія 3: Повний перерахунок маршруту
+					# Стратегія 3: Повний перерахунок маршруту або вивільнення заблокованого завдання
 					_calculate_path()
+					if path_points.is_empty():
+						_abort_unreachable_job("Немає шляху до цілі (застряг)")
+						return
 		else:
 			stuck_timer = 0.0
 
@@ -267,3 +285,14 @@ func _reach_destination() -> void:
 		actor.stop_walk_animation()
 
 	state_machine.transition_to(next_state_name, next_state_msg)
+
+
+func _abort_unreachable_job(reason: String) -> void:
+	if actor != null:
+		actor.velocity.x = 0.0
+		actor.velocity.z = 0.0
+		actor.stop_walk_animation()
+		if actor.current_job != null and JobManager != null:
+			JobManager.release_job(actor.current_job, reason)
+			actor.current_job = null
+	state_machine.transition_to(&"idle")

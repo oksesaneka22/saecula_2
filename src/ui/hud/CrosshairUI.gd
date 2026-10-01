@@ -122,7 +122,7 @@ func _check_interact_target() -> void:
 
 			# 2. Табірне вогнище (BuildingEntity3D)
 			var is_campfire := false
-			if collider.is_in_group("campfires") or collider.has_method("interact_campfire"):
+			if collider.is_in_group("campfires"):
 				is_campfire = true
 			elif "building_data" in collider and collider.building_data != null and collider.building_data.id == &"campfire":
 				is_campfire = true

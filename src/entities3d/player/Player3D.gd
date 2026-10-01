@@ -516,12 +516,21 @@ func _try_interact_or_harvest(is_interact_key: bool = false) -> void:
 			consume_energy(2.0)
 		return
 
-	# 2. Якщо це табірне вогнище (BuildingEntity3D) — взаємодія на E як зі сховищем запускає сон
-	if collider.has_method("interact_campfire"):
-		collider.interact_campfire(self)
+	# 2. Якщо це табірне вогнище (BuildingEntity3D) — взаємодія на E запускає сон
+	var is_campfire: bool = false
+	if collider.is_in_group("campfires"):
+		is_campfire = true
+	elif "building_data" in collider and collider.building_data != null and collider.building_data.id == &"campfire":
+		is_campfire = true
+
+	if is_campfire:
+		if collider.has_method("interact_campfire"):
+			collider.interact_campfire(self)
+		elif collider.has_method("interact"):
+			collider.interact(self)
 		return
 
-	# 3. Якщо це споруда зі сховищем / склад (BuildingEntity3D)
+	# 3. Якщо це споруда зі сховищем / склад (BuildingEntity3D або StockpileBuilding)
 	if collider.has_method("interact_storage"):
 		collider.interact_storage(self)
 		return

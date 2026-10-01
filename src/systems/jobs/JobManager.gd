@@ -145,7 +145,7 @@ func request_job(colonist: Node) -> Job:
 			continue
 
 		# Перевірка валідності цільового вузла (якщо є)
-		if job.target_node != null and not is_instance_valid(job.target_node):
+		if job.target_node != null and (not is_instance_valid(job.target_node) or job.target_node.is_queued_for_deletion()):
 			continue
 
 		# Перевірка професії
@@ -153,7 +153,31 @@ func request_job(colonist: Node) -> Job:
 			if not colonist_prof.is_empty() and colonist_prof != job.required_profession:
 				continue
 
+		# Перевірка тимчасового кулдауну (заблоковані або тимчасово недоступні завдання)
+		if job.has_meta("unreachable_until"):
+			if Time.get_ticks_msec() < job.get_meta("unreachable_until"):
+				continue
+
+		# Перевірка структурних вимог модульного будівництва (підлога під стінами, стіни під дахом)
+		if job.target_node != null and is_instance_valid(job.target_node):
+			var p_type = job.target_node.get("piece_type")
+			var cell = job.target_node.get("cell_coord")
+			if p_type != null and cell != null and ModularManager != null:
+				if p_type in [&"modular_wall", &"modular_pillar", &"modular_door"]:
+					if not ModularManager.has_built_floor(cell):
+						continue # Підлога ще не збудована
+				elif p_type == &"modular_roof":
+					if not ModularManager.has_built_support_for_roof(cell):
+						continue # Опори/стіни ще не збудовані
+
 		var dist: float = colonist_pos.distance_to(job.target_world_pos)
+
+		# Перевірка наявності шляху (Pathfinding Reachability):
+		# Якщо колоніст не в безпосередньому радіусі взаємодії (4.5м), перевіряємо прохідність
+		if dist > 4.5 and GridManager != null:
+			var path := GridManager.get_world_path_3d(colonist_pos, job.target_world_pos, colonist_pos.y)
+			if path.is_empty():
+				continue # Немає проходу — обираємо інше завдання
 		# Перший або з вищим пріоритетом / ближчий за відстанню
 		if best_job == null:
 			best_job = job
@@ -222,8 +246,12 @@ func release_job(job: Job, reason: String = "") -> void:
 	job.assigned_colonist = null
 	job.status = Job.JobStatus.PENDING
 
+	# Якщо завдання недосяжне або заблоковане — встановлюємо кулдаун на 3с
+	if reason.find("Немає") != -1 or reason.find("Бракує") != -1 or reason.find("заблоковано") != -1:
+		job.set_meta("unreachable_until", Time.get_ticks_msec() + 3000)
+
 	# Якщо цільовий об'єкт живий — повертаємо в чергу
-	if job.target_node == null or is_instance_valid(job.target_node):
+	if job.target_node == null or (is_instance_valid(job.target_node) and not job.target_node.is_queued_for_deletion()):
 		_pending_jobs.append(job)
 		_sort_pending_jobs()
 
@@ -288,13 +316,13 @@ func _sort_pending_jobs() -> void:
 func _cleanup_invalid_jobs() -> void:
 	var valid_pending: Array[Job] = []
 	for j in _pending_jobs:
-		if j != null and (j.target_node == null or is_instance_valid(j.target_node)):
+		if j != null and (j.target_node == null or (is_instance_valid(j.target_node) and not j.target_node.is_queued_for_deletion())):
 			valid_pending.append(j)
 	_pending_jobs = valid_pending
 
 	var valid_active: Array[Job] = []
 	for j in _active_jobs:
-		if j != null and (j.target_node == null or is_instance_valid(j.target_node)):
+		if j != null and (j.target_node == null or (is_instance_valid(j.target_node) and not j.target_node.is_queued_for_deletion())):
 			valid_active.append(j)
 	_active_jobs = valid_active
 
@@ -303,18 +331,37 @@ func _cleanup_invalid_jobs() -> void:
 # Обробники зовнішніх подій (EventBus hooks)
 # ------------------------------------------------------------------------------
 func _on_construction_site_placed(site_node: Node, building_id: StringName, _map_coords: Vector2i) -> void:
-	if site_node == null or not is_instance_valid(site_node):
+	if site_node == null or not is_instance_valid(site_node) or site_node.is_queued_for_deletion():
 		return
 	var site3d := site_node as Node3D
 	var pos := site3d.global_position if site3d != null else Vector3.ZERO
-	# Створюємо завдання будівництва з високим пріоритетом (2) для будівельників
+	# Пріоритетизація будівництва:
+	# 1. modular_floor: 5 (найвищий — спочатку вся підлога/фундамент)
+	# 2. modular_pillar, modular_wall, modular_door: 4 (стіни, опори, двері)
+	# 3. Інші будівлі: 3
+	# 4. modular_roof: 2 (дах зводиться в останню чергу)
+	var priority := 3
+	var p_type: StringName = building_id
+	if site_node.get("piece_type") != null:
+		p_type = site_node.get("piece_type")
+
+	match p_type:
+		&"modular_floor":
+			priority = 5
+		&"modular_pillar", &"modular_wall", &"modular_door":
+			priority = 4
+		&"modular_roof":
+			priority = 2
+		_:
+			priority = 3
+
 	create_job(
 		Job.JobType.BUILD,
 		pos,
 		site_node,
-		2,
+		priority,
 		&"builder",
-		{ "building_id": building_id }
+		{ "building_id": building_id, "piece_type": p_type }
 	)
 
 

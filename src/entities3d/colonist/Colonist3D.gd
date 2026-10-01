@@ -156,7 +156,7 @@ func assign_job(job: Job) -> void:
 			state_machine.transition_to(&"moveto", {
 				"target_pos": job.target_world_pos,
 				"next_state": &"build",
-				"arrival_distance": 2.2,
+				"arrival_distance": 4.5,
 				"next_msg": { "target_node": job.target_node }
 			})
 		Job.JobType.HARVEST:

@@ -444,7 +444,9 @@ func interact_storage(player: Node = null) -> void:
 
 
 func interact(player: Node = null) -> void:
-	if inventory != null:
+	if building_data != null and building_data.id == &"campfire":
+		interact_campfire(player)
+	elif inventory != null:
 		interact_storage(player)
 
 
