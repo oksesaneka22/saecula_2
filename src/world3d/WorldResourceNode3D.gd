@@ -337,11 +337,17 @@ static func _ensure_static_assets() -> void:
 # ------------------------------------------------------------------------------
 func harvest(damage: float = 1.0, tool_type: int = 0) -> void:
 	if resource_type == ResourceType.GRASS:
-		# Траву можна косити ТІЛЬКИ косою (ToolType.SCYTHE = 5)
-		if tool_type != 5:
+		# Траву можна косити косою (ToolType.SCYTHE = 5) з подвійною ефективністю,
+		# або збирати руками (ToolType.NONE = 0) з половинною швидкістю.
+		if tool_type == 5:
+			current_health -= damage * 2.0
+		elif tool_type == 0:
+			current_health -= damage * 0.5
+		else:
+			# Сокира, кирка тощо не підходять для м'якої трави
 			_play_hit_effect()
 			return
-		current_health -= damage * 2.0
+
 		_play_hit_effect()
 		if current_health <= 0.0:
 			_destroy_and_drop()

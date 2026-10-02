@@ -32,6 +32,14 @@ func clear() -> void:
 		slot.clear()
 	inventory_updated.emit()
 
+
+## Перевіряє, чи всі слоти інвентаря порожні
+func is_empty() -> bool:
+	for slot in slots:
+		if not slot.is_empty():
+			return false
+	return true
+
 func _init_slots() -> void:
 	slots.clear()
 	for i in range(slot_count):
@@ -183,6 +191,47 @@ func get_slot(index: int):
 	if index >= 0 and index < slots.size():
 		return slots[index]
 	return null
+
+
+## Міняє місцями вміст двох слотів або об'єднує їх, якщо предмети однакові.
+func swap_slots(from_idx: int, to_idx: int) -> bool:
+	if from_idx < 0 or from_idx >= slots.size() or to_idx < 0 or to_idx >= slots.size():
+		return false
+	if from_idx == to_idx:
+		return true
+
+	var slot_a = slots[from_idx]
+	var slot_b = slots[to_idx]
+	if slot_a == null or slot_b == null:
+		return false
+
+	# Якщо обидва слоти містять один і той самий предмет - об'єднуємо
+	if not slot_a.is_empty() and not slot_b.is_empty() and slot_a.get_item_id() == slot_b.get_item_id():
+		var max_stack: int = _extract_max_stack(slot_b.item)
+		var space: int = max_stack - slot_b.count
+		if space > 0:
+			var to_merge: int = mini(slot_a.count, space)
+			slot_b.count += to_merge
+			slot_a.count -= to_merge
+			if slot_a.count <= 0:
+				slot_a.clear()
+			slot_changed.emit(from_idx)
+			slot_changed.emit(to_idx)
+			inventory_updated.emit()
+			return true
+
+	# Інакше міняємо місцями вміст слотів
+	var temp_item = slot_a.item
+	var temp_count = slot_a.count
+	slot_a.item = slot_b.item
+	slot_a.count = slot_b.count
+	slot_b.item = temp_item
+	slot_b.count = temp_count
+
+	slot_changed.emit(from_idx)
+	slot_changed.emit(to_idx)
+	inventory_updated.emit()
+	return true
 
 
 ## Повертає масив усіх зайнятих слотів у вигляді словників [{ "item": Resource, "count": int, "slot_index": int }]

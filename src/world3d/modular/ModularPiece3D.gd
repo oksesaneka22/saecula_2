@@ -39,6 +39,7 @@ func _ready() -> void:
 	add_to_group("interactable")
 	collision_layer = 1
 	collision_mask = 0
+	set_process(not is_built)
 
 
 func _process(delta: float) -> void:
@@ -337,6 +338,7 @@ func _update_label_text() -> void:
 
 func apply_blueprint_state() -> void:
 	is_built = false
+	set_process(true)
 	if _visual_root != null:
 		_set_material_recursive(_visual_root, _holo_mat)
 	_update_label_text()
@@ -345,6 +347,7 @@ func apply_blueprint_state() -> void:
 
 func apply_built_state(animate: bool = true) -> void:
 	is_built = true
+	set_process(false)
 	var built_mat = _get_built_material()
 	if _visual_root != null:
 		_set_material_recursive(_visual_root, built_mat)
@@ -364,6 +367,52 @@ func apply_built_state(animate: bool = true) -> void:
 		scale = Vector3(1.0, 0.2, 1.0)
 		tween.tween_property(self, "scale", Vector3(1.08, 1.08, 1.08), 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		tween.tween_property(self, "scale", Vector3.ONE, 0.1)
+
+		if AudioManager != null:
+			AudioManager.play_sound_3d(&"build_complete", global_position, 1.5, 1.15)
+		if FloatingTextManager != null:
+			var piece_title = "Стіна" if piece_type == &"modular_wall" else ("Двері" if piece_type == &"modular_door" else ("Підлога" if piece_type == &"modular_floor" else ("Опора" if piece_type == &"modular_pillar" else "Дах")))
+			FloatingTextManager.spawn_construction_success(global_position + Vector3(0, 1.6, 0), piece_title)
+		_spawn_modular_dust()
+
+func _spawn_modular_dust() -> void:
+	var dust := CPUParticles3D.new()
+	dust.name = "ModularDustPuff"
+	dust.emitting = true
+	dust.one_shot = true
+	dust.explosiveness = 0.90
+	dust.amount = 10
+	dust.lifetime = 0.6
+
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(0.18, 0.18, 0.18)
+	var mat := StandardMaterial3D.new()
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(0.82, 0.78, 0.68, 0.65)
+	mesh.material = mat
+	dust.mesh = mesh
+
+	dust.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
+	dust.emission_ring_radius = 0.6
+	dust.emission_ring_inner_radius = 0.1
+	dust.direction = Vector3(0, 1, 0)
+	dust.spread = 40.0
+	dust.initial_velocity_min = 1.0
+	dust.initial_velocity_max = 2.0
+	dust.gravity = Vector3(0, -1.8, 0)
+	dust.scale_amount_min = 0.4
+	dust.scale_amount_max = 1.0
+
+	add_child(dust)
+	dust.position = Vector3(0, 0.1, 0)
+
+	var timer := get_tree().create_timer(0.9)
+	timer.timeout.connect(func():
+		if is_instance_valid(dust):
+			dust.queue_free()
+	)
+
 
 
 func _set_material_recursive(node: Node, mat: Material) -> void:

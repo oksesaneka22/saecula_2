@@ -7,7 +7,7 @@ extends Node
 signal placement_started(building: BuildingData)
 signal placement_canceled()
 signal placement_hover_updated(cell: Vector2i, is_valid: bool)
-signal placement_confirmed(building: BuildingData, cell: Vector2i)
+signal placement_confirmed(building: BuildingData, cell: Vector2i, rot_index: int)
 signal placement_rotation_changed(rot_index: int, rot_degrees: float)
 signal building_registered(building: BuildingData)
 
@@ -141,6 +141,8 @@ func rotate_placement(step: int = 1) -> void:
 		current_rotation += 4
 	var rot_deg: float = float(current_rotation) * 90.0
 	placement_rotation_changed.emit(current_rotation, rot_deg)
+	if AudioManager != null:
+		AudioManager.play_sound(&"build", -6.0, 1.25)
 	if _active_building != null and _current_cell != Vector2i(-9999, -9999):
 		_is_valid = can_place_at(_active_building, _current_cell)
 		placement_hover_updated.emit(_current_cell, _is_valid)
@@ -269,7 +271,7 @@ func confirm_placement(keep_placing: bool = false) -> bool:
 		if ModularManager != null:
 			ModularManager.place_blueprint(placed_building.id, placed_cell, float(placed_rot) * 90.0)
 	else:
-		placement_confirmed.emit(placed_building, placed_cell)
+		placement_confirmed.emit(placed_building, placed_cell, placed_rot)
 		EventBus.construction_site_placed.emit(null, placed_building.id, placed_cell)
 
 	var should_continue: bool = keep_placing or Input.is_key_pressed(KEY_SHIFT)
@@ -286,11 +288,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not _is_placing:
 		return
 
-	# Клавіша 'R' обертає активне креслення на 90 градусів
-	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_R:
-			rotate_placement(1)
-			get_viewport().set_input_as_handled()
+	# Клавіша 'R' або дія rotate_building обертає активне креслення на 90 градусів
+	var is_rotate_action: bool = event.is_action_pressed("rotate_building")
+	var is_r_key: bool = event is InputEventKey and event.pressed and not event.echo and (event.physical_keycode == KEY_R or event.keycode == KEY_R)
+	if is_rotate_action or is_r_key:
+		var step: int = -1 if ((event is InputEventWithModifiers and event.shift_pressed) or Input.is_key_pressed(KEY_SHIFT)) else 1
+		rotate_placement(step)
+		get_viewport().set_input_as_handled()
 
 
 func _on_building_placement_requested(building_id: StringName) -> void:

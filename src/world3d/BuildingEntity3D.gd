@@ -8,10 +8,12 @@ class_name BuildingEntity3D
 
 const TextureHelper = preload("res://src/core3d/TextureHelper.gd")
 const InventoryComponentScript = preload("res://src/systems/inventory/InventoryComponent.gd")
+const DroppedItem3DScene = preload("res://src/entities3d/items/DroppedItem3D.tscn")
 
 var building_data: BuildingData = null
 var origin_cell: Vector2i = Vector2i.ZERO
 var occupied_cells: Array[Vector2i] = []
+var rotation_index: int = 0
 
 var inventory: Node = null
 var _visual_root: Node3D = null
@@ -32,6 +34,7 @@ func _process(delta: float) -> void:
 func _ready() -> void:
 	add_to_group("buildings")
 	add_to_group("interactable")
+	set_process(_fire_light != null)
 
 
 func _exit_tree() -> void:
@@ -40,15 +43,20 @@ func _exit_tree() -> void:
 
 
 ## Налаштовує щойно зведену будівлю за схемою та початковою клітинкою
-func setup_building(data: BuildingData, cell: Vector2i) -> void:
+func setup_building(data: BuildingData, cell: Vector2i, p_rotation_index: int = 0) -> void:
 	building_data = data
 	origin_cell = cell
+	rotation_index = p_rotation_index
+	rotation_degrees.y = float(rotation_index) * 90.0
 
-	# 1. Розрахунок зайнятих клітинок
-	occupied_cells = BuildingPlacementController.get_occupied_cells(origin_cell, building_data.size_in_tiles)
+	# 1. Розрахунок зайнятих клітинок з урахуванням повороту
+	var eff_size: Vector2i = building_data.size_in_tiles
+	if rotation_index % 2 == 1:
+		eff_size = Vector2i(building_data.size_in_tiles.y, building_data.size_in_tiles.x)
+	occupied_cells = BuildingPlacementController.get_occupied_cells(origin_cell, eff_size)
 
-	# 2. Позиціонування у світових координатах (за центром будівлі)
-	var world_center: Vector3 = BuildingPlacementController.get_building_world_center(origin_cell, building_data.size_in_tiles)
+	# 2. Позиціонування у світових координатах (за центром ефективного розміру будівлі)
+	var world_center: Vector3 = BuildingPlacementController.get_building_world_center(origin_cell, eff_size)
 	global_position = world_center
 
 	# 3. Реєстрація займаних клітинок у GridManager
@@ -206,6 +214,7 @@ func _build_campfire_visual(size_m: Vector2) -> void:
 	_fire_light.shadow_bias = 0.15
 	_fire_light.position = Vector3(0, flame_h + 0.35, 0)
 	_visual_root.add_child(_fire_light)
+	set_process(true)
 
 
 func _build_stockpile_visual(size_m: Vector2) -> void:
@@ -450,32 +459,117 @@ func interact(player: Node = null) -> void:
 		interact_storage(player)
 
 
-## Демонтує будівлю, звільняє клітинки сітки, повертає ресурси та надсилає сигнал
+## Демонтує будівлю, звільняє клітинки сітки, повертає ресурси та вміст складу, надсилає сигнал
 func demolish(player_inventory: Node = null) -> Dictionary:
 	if is_in_group("campfires"):
 		remove_from_group("campfires")
-	if LogisticsManager != null and inventory != null:
-		LogisticsManager.unregister_stockpile(self)
+	if is_in_group("buildings"):
+		remove_from_group("buildings")
+	if is_in_group("interactable"):
+		remove_from_group("interactable")
+
+	# 1. Якщо це сховище / склад — вивантажуємо всі збережені предмети у дропи
+	if inventory != null:
+		var stored_items = inventory.get_all_items()
+		for slot_info in stored_items:
+			if slot_info != null and slot_info.get("item") != null and slot_info.get("count", 0) > 0:
+				var item_res = slot_info.get("item")
+				var drop_id: StringName = item_res.id if "id" in item_res else &""
+				var drop_amt: int = slot_info.get("count", 0)
+				if drop_id != &"" and drop_amt > 0 and DroppedItem3DScene != null and get_parent() != null:
+					var drop = DroppedItem3DScene.instantiate()
+					drop.position = global_position + Vector3(randf_range(-1.2, 1.2), 0.4, randf_range(-1.2, 1.2))
+					drop.set_item(drop_id, drop_amt)
+					get_parent().add_child(drop)
+		if LogisticsManager != null:
+			LogisticsManager.unregister_stockpile(self)
+
+	# 2. Звільняємо клітинки сітки GridManager
 	for c in occupied_cells:
 		GridManager.unregister_occupant(c, true)
 
 	var bld_name: String = building_data.display_name if building_data != null else "Споруда"
 	var refunded: Dictionary = {}
-	if player_inventory != null and building_data != null and "construction_cost" in building_data:
+
+	# 3. Повертаємо матеріали вартості будівництва гравцю або дропом
+	if building_data != null and "construction_cost" in building_data:
 		for cost in building_data.construction_cost:
 			if cost != null and "item" in cost and "amount" in cost and cost.item != null:
 				var item_id: StringName = cost.item.id
-				refunded[item_id] = cost.amount
-				if player_inventory.has_method("add_item_by_id"):
-					player_inventory.add_item_by_id(item_id, cost.amount)
-				elif player_inventory.has_method("add_item"):
-					player_inventory.add_item(cost.item, cost.amount)
+				var amt: int = cost.amount
+				refunded[item_id] = amt
+				var rem: int = amt
+				if player_inventory != null and player_inventory.has_method("add_item_by_id"):
+					rem = player_inventory.add_item_by_id(item_id, amt)
+				elif player_inventory != null and player_inventory.has_method("add_item"):
+					rem = player_inventory.add_item(cost.item, amt)
+				if rem > 0 and DroppedItem3DScene != null and get_parent() != null:
+					var drop = DroppedItem3DScene.instantiate()
+					drop.position = global_position + Vector3(randf_range(-0.8, 0.8), 0.4, randf_range(-0.8, 0.8))
+					drop.set_item(item_id, rem)
+					get_parent().add_child(drop)
 
+	# 4. Аудіо та візуальні ефекти
 	if AudioManager != null:
 		AudioManager.play_sound_3d(&"demolish", global_position, 0.0, randf_range(0.95, 1.05))
 	if FloatingTextManager != null:
-		FloatingTextManager.spawn_info(global_position + Vector3(0, 1.5, 0), "♻️ Знесено %s" % bld_name, Color("FFAA00"))
+		FloatingTextManager.spawn_info(global_position + Vector3(0, 1.5, 0), "💥 Знесено: %s" % bld_name, Color("FFAA00"))
 
-	EventBus.building_demolished.emit(self, building_data.id if building_data != null else &"", origin_cell)
+	EventBus.building_demolished.emit(building_data.id if building_data != null else &"", origin_cell)
 	queue_free()
 	return {"success": true, "name": bld_name, "refunded": refunded}
+
+
+## Відтворює динамічну анімацію появи (поп-ап зі сплеском) та хмару пилу навколо основи
+func play_spawn_animation() -> void:
+	scale = Vector3(1.06, 0.15, 1.06)
+	var tween := create_tween()
+	tween.tween_property(self, "scale", Vector3(0.95, 1.12, 0.95), 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(self, "scale", Vector3(1.02, 0.97, 1.02), 0.10).set_trans(Tween.TRANS_QUAD)
+	tween.tween_property(self, "scale", Vector3.ONE, 0.08).set_trans(Tween.TRANS_QUAD)
+
+	_spawn_dust_effect()
+
+
+func _spawn_dust_effect() -> void:
+	var eff_size: Vector2i = building_data.size_in_tiles if building_data != null else Vector2i(1, 1)
+	if rotation_index % 2 == 1:
+		eff_size = Vector2i(eff_size.y, eff_size.x)
+	var max_dim: float = float(maxi(eff_size.x, eff_size.y)) * GridManager.TILE_SIZE_3D * 0.5
+
+	var dust := CPUParticles3D.new()
+	dust.name = "BuildingDustPuff"
+	dust.emitting = true
+	dust.one_shot = true
+	dust.explosiveness = 0.92
+	dust.amount = mini(28, 12 + eff_size.x * eff_size.y * 2)
+	dust.lifetime = 0.75
+
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(0.24, 0.24, 0.24)
+	var mat := StandardMaterial3D.new()
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(0.82, 0.78, 0.68, 0.7)
+	mesh.material = mat
+	dust.mesh = mesh
+
+	dust.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
+	dust.emission_ring_radius = maxf(1.0, max_dim)
+	dust.emission_ring_inner_radius = 0.2
+	dust.direction = Vector3(0, 1, 0)
+	dust.spread = 45.0
+	dust.initial_velocity_min = 1.2
+	dust.initial_velocity_max = 2.8
+	dust.gravity = Vector3(0, -1.5, 0)
+	dust.scale_amount_min = 0.5
+	dust.scale_amount_max = 1.4
+
+	add_child(dust)
+	dust.position = Vector3(0, 0.1, 0)
+
+	var timer := get_tree().create_timer(1.2)
+	timer.timeout.connect(func():
+		if is_instance_valid(dust):
+			dust.queue_free()
+	)

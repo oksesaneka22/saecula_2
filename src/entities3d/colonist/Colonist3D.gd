@@ -1,4 +1,4 @@
-﻿class_name Colonist3D
+class_name Colonist3D
 extends CharacterBody3D
 
 ## Colonist3D: 3D сутність поселенця (колоніста) у Saecula.
@@ -67,6 +67,8 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	if JobManager != null:
 		JobManager.unregister_colonist(self)
+	if LogisticsManager != null and LogisticsManager.has_method("release_arrival_position"):
+		LogisticsManager.release_arrival_position(self)
 
 
 var is_following_player: bool = false
@@ -91,12 +93,15 @@ func set_profession(new_prof: StringName) -> void:
 		if JobManager != null:
 			JobManager.release_job(current_job, "Зміна професії робітника")
 		current_job = null
+		if has_items_to_unload():
+			start_unloading_to_stockpile()
+			return
 		if state_machine != null:
 			state_machine.transition_to(&"idle")
 
 
 ## Взаємодія з гравцем на клавішу E: відкриття діалогу / картки поселенця
-func interact(player: Node) -> void:
+func interact(player: Node = null) -> void:
 	print("[Colonist3D] Гравець взаємодіє з поселенцем '%s' (фах: %s)" % [colonist_name, get_profession_name()])
 	if EventBus != null and EventBus.has_signal("colonist_dialog_requested"):
 		EventBus.colonist_dialog_requested.emit(self)
@@ -124,8 +129,167 @@ func order_stop_follow() -> void:
 	is_following_player = false
 	target_follow_node = null
 	set_status_display("💤 Вільний")
+	if has_items_to_unload():
+		start_unloading_to_stockpile()
+		return
 	if state_machine != null:
 		state_machine.transition_to(&"idle")
+
+
+## Викликається, коли поточне завдання скасовано або об'єкт видалено
+func on_job_cancelled(job: Job, _reason: String = "") -> void:
+	if current_job == job:
+		current_job = null
+	hide_hand_items()
+	if has_items_to_unload():
+		start_unloading_to_stockpile()
+	else:
+		if LogisticsManager != null and LogisticsManager.has_method("release_arrival_position"):
+			LogisticsManager.release_arrival_position(self)
+		if state_machine != null:
+			state_machine.transition_to(&"idle")
+
+
+## Перевіряє, чи має колоніст якісь речі в інвентарі для розвантаження на склад
+func has_items_to_unload() -> bool:
+	if inventory == null:
+		return false
+	for slot in inventory.slots:
+		if not slot.is_empty() and slot.count > 0:
+			if slot.item == null or slot.item.category != ItemData.Category.TOOL:
+				return true
+	return false
+
+
+## Отримує ID першого доступного вантажу в інвентарі
+func get_first_cargo_item_id() -> StringName:
+	if inventory == null:
+		return &""
+	for slot in inventory.slots:
+		if not slot.is_empty() and slot.count > 0:
+			if slot.item != null and slot.item.category != ItemData.Category.TOOL:
+				var id: StringName = slot.get_item_id()
+				if not id.is_empty():
+					return id
+	return &""
+
+
+## Знаходить найбільш підходящий склад для вивантаження
+func find_best_stockpile_to_unload() -> Node:
+	if LogisticsManager == null:
+		return null
+	var all_stockpiles = LogisticsManager.get_all_stockpiles()
+	if all_stockpiles.is_empty():
+		return null
+
+	var first_id: StringName = get_first_cargo_item_id()
+	if first_id != &"":
+		var sp_with_space = LogisticsManager.find_stockpile_with_space(first_id, 1)
+		if sp_with_space != null and is_instance_valid(sp_with_space):
+			return sp_with_space
+
+		# Якщо для конкретного предмета жоден склад не має вільного місця — повертаємо null
+		return null
+
+	for sp in all_stockpiles:
+		if not is_instance_valid(sp):
+			continue
+		var inv = sp.get("inventory")
+		if inv != null and inv.has_method("has_free_slot") and inv.has_free_slot():
+			return sp
+
+	return null
+
+
+## Ініціює перехід до вивантаження на склад
+func start_unloading_to_stockpile(sp: Node = null) -> bool:
+	if not has_items_to_unload():
+		if state_machine != null:
+			state_machine.transition_to(&"idle")
+		return false
+
+	var stockpile = sp if sp != null and is_instance_valid(sp) else find_best_stockpile_to_unload()
+	if stockpile == null:
+		set_status_display("⚠️ Склади відсутні або заповнені")
+		if state_machine != null:
+			state_machine.transition_to(&"idle")
+		return false
+
+	var first_id: StringName = get_first_cargo_item_id()
+	show_carried_cargo(first_id)
+	var item_name: String = str(first_id)
+	if ItemDatabase != null:
+		var item_res = ItemDatabase.get_item(first_id)
+		if item_res != null:
+			item_name = item_res.display_name
+	set_status_display("📦 Несе на склад: %s" % item_name)
+
+	var dest_pos: Vector3 = (stockpile as Node3D).global_position if stockpile is Node3D else Vector3.ZERO
+	if LogisticsManager != null and LogisticsManager.has_method("get_stockpile_arrival_position"):
+		dest_pos = LogisticsManager.get_stockpile_arrival_position(stockpile, self)
+
+	if state_machine != null:
+		state_machine.transition_to(&"moveto", {
+			"target_pos": dest_pos,
+			"next_state": &"haul",
+			"arrival_distance": 1.4,
+			"custom_status": "📦 Несе на склад: %s" % item_name,
+			"next_msg": {
+				"stage": 2,
+				"stockpile": stockpile,
+				"unload_all": true
+			}
+		})
+	return true
+
+
+## Вивантажує всі предмети з інвентаря робітника на склад
+func unload_all_inventory_to_stockpile(stockpile: Node = null) -> int:
+	if inventory == null:
+		return 0
+
+	var total_deposited: int = 0
+	for i in range(inventory.slots.size()):
+		var slot = inventory.slots[i]
+		if slot.is_empty() or slot.item == null or slot.count <= 0:
+			continue
+		if slot.item.category == ItemData.Category.TOOL:
+			continue # Зберігаємо робочі інструменти (напр. косу) при розвантаженні
+		var item_id: StringName = slot.item.id
+		var count: int = slot.count
+		var leftover: int = count
+		if stockpile != null:
+			var target_inv = stockpile.get("inventory")
+			if target_inv != null and target_inv.has_method("add_item"):
+				var item_res: Resource = ItemDatabase.get_item(item_id) if ItemDatabase != null else null
+				if item_res != null:
+					leftover = target_inv.add_item(item_res, count)
+			elif stockpile.has_method("deposit_item"):
+				leftover = stockpile.deposit_item(item_id, count)
+		elif LogisticsManager != null:
+			leftover = LogisticsManager.deposit_item(item_id, count)
+
+		var deposited: int = count - leftover
+		if deposited > 0:
+			slot.count -= deposited
+			if slot.count <= 0:
+				slot.clear()
+			inventory.slot_changed.emit(i)
+			total_deposited += deposited
+
+	if LogisticsManager != null and LogisticsManager.has_method("release_arrival_position"):
+		LogisticsManager.release_arrival_position(self)
+
+	if total_deposited > 0:
+		inventory.inventory_updated.emit()
+		hide_hand_items()
+		if AudioManager != null:
+			AudioManager.play_sound_3d(&"pickup", global_position, 0.0, 1.1)
+		if FloatingTextManager != null:
+			FloatingTextManager.spawn_info(global_position + Vector3(0, 1.8, 0), "📦 Розвантажено на склад!", Color(0.2, 1.0, 0.4))
+		set_status_display("✅ Розвантажено")
+
+	return total_deposited
 
 
 func get_profession_name() -> String:

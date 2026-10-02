@@ -51,6 +51,7 @@ const PATH_ITEM_ROPE: String = "res://assets/textures/items/rope.png"
 const PATH_ITEM_GENERIC: String = "res://assets/textures/items/generic_item.png"
 
 static var _cache: Dictionary = {}
+static var _material_cache: Dictionary = {}
 
 
 ## Отримує Texture2D за шляхом або повертає null у разі відсутності файлу
@@ -82,6 +83,19 @@ static func create_material(
 	emission_color: Color = Color.BLACK,
 	emission_energy: float = 1.0
 ) -> StandardMaterial3D:
+	# Оптимізація: перевірка кешу однакових матеріалів для зменшення Draw Calls та алокацій
+	var cache_key: String = "%s|%s|%.2f|%s|%s|%s|%.2f" % [
+		texture_path,
+		fallback_color.to_html(true),
+		roughness,
+		str(uv1_scale),
+		str(is_emission),
+		emission_color.to_html(true),
+		emission_energy
+	]
+	if _material_cache.has(cache_key):
+		return _material_cache[cache_key] as StandardMaterial3D
+
 	var mat := StandardMaterial3D.new()
 	var tex: Texture2D = get_texture(texture_path)
 
@@ -102,7 +116,13 @@ static func create_material(
 		if tex != null:
 			mat.emission_texture = tex
 
+	_material_cache[cache_key] = mat
 	return mat
+
+
+## Очищує весь кеш завантажених матеріалів
+static func clear_material_cache() -> void:
+	_material_cache.clear()
 
 
 ## Повертає шлях до статичної текстури предмета за його ID

@@ -17,6 +17,8 @@ var _base_y: float = 0.4
 var _bob_time: float = 0.0
 var _is_being_picked_up: bool = false
 var _target_player: Node3D = null
+var _search_timer: float = 0.0
+static var _cached_player_ref: Node3D = null
 
 @onready var visual_root: Node3D = $VisualRoot
 
@@ -131,19 +133,26 @@ func _physics_process(delta: float) -> void:
 		visual_root.position.y = sin(_bob_time) * 0.1
 
 	if _target_player == null:
-		_search_for_player()
+		_search_for_player(delta)
 	else:
 		_process_magnet(delta)
 
 
-func _search_for_player() -> void:
-	var players = get_tree().get_nodes_in_group("player")
-	if players.is_empty():
+func _search_for_player(delta: float) -> void:
+	# Оптимізація: перевірка наближення гравця 10 разів/сек замість 60 разів/сек
+	_search_timer += delta
+	if _search_timer < 0.1:
 		return
+	_search_timer = 0.0
 
-	var player: Node3D = players[0] as Node3D
-	if player != null and global_position.distance_to(player.global_position) <= magnet_radius:
-		_target_player = player
+	if _cached_player_ref == null or not is_instance_valid(_cached_player_ref):
+		var players = get_tree().get_nodes_in_group("player")
+		if not players.is_empty():
+			_cached_player_ref = players[0] as Node3D
+
+	if _cached_player_ref != null and is_instance_valid(_cached_player_ref):
+		if global_position.distance_to(_cached_player_ref.global_position) <= magnet_radius:
+			_target_player = _cached_player_ref
 
 
 func _process_magnet(delta: float) -> void:

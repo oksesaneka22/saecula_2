@@ -543,13 +543,13 @@ func _on_inventory_toggle_requested() -> void:
 			player.set_active(true)
 
 
-func _on_building_placement_confirmed(building: BuildingData, cell: Vector2i) -> void:
+func _on_building_placement_confirmed(building: BuildingData, cell: Vector2i, rot_index: int = 0) -> void:
 	if building.id.begins_with("modular_") or building.id == &"wooden_hut":
 		return
-	spawn_construction_site(building, cell)
+	spawn_construction_site(building, cell, rot_index)
 
 
-func spawn_construction_site(building: BuildingData, cell: Vector2i) -> Node3D:
+func spawn_construction_site(building: BuildingData, cell: Vector2i, rot_index: int = 0) -> Node3D:
 	if buildings_container == null:
 		buildings_container = Node3D.new()
 		buildings_container.name = "Buildings"
@@ -559,7 +559,7 @@ func spawn_construction_site(building: BuildingData, cell: Vector2i) -> Node3D:
 	site.name = "Site_%s_%d_%d" % [building.id, cell.x, cell.y]
 	buildings_container.add_child(site)
 	if site.has_method("setup_site"):
-		site.setup_site(building, cell)
+		site.setup_site(building, cell, rot_index)
 	return site
 
 func _spawn_starter_colonist() -> void:

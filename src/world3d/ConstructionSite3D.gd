@@ -20,6 +20,7 @@ const BlueprintVisualHelperScript = preload("res://src/world3d/BlueprintVisualHe
 
 @export var building_data: BuildingData = null
 @export var origin_cell: Vector2i = Vector2i.ZERO
+@export var rotation_index: int = 0
 
 var occupied_cells: Array[Vector2i] = []
 var required_materials: Dictionary = {}   ## StringName -> int (необхідно)
@@ -49,15 +50,20 @@ func _ready() -> void:
 	add_to_group("interactable")
 
 
-func setup_site(p_building_data: BuildingData, p_origin_cell: Vector2i) -> void:
+func setup_site(p_building_data: BuildingData, p_origin_cell: Vector2i, p_rotation_index: int = 0) -> void:
 	building_data = p_building_data
 	origin_cell = p_origin_cell
+	rotation_index = p_rotation_index
+	rotation_degrees.y = float(rotation_index) * 90.0
 
-	# 1. Розрахунок зайнятих клітинок
-	occupied_cells = BuildingPlacementController.get_occupied_cells(origin_cell, building_data.size_in_tiles)
+	# 1. Розрахунок зайнятих клітинок з урахуванням повороту
+	var eff_size: Vector2i = building_data.size_in_tiles
+	if rotation_index % 2 == 1:
+		eff_size = Vector2i(building_data.size_in_tiles.y, building_data.size_in_tiles.x)
+	occupied_cells = BuildingPlacementController.get_occupied_cells(origin_cell, eff_size)
 
-	# 2. Позиціонування у світових координатах за центром будівлі
-	var center_m: Vector3 = BuildingPlacementController.get_building_world_center(origin_cell, building_data.size_in_tiles)
+	# 2. Позиціонування у світових координатах за центром ефективного розміру будівлі
+	var center_m: Vector3 = BuildingPlacementController.get_building_world_center(origin_cell, eff_size)
 	global_position = center_m
 
 	# 3. Блокування клітинок у GridManager на час будівництва
@@ -223,10 +229,16 @@ func _update_display() -> void:
 	if _label_3d == null or building_data == null:
 		return
 
-	var text: String = "📐 КРЕСЛЕННЯ: %s [%dx%d]\n" % [
+	var eff_size: Vector2i = building_data.size_in_tiles
+	if rotation_index % 2 == 1:
+		eff_size = Vector2i(building_data.size_in_tiles.y, building_data.size_in_tiles.x)
+	var rot_deg: int = (rotation_index * 90) % 360
+	var rot_str: String = " • %d°" % rot_deg if rot_deg != 0 else ""
+	var text: String = "📐 КРЕСЛЕННЯ: %s [%dx%d%s]\n" % [
 		building_data.display_name,
-		building_data.size_in_tiles.x,
-		building_data.size_in_tiles.y
+		eff_size.x,
+		eff_size.y,
+		rot_str
 	]
 
 	if not is_materials_ready():
@@ -345,7 +357,9 @@ func complete_construction() -> Node3D:
 	building_inst.name = "%s_%d_%d" % [building_data.id, origin_cell.x, origin_cell.y]
 	get_parent().add_child(building_inst)
 	if building_inst.has_method("setup_building"):
-		building_inst.setup_building(building_data, origin_cell)
+		building_inst.setup_building(building_data, origin_cell, rotation_index)
+	if building_inst.has_method("play_spawn_animation"):
+		building_inst.play_spawn_animation()
 
 	EventBus.building_completed.emit(building_inst, building_data.id, origin_cell)
 	construction_completed.emit(building_data, origin_cell, building_inst)
@@ -354,22 +368,49 @@ func complete_construction() -> Node3D:
 	return building_inst
 
 
-## Скасовує будівництво, повертає внесені матеріали дропом і очищає сітку
-func cancel_construction() -> void:
+## Демонтує / скасовує будівельний майданчик на [X], повертає доставлені матеріали гравцю або дропом і очищає сітку
+func demolish(player_inventory: Node = null) -> Dictionary:
+	var site_name: String = building_data.display_name if building_data != null else "Будмайданчик"
+	var refunded: Dictionary = {}
+
+	# 1. Повертаємо всі доставлені матеріали
+	for item_id in delivered_materials.keys():
+		var count: int = delivered_materials[item_id]
+		if count > 0:
+			refunded[item_id] = count
+			var rem: int = count
+			if player_inventory != null and player_inventory.has_method("add_item_by_id"):
+				rem = player_inventory.add_item_by_id(item_id, count)
+			elif player_inventory != null and player_inventory.has_method("add_item"):
+				rem = player_inventory.add_item(item_id, count)
+			if rem > 0 and DroppedItem3DScene != null and get_parent() != null:
+				var drop = DroppedItem3DScene.instantiate()
+				drop.position = global_position + Vector3(randf_range(-1.0, 1.0), 0.4, randf_range(-1.0, 1.0))
+				drop.set_item(item_id, rem)
+				get_parent().add_child(drop)
+
+	# 2. Скасовуємо завдання робітників
+	if JobManager != null:
+		JobManager.cancel_jobs_for_target(self, "Будівництво скасовано")
+
+	# 3. Звільняємо сітку GridManager
 	for c in occupied_cells:
 		GridManager.unregister_occupant(c, true)
 
-	# Дропаємо внесені матеріали
-	for item_id in delivered_materials.keys():
-		var count: int = delivered_materials[item_id]
-		if count > 0 and DroppedItem3DScene != null:
-			var drop = DroppedItem3DScene.instantiate()
-			drop.position = global_position + Vector3(randf_range(-1.5, 1.5), 0.4, randf_range(-1.5, 1.5))
-			drop.set_item(item_id, count)
-			get_parent().add_child(drop)
+	# 4. Аудіо та візуальні ефекти
+	if AudioManager != null:
+		AudioManager.play_sound_3d(&"demolish", global_position, 0.0, randf_range(0.95, 1.05))
+	if FloatingTextManager != null:
+		FloatingTextManager.spawn_info(global_position + Vector3(0, 1.5, 0), "❌ Скасовано: %s" % site_name, Color("FFAA00"))
 
 	construction_canceled.emit()
 	queue_free()
+	return {"success": true, "name": site_name, "refunded": refunded}
+
+
+## Скасовує будівництво (аліас / сумісність для викликів коду)
+func cancel_construction() -> void:
+	demolish(null)
 
 
 ## Універсальна точка входу взаємодії гравця або робітника

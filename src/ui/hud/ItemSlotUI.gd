@@ -5,6 +5,7 @@ extends Control
 ## лічильник кількості в стаку та гарячу клавішу (1-8).
 
 signal slot_clicked(slot_index: int)
+signal slot_secondary_clicked(slot_index: int)
 
 const TextureHelper = preload("res://src/core3d/TextureHelper.gd")
 
@@ -14,6 +15,11 @@ var slot_index: int = 0
 var is_selected: bool = false:
 	set(val):
 		is_selected = val
+		queue_redraw()
+
+var is_hovered: bool = false:
+	set(val):
+		is_hovered = val
 		queue_redraw()
 
 var hotkey_number: int = 0: # 1-8 або 0 (якщо без хоткею)
@@ -35,6 +41,16 @@ func _ready() -> void:
 	custom_minimum_size = slot_size
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	gui_input.connect(_on_gui_input)
+	mouse_entered.connect(_on_mouse_entered)
+	mouse_exited.connect(_on_mouse_exited)
+
+
+func _on_mouse_entered() -> void:
+	is_hovered = true
+
+
+func _on_mouse_exited() -> void:
+	is_hovered = false
 
 
 func set_slot_data(p_item_res: Resource, p_count: int) -> void:
@@ -61,8 +77,11 @@ func set_slot_data(p_item_res: Resource, p_count: int) -> void:
 
 
 func _on_gui_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		slot_clicked.emit(slot_index)
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			slot_clicked.emit(slot_index)
+		elif event.button_index == MOUSE_BUTTON_RIGHT:
+			slot_secondary_clicked.emit(slot_index)
 
 
 func _draw() -> void:
@@ -70,6 +89,8 @@ func _draw() -> void:
 
 	# 1. Фон слота
 	var bg_color: Color = Color(0.12, 0.14, 0.18, 0.85)
+	if is_hovered:
+		bg_color = Color(0.16, 0.19, 0.24, 0.92)
 	draw_rect(r, bg_color, true)
 
 	# 2. Рамка слота
@@ -77,6 +98,9 @@ func _draw() -> void:
 	if is_selected:
 		border_color = Color(1.0, 0.84, 0.0, 0.95) # Золота рамка для активного слота
 		draw_rect(r, border_color, false, 2.5)
+	elif is_hovered:
+		border_color = Color(0.45, 0.75, 1.0, 0.95) # Блакитне підсвічування при наведенні
+		draw_rect(r, border_color, false, 2.0)
 	else:
 		draw_rect(r, border_color, false, 1.2)
 

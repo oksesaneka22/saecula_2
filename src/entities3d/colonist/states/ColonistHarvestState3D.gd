@@ -8,6 +8,7 @@ extends "res://src/entities/fsm/State.gd"
 var target_node: Node = null
 var swing_timer: float = 0.0
 var swing_interval: float = 0.6
+var _has_scythe: bool = false
 
 
 func enter(msg: Dictionary = {}) -> void:
@@ -16,7 +17,7 @@ func enter(msg: Dictionary = {}) -> void:
 		target_node = actor.current_job.target_node
 
 	if target_node == null or not is_instance_valid(target_node):
-		_finish_or_abort()
+		_abort_job("Ресурс не знайдено")
 		return
 
 	if actor != null:
@@ -39,8 +40,7 @@ func enter(msg: Dictionary = {}) -> void:
 				actor.set_status_display("🪨 Довбає кремінь")
 				actor.show_hand_tool(&"stone_pickaxe")
 			5: # GRASS
-				actor.set_status_display("🌾 Косить траву")
-				actor.show_hand_tool(&"scythe")
+				_setup_grass_harvest()
 			_:
 				actor.set_status_display("⛏️ Довбає ресурс")
 				actor.show_hand_tool(&"stone_pickaxe")
@@ -51,6 +51,7 @@ func enter(msg: Dictionary = {}) -> void:
 func exit() -> void:
 	if actor != null:
 		actor.hide_hand_items()
+	_has_scythe = false
 
 
 func physics_update(delta: float) -> void:
@@ -64,7 +65,7 @@ func physics_update(delta: float) -> void:
 
 	# Перевірка чи ціль досі існує
 	if target_node == null or not is_instance_valid(target_node) or target_node.is_queued_for_deletion():
-		_finish_or_abort()
+		_abort_job("Ціль зникла або знищена")
 		return
 
 	# Поворот обличчям до ресурсу
@@ -84,22 +85,28 @@ func physics_update(delta: float) -> void:
 
 func _perform_swing() -> void:
 	if actor == null or target_node == null or not is_instance_valid(target_node):
-		_finish_or_abort()
+		_abort_job("Ціль недійсна")
 		return
 
 	actor.play_swing_animation()
 
 	var tool_type: int = 1 # Axe default
+	var swing_damage: float = 1.0
 	var res_type = target_node.get("resource_type")
 	if res_type == 1 or res_type == 3 or res_type == 4: # Rock, Clay or Flint
 		tool_type = 2 # Pickaxe
 	elif res_type == 5: # Grass
-		tool_type = 5 # Scythe
+		if _has_scythe:
+			tool_type = 5 # Scythe
+			swing_damage = 1.0
+		else:
+			tool_type = 0 # Bare hands
+			swing_damage = 1.0
 	elif res_type == 2: # Bush
 		tool_type = 0 # Bare hands
 
 	if target_node.has_method("harvest"):
-		target_node.harvest(1.0, tool_type)
+		target_node.harvest(swing_damage, tool_type)
 
 	# Оновлюємо прогрес у плашці над головою робітника
 	if is_instance_valid(target_node) and "current_health" in target_node and "max_health" in target_node:
@@ -124,18 +131,18 @@ func _perform_swing() -> void:
 				res_name = "кремінь"
 			5:
 				icon = "🌾"
-				res_name = "траву"
+				res_name = "траву (коса)" if _has_scythe else "траву вручну"
 			_:
 				icon = "⛏️"
 				res_name = "ресурс"
 		actor.set_status_display("%s Здобуває %s (%d%%)" % [icon, res_name, pct])
 
-	# Якщо після удару вузол вичерпано
+	# Якщо після удару вузол вичерпано — завершуємо як успіх
 	if not is_instance_valid(target_node) or target_node.is_queued_for_deletion():
-		_finish_or_abort()
+		_finish_job()
 
 
-func _finish_or_abort() -> void:
+func _finish_job() -> void:
 	if actor != null:
 		actor.hide_hand_items()
 		if actor.current_job != null:
@@ -143,4 +150,77 @@ func _finish_or_abort() -> void:
 				JobManager.complete_job(actor.current_job)
 			actor.current_job = null
 
+		_collect_nearby_drops()
+
+		if actor.has_method("has_items_to_unload") and actor.has_items_to_unload():
+			if actor.start_unloading_to_stockpile():
+				return
+
 	state_machine.transition_to(&"idle")
+
+
+func _abort_job(reason: String = "Ціль недоступна") -> void:
+	if actor != null:
+		actor.hide_hand_items()
+		if actor.current_job != null:
+			if JobManager != null:
+				JobManager.release_job(actor.current_job, reason)
+			actor.current_job = null
+
+		_collect_nearby_drops()
+
+		if actor.has_method("has_items_to_unload") and actor.has_items_to_unload():
+			if actor.start_unloading_to_stockpile():
+				return
+
+	state_machine.transition_to(&"idle")
+
+
+func _collect_nearby_drops() -> void:
+	if actor == null or actor.inventory == null:
+		return
+	var tree := get_tree()
+	if tree == null:
+		return
+	var items = tree.get_nodes_in_group("dropped_items")
+	for item in items:
+		var d := item as Node3D
+		if d != null and is_instance_valid(d) and not d.is_queued_for_deletion():
+			if actor.global_position.distance_to(d.global_position) <= 4.0:
+				var drop_id = d.get("item_id")
+				var drop_amount = d.get("amount")
+				if drop_id != null and drop_amount != null and drop_amount > 0:
+					var rem: int = actor.inventory.add_item_by_id(drop_id, drop_amount)
+					if rem <= 0:
+						d.queue_free()
+					else:
+						if d.has_method("set_item"):
+							d.set_item(drop_id, rem)
+						else:
+							d.set("amount", rem)
+
+
+func _setup_grass_harvest() -> void:
+	if actor == null:
+		return
+	var has_scythe: bool = false
+	if actor.inventory != null and actor.inventory.has_item(&"scythe", 1):
+		has_scythe = true
+	elif LogisticsManager != null and LogisticsManager.has_item(&"scythe"):
+		var taken: int = LogisticsManager.withdraw_item(&"scythe", 1)
+		if taken > 0:
+			if actor.inventory != null:
+				actor.inventory.add_item_by_id(&"scythe", 1)
+			has_scythe = true
+			if FloatingTextManager != null:
+				FloatingTextManager.spawn_info(actor.global_position + Vector3(0, 1.8, 0), "🌾 Взяв косу зі складу")
+
+	_has_scythe = has_scythe
+	if _has_scythe:
+		actor.set_status_display("🌾 Косить траву (коса)")
+		actor.show_hand_tool(&"scythe")
+		swing_interval = 0.5
+	else:
+		actor.set_status_display("🌾 Збирає траву вручну")
+		actor.hide_hand_items()
+		swing_interval = 0.8

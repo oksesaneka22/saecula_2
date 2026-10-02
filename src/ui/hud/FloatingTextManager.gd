@@ -34,6 +34,11 @@ func _deferred_add_text(ft: Node3D, world_pos: Vector3) -> void:
 		ft.global_position = world_pos
 
 
+## Спливаючий напис про успішне зведення споруди
+func spawn_construction_success(world_pos: Vector3, title: String) -> void:
+	spawn_text(world_pos, "✅ Збудовано: %s!" % title, Color(0.2, 1.0, 0.4), 1.6, 1.2)
+
+
 ## Спливаючий напис при підборі предмета гравцем
 func spawn_item_pickup(world_pos: Vector3, item_id: StringName, amount: int) -> void:
 	var item_name: String = String(item_id)
@@ -116,9 +121,17 @@ func _connect_event_bus() -> void:
 		)
 
 	if EventBus.has_signal("building_completed"):
-		EventBus.building_completed.connect(func(building_node, _b_id, coords):
+		EventBus.building_completed.connect(func(building_node, b_id, coords):
 			var pos := Vector3(coords.x, 1.5, coords.y)
 			if building_node is Node3D:
 				pos = (building_node as Node3D).global_position + Vector3(0, 1.8, 0)
-			spawn_text(pos, "🏛️ Збудовано!", Color("F1C40F"), 1.4, 1.5)
+			elif GridManager != null:
+				pos = GridManager.map_to_world_3d(coords, 1.8)
+
+			var bld_name: String = str(b_id)
+			if BuildingPlacementController != null:
+				var b_data = BuildingPlacementController.get_building(b_id)
+				if b_data != null and not b_data.display_name.is_empty():
+					bld_name = b_data.display_name
+			spawn_text(pos, "✅ Збудовано: %s!" % bld_name, Color(0.2, 1.0, 0.4), 1.6, 1.2)
 		)

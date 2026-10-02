@@ -6,6 +6,10 @@ extends Node3D
 ## Завжди розвернений до камери (Billboard), плавно піднімається та розчиняється.
 
 var _label: Label3D = null
+
+var text: String:
+	get:
+		return _label.text if _label != null else ""
 var _lifetime: float = 0.9
 var _elapsed: float = 0.0
 var _upward_speed: float = 1.4

@@ -85,6 +85,8 @@ func _ready() -> void:
 
 	if EventBus != null:
 		EventBus.hotbar_slot_selected.connect(_on_hotbar_slot_selected)
+		if EventBus.has_signal("order_harvest_requested"):
+			EventBus.order_harvest_requested.connect(_on_order_harvest_requested)
 		EventBus.day_passed.connect(func(_day): restore_energy(max_energy))
 
 	spawn_position = global_position
@@ -223,10 +225,21 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 
-	# Демонтаж / скасування модульного блоку на клавішу X
-	if event is InputEventKey and event.is_pressed() and not event.is_echo() and event.keycode == KEY_X:
+	# Демонтаж / скасування модульного блоку, споруди або будмайданчика на клавішу X
+	var is_demolish_action: bool = event.is_action_pressed("demolish_building")
+	var is_x_key: bool = event is InputEventKey and event.is_pressed() and not event.is_echo() and (event.physical_keycode == KEY_X or event.keycode == KEY_X)
+	if is_demolish_action or is_x_key:
 		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not is_sleeping and not is_dead:
 			if _try_demolish_targeted_piece():
+				get_viewport().set_input_as_handled()
+				return
+
+	# Наказ робітникам на видобуток / збір ресурсу на клавішу H
+	var is_harvest_action: bool = event.is_action_pressed("order_harvest")
+	var is_h_key: bool = event is InputEventKey and event.is_pressed() and not event.is_echo() and (event.physical_keycode == KEY_H or event.keycode == KEY_H)
+	if is_harvest_action or is_h_key:
+		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not is_sleeping and not is_dead:
+			if _try_order_harvest_targeted_resource():
 				get_viewport().set_input_as_handled()
 				return
 
@@ -855,13 +868,77 @@ func _try_demolish_targeted_piece() -> bool:
 	if interact_ray == null or not interact_ray.is_colliding():
 		return false
 	var collider = interact_ray.get_collider()
-	if collider != null and collider.has_method("demolish"):
+	var target = collider
+	while target != null and not target.has_method("demolish") and target.get_parent() != null and not (target.name == "Buildings" or target.name == "ModularContainer" or target.name == "World3D"):
+		target = target.get_parent()
+
+	if target != null and target.has_method("demolish"):
 		_play_swing_animation()
-		var res: Dictionary = collider.demolish(inventory)
+		var res: Dictionary = target.demolish(inventory)
 		if res.get("success", false) and current_energy > 0.0:
 			consume_energy(2.0)
 		return true
 	return false
+
+
+func _try_order_harvest_targeted_resource() -> bool:
+	if interact_ray == null or not interact_ray.is_colliding():
+		return false
+	var collider = interact_ray.get_collider()
+	if collider == null:
+		return false
+
+	var target = collider
+	while target != null and not target.is_in_group("resource_nodes") and not target.has_method("harvest") and target.get_parent() != null and not (target.name == "World3D" or target.name == "ChunkManager3D"):
+		target = target.get_parent()
+
+	if target == null or (not target.is_in_group("resource_nodes") and not target.has_method("harvest")):
+		return false
+
+	if JobManager == null:
+		return false
+
+	if JobManager.has_method("has_job_for_target") and JobManager.has_job_for_target(target):
+		if FloatingTextManager != null:
+			FloatingTextManager.spawn_info(target.global_position + Vector3(0, 1.2, 0), "⚠️ Завдання вже призначено")
+		return true
+
+	var res_type = target.get("resource_type")
+	var prof: StringName = &""
+	var res_name: String = "ресурс"
+	if res_type != null:
+		match int(res_type):
+			0:
+				prof = &"lumberjack"
+				res_name = "Дерево"
+			1:
+				prof = &""
+				res_name = "Камінь"
+			2:
+				prof = &""
+				res_name = "Ягоди"
+			3:
+				prof = &""
+				res_name = "Глину"
+			4:
+				prof = &""
+				res_name = "Кремінь"
+			5:
+				prof = &""
+				res_name = "Траву"
+	elif "display_name" in target:
+		res_name = str(target.display_name)
+
+	var job_pos: Vector3 = target.global_position if target is Node3D else global_position
+	JobManager.create_job(Job.JobType.HARVEST, job_pos, target, 2, prof, { "resource_type": res_type })
+
+	if AudioManager != null:
+		AudioManager.play_sound(&"click", -2.0, 1.1)
+
+	if FloatingTextManager != null:
+		FloatingTextManager.spawn_info(job_pos + Vector3(0, 1.2, 0), "📋 Призначено збір: %s" % res_name)
+
+	return true
 
 func is_any_modal_open() -> bool:
 	var hud = get_tree().get_first_node_in_group("hud")
@@ -873,3 +950,13 @@ func is_any_modal_open() -> bool:
 			if modal != null and modal.visible:
 				return true
 	return false
+
+func _on_order_harvest_requested() -> void:
+	if not is_active:
+		return
+	if GameManager != null and GameManager.current_state != GameManager.GameState.PLAYING:
+		return
+	if not _try_order_harvest_targeted_resource():
+		if FloatingTextManager != null:
+			FloatingTextManager.spawn_info(global_position + Vector3(0, 1.8, 0), "🌾 Наведіть приціл на ресурс [H] або перейдіть у режим огляду [Tab]", Color("F1C40F"))
+

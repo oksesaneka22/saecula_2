@@ -30,16 +30,20 @@ func enter(msg: Dictionary = {}) -> void:
 	arrival_distance = msg.get("arrival_distance", 1.2)
 
 	if actor != null:
-		var dest_str := "Ціль"
-		if next_state_name == &"build":
-			dest_str = "Будівництво"
-		elif next_state_name == &"harvest":
-			dest_str = "Ресурс"
-		elif next_state_name == &"haul":
-			dest_str = "Вантаж"
-		elif next_state_name == &"rest":
-			dest_str = "Вогнище"
-		actor.set_status_display("🏃 Йде до: %s" % dest_str)
+		if msg.has("custom_status"):
+			actor.set_status_display(msg["custom_status"])
+		else:
+			var dest_str := "Ціль"
+			if next_state_name == &"build":
+				dest_str = "Будівництво"
+			elif next_state_name == &"harvest":
+				dest_str = "Ресурс"
+			elif next_state_name == &"haul":
+				var stage = next_state_msg.get("stage", 1)
+				dest_str = "Склад" if stage == 2 else "Вантаж"
+			elif next_state_name == &"rest":
+				dest_str = "Вогнище"
+			actor.set_status_display("🏃 Йде до: %s" % dest_str)
 
 	# Якщо колоніст вже знаходиться в радіусі взаємодії — миттєве прибуття
 	if actor != null:
@@ -295,4 +299,7 @@ func _abort_unreachable_job(reason: String) -> void:
 		if actor.current_job != null and JobManager != null:
 			JobManager.release_job(actor.current_job, reason)
 			actor.current_job = null
+		if actor.has_method("has_items_to_unload") and actor.has_items_to_unload():
+			if actor.start_unloading_to_stockpile():
+				return
 	state_machine.transition_to(&"idle")

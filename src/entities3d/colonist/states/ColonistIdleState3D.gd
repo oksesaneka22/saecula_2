@@ -15,6 +15,9 @@ func enter(_msg: Dictionary = {}) -> void:
 		actor.velocity = Vector3.ZERO
 		actor.set_status_display("💤 Очікує")
 		actor.hide_hand_items()
+		if not actor.is_following_player and actor.has_method("has_items_to_unload") and actor.has_items_to_unload():
+			if actor.start_unloading_to_stockpile():
+				return
 	_job_search_timer = 0.2
 	_wander_timer = randf_range(4.0, 8.0)
 
@@ -73,6 +76,9 @@ func physics_update(delta: float) -> void:
 	_job_search_timer -= delta
 	if _job_search_timer <= 0.0:
 		_job_search_timer = 0.6
+		if actor.has_method("has_items_to_unload") and actor.has_items_to_unload():
+			if actor.start_unloading_to_stockpile():
+				return
 		if JobManager != null and actor.current_job == null:
 			var job: Job = JobManager.request_job(actor)
 			if job != null:

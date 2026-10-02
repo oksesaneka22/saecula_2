@@ -32,6 +32,7 @@ func _ready() -> void:
 			EventBus.colonist_roster_toggle_requested.connect(toggle_roster)
 
 	_refresh_roster()
+	set_process(not _is_collapsed)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -56,6 +57,7 @@ func toggle_roster() -> void:
 
 func set_collapsed(collapsed: bool) -> void:
 	_is_collapsed = collapsed
+	set_process(not _is_collapsed)
 	if _scroll_container != null:
 		_scroll_container.visible = not _is_collapsed
 	if _collapse_btn != null:

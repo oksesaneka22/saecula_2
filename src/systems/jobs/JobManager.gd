@@ -30,6 +30,8 @@ func _ready() -> void:
 			EventBus.construction_site_placed.connect(_on_construction_site_placed)
 		if EventBus.has_signal("item_dropped"):
 			EventBus.item_dropped.connect(_on_item_dropped)
+		if EventBus.has_signal("building_demolished"):
+			EventBus.building_demolished.connect(_on_building_demolished)
 
 
 func _process(delta: float) -> void:
@@ -125,6 +127,21 @@ func create_job(
 	return job
 
 
+## Перевіряє, чи існує вже активне або заплановане завдання для цільового вузла
+func has_job_for_target(node: Node, j_type: int = -1) -> bool:
+	if node == null:
+		return false
+	for job in _pending_jobs:
+		if job != null and job.target_node == node:
+			if j_type < 0 or job.type == j_type:
+				return true
+	for job in _active_jobs:
+		if job != null and job.target_node == node:
+			if j_type < 0 or job.type == j_type:
+				return true
+	return false
+
+
 # ------------------------------------------------------------------------------
 # Запит та видача завдань колоністам (Job Request & Dispatch)
 # ------------------------------------------------------------------------------
@@ -148,10 +165,11 @@ func request_job(colonist: Node) -> Job:
 		if job.target_node != null and (not is_instance_valid(job.target_node) or job.target_node.is_queued_for_deletion()):
 			continue
 
-		# Перевірка професії
+		# Перевірка професії (поселенець 'settler' є універсалом і може виконувати доставку 'hauler')
 		if not job.required_profession.is_empty():
 			if not colonist_prof.is_empty() and colonist_prof != job.required_profession:
-				continue
+				if not (job.required_profession == &"hauler" and colonist_prof == &"settler"):
+					continue
 
 		# Перевірка тимчасового кулдауну (заблоковані або тимчасово недоступні завдання)
 		if job.has_meta("unreachable_until"):
@@ -172,25 +190,28 @@ func request_job(colonist: Node) -> Job:
 
 		var dist: float = colonist_pos.distance_to(job.target_world_pos)
 
+		# Оптимізація: швидка перевірка пріоритету та дистанції ДО важкого розрахунку A*
+		var is_better_candidate: bool = false
+		if best_job == null:
+			is_better_candidate = true
+		elif job.priority > best_job.priority:
+			is_better_candidate = true
+		elif job.priority == best_job.priority and dist < min_distance:
+			is_better_candidate = true
+
+		if not is_better_candidate:
+			continue
+
 		# Перевірка наявності шляху (Pathfinding Reachability):
 		# Якщо колоніст не в безпосередньому радіусі взаємодії (4.5м), перевіряємо прохідність
 		if dist > 4.5 and GridManager != null:
 			var path := GridManager.get_world_path_3d(colonist_pos, job.target_world_pos, colonist_pos.y)
 			if path.is_empty():
 				continue # Немає проходу — обираємо інше завдання
-		# Перший або з вищим пріоритетом / ближчий за відстанню
-		if best_job == null:
-			best_job = job
-			best_index = i
-			min_distance = dist
-		elif job.priority > best_job.priority:
-			best_job = job
-			best_index = i
-			min_distance = dist
-		elif job.priority == best_job.priority and dist < min_distance:
-			best_job = job
-			best_index = i
-			min_distance = dist
+
+		best_job = job
+		best_index = i
+		min_distance = dist
 
 	if best_job != null and best_index >= 0:
 		_pending_jobs.remove_at(best_index)
@@ -284,10 +305,15 @@ func cancel_job(job: Job, reason: String = "Canceled") -> void:
 	if job == null:
 		return
 
+	var colonist = job.assigned_colonist
 	_active_jobs.erase(job)
 	_pending_jobs.erase(job)
 	job.status = Job.JobStatus.CANCELLED
 	job.assigned_colonist = null
+
+	if colonist != null and is_instance_valid(colonist):
+		if colonist.has_method("on_job_cancelled"):
+			colonist.on_job_cancelled(job, reason)
 
 	job_canceled.emit(job, reason)
 	if EventBus != null and EventBus.has_signal("job_canceled"):
@@ -330,6 +356,13 @@ func _cleanup_invalid_jobs() -> void:
 # ------------------------------------------------------------------------------
 # Обробники зовнішніх подій (EventBus hooks)
 # ------------------------------------------------------------------------------
+func _on_building_demolished(_bld_id: Variant = null, _coords: Variant = null) -> void:
+	# Коли споруду знесено, шлях міг звільнитися — скидаємо тимчасовий кулдаун unreachable
+	for j in _pending_jobs:
+		if j != null and j.has_meta("unreachable_until"):
+			j.remove_meta("unreachable_until")
+
+
 func _on_construction_site_placed(site_node: Node, building_id: StringName, _map_coords: Vector2i) -> void:
 	if site_node == null or not is_instance_valid(site_node) or site_node.is_queued_for_deletion():
 		return

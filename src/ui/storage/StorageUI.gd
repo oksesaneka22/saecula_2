@@ -156,15 +156,23 @@ func _build_ui_layout() -> void:
 	take_all_btn.pressed.connect(_on_take_all_pressed)
 	stockpile_vbox.add_child(take_all_btn)
 
-	# 5. Створення початкових слотів гравця (24 слоти)
+	# 5. Підказка щодо керування
+	var hint := Label.new()
+	hint.text = "💡 ЛКМ: перенести весь стек  •  ПКМ: перенести 1 шт.  •  'E' або 'Esc': закрити"
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.add_theme_font_size_override("font_size", 12)
+	hint.add_theme_color_override("font_color", Color(0.65, 0.72, 0.8))
+	root_vbox.add_child(hint)
+
+	# 6. Створення початкових слотів гравця (24 слоти)
 	_player_slots.clear()
 	for i in range(24):
 		var slot_ui: Control = ItemSlotUIScript.new()
 		slot_ui.name = "PlayerSlot_%d" % i
 		slot_ui.set("slot_index", i)
-		slot_ui.set("slot_clicked", _on_player_slot_clicked)
-		if slot_ui.has_signal("slot_clicked"):
-			slot_ui.slot_clicked.connect(_on_player_slot_clicked)
+		slot_ui.slot_clicked.connect(func(idx): _transfer_from_player(idx, -1))
+		if slot_ui.has_signal("slot_secondary_clicked"):
+			slot_ui.slot_secondary_clicked.connect(func(idx): _transfer_from_player(idx, 1))
 		_player_grid.add_child(slot_ui)
 		_player_slots.append(slot_ui)
 
@@ -227,34 +235,30 @@ func close_storage() -> void:
 	EventBus.storage_ui_closed.emit()
 
 
-## Оновлює вміст слотів на обох панелях
+## Оновлює вміст слотів на обох панелях (пряме відображення 1-в-1)
 func refresh_ui() -> void:
 	# Оновлення слотів гравця
 	if _player_inventory != null:
-		var p_items: Array = _player_inventory.get_all_items()
 		var p_used: int = 0
 		for i in range(_player_slots.size()):
 			var slot_ui: Control = _player_slots[i]
-			if i < p_items.size():
-				var s = p_items[i]
+			var s = _player_inventory.get_slot(i) if i < _player_inventory.slots.size() else null
+			if s != null and not s.is_empty():
 				slot_ui.set_slot_data(s.item, s.count)
-				if s.item != null and s.count > 0:
-					p_used += 1
+				p_used += 1
 			else:
 				slot_ui.set_slot_data(null, 0)
 		_player_capacity_label.text = "%d/%d" % [p_used, _player_inventory.slot_count]
 
 	# Оновлення слотів складу
 	if _stockpile_inventory != null:
-		var s_items: Array = _stockpile_inventory.get_all_items()
 		var s_used: int = 0
 		for i in range(_stockpile_slots.size()):
 			var slot_ui: Control = _stockpile_slots[i]
-			if i < s_items.size():
-				var s = s_items[i]
+			var s = _stockpile_inventory.get_slot(i) if i < _stockpile_inventory.slots.size() else null
+			if s != null and not s.is_empty():
 				slot_ui.set_slot_data(s.item, s.count)
-				if s.item != null and s.count > 0:
-					s_used += 1
+				s_used += 1
 			else:
 				slot_ui.set_slot_data(null, 0)
 		_stockpile_capacity_label.text = "%d/%d" % [s_used, _stockpile_inventory.slot_count]
@@ -282,14 +286,15 @@ func _rebuild_stockpile_slots() -> void:
 		var slot_ui: Control = ItemSlotUIScript.new()
 		slot_ui.name = "StockpileSlot_%d" % i
 		slot_ui.set("slot_index", i)
-		if slot_ui.has_signal("slot_clicked"):
-			slot_ui.slot_clicked.connect(_on_stockpile_slot_clicked)
+		slot_ui.slot_clicked.connect(func(idx): _transfer_from_stockpile(idx, -1))
+		if slot_ui.has_signal("slot_secondary_clicked"):
+			slot_ui.slot_secondary_clicked.connect(func(idx): _transfer_from_stockpile(idx, 1))
 		_stockpile_grid.add_child(slot_ui)
 		_stockpile_slots.append(slot_ui)
 
 
-## Клік по слоту гравця -> перенесення ресурсу на склад
-func _on_player_slot_clicked(slot_index: int) -> void:
+## Перенесення ресурсу з інвентаря гравця на склад (max_amount: -1 = весь стек, 1 = 1 шт.)
+func _transfer_from_player(slot_index: int, max_amount: int = -1) -> void:
 	if _player_inventory == null or _stockpile_inventory == null:
 		return
 	if slot_index < 0 or slot_index >= _player_inventory.slots.size():
@@ -300,9 +305,8 @@ func _on_player_slot_clicked(slot_index: int) -> void:
 		return
 
 	var item_res: Resource = slot.item
-	var count_to_move: int = slot.count
+	var count_to_move: int = slot.count if max_amount <= 0 else mini(slot.count, max_amount)
 
-	# Додаємо на склад
 	var remainder: int = _stockpile_inventory.add_item(item_res, count_to_move)
 	var moved: int = count_to_move - remainder
 
@@ -314,8 +318,8 @@ func _on_player_slot_clicked(slot_index: int) -> void:
 		_stockpile_inventory.inventory_updated.emit()
 
 
-## Клік по слоту складу -> перенесення ресурсу до інвентаря гравця
-func _on_stockpile_slot_clicked(slot_index: int) -> void:
+## Перенесення ресурсу зі складу до інвентаря гравця (max_amount: -1 = весь стек, 1 = 1 шт.)
+func _transfer_from_stockpile(slot_index: int, max_amount: int = -1) -> void:
 	if _player_inventory == null or _stockpile_inventory == null:
 		return
 	if slot_index < 0 or slot_index >= _stockpile_inventory.slots.size():
@@ -326,9 +330,8 @@ func _on_stockpile_slot_clicked(slot_index: int) -> void:
 		return
 
 	var item_res: Resource = slot.item
-	var count_to_move: int = slot.count
+	var count_to_move: int = slot.count if max_amount <= 0 else mini(slot.count, max_amount)
 
-	# Додаємо гравцеві
 	var remainder: int = _player_inventory.add_item(item_res, count_to_move)
 	var moved: int = count_to_move - remainder
 
@@ -338,6 +341,14 @@ func _on_stockpile_slot_clicked(slot_index: int) -> void:
 			slot.clear()
 		_stockpile_inventory.inventory_updated.emit()
 		_player_inventory.inventory_updated.emit()
+
+
+func _on_player_slot_clicked(slot_index: int) -> void:
+	_transfer_from_player(slot_index, -1)
+
+
+func _on_stockpile_slot_clicked(slot_index: int) -> void:
+	_transfer_from_stockpile(slot_index, -1)
 
 
 ## Перекласти всі ресурси з гравця на склад

@@ -4,6 +4,7 @@ extends Control
 ## Забезпечує прямий доступ через кліки мишею або підказки гарячих клавіш (B, C, I).
 
 @onready var build_button: Button = $HBoxContainer/BuildButton
+@onready var harvest_button: Button = $HBoxContainer.get_node_or_null("HarvestButton")
 @onready var craft_button: Button = $HBoxContainer/CraftButton
 @onready var inventory_button: Button = $HBoxContainer/InventoryButton
 @onready var eratree_button: Button = $HBoxContainer.get_node_or_null("EraTreeButton")
@@ -14,6 +15,10 @@ extends Control
 func _ready() -> void:
 	if build_button != null:
 		build_button.pressed.connect(_on_build_button_pressed)
+	if harvest_button != null:
+		harvest_button.pressed.connect(_on_harvest_button_pressed)
+	if EventBus != null and EventBus.has_signal("order_harvest_mode_toggled"):
+		EventBus.order_harvest_mode_toggled.connect(_on_order_harvest_mode_toggled)
 	if craft_button != null:
 		craft_button.pressed.connect(_on_craft_button_pressed)
 	if inventory_button != null:
@@ -125,3 +130,18 @@ func _close_other_windows(hud: Node) -> void:
 func _on_roster_button_pressed() -> void:
 	if EventBus != null and EventBus.has_signal("colonist_roster_toggle_requested"):
 		EventBus.colonist_roster_toggle_requested.emit()
+
+func _on_harvest_button_pressed() -> void:
+	if EventBus != null and EventBus.has_signal("order_harvest_requested"):
+		EventBus.order_harvest_requested.emit()
+
+
+func _on_order_harvest_mode_toggled(active: bool) -> void:
+	if harvest_button != null:
+		if active:
+			harvest_button.text = "🌾 Збір (ЛКМ)"
+			harvest_button.modulate = Color(0.6, 1.0, 0.6)
+		else:
+			harvest_button.text = "🌾 Збір [H]"
+			harvest_button.modulate = Color.WHITE
+

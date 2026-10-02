@@ -63,7 +63,8 @@ func _pregenerate_sounds() -> void:
 		&"eat",
 		&"drink",
 		&"death",
-		&"demolish"
+		&"demolish",
+		&"build_complete"
 	]
 	for s_id in sound_names:
 		_sounds[s_id] = _generate_wav(s_id)
@@ -91,6 +92,7 @@ func _generate_wav(sound_id: StringName) -> AudioStreamWAV:
 		&"drink": duration = 0.22
 		&"death": duration = 0.8
 		&"demolish": duration = 0.28
+		&"build_complete": duration = 0.40
 
 	var sample_count: int = int(float(MIX_RATE) * duration)
 	var bytes := PackedByteArray()
@@ -168,6 +170,16 @@ func _generate_wav(sound_id: StringName) -> AudioStreamWAV:
 				var wood_crack: float = (randf() * 2.0 - 1.0) * exp(-fmod(progress * 4.0, 1.0) * 10.0) * 0.65
 				var rumble: float = sin(t * freq * TAU) * 0.6 + sin(t * freq * 0.5 * TAU) * 0.4
 				val = (rumble + wood_crack) * env
+			&"build_complete":
+				# Урочистий мажорний акорд завершення споруди (C5 -> E5 -> G5 -> C6)
+				var freqs: Array = [523.25, 659.25, 783.99, 1046.50]
+				var note_idx: int = clamp(int(progress * 4.0), 0, 3)
+				var f: float = freqs[note_idx]
+				var sub_prog: float = fmod(progress * 4.0, 1.0)
+				var env: float = exp(-sub_prog * 5.0) * exp(-progress * 2.0)
+				var overtone: float = sin(t * f * 2.0 * TAU) * 0.28
+				var warmth: float = sin(t * (f * 0.5) * TAU) * 0.2
+				val = (sin(t * f * TAU) * 0.65 + overtone + warmth) * env
 
 		val = clampf(val, -1.0, 1.0)
 		bytes.encode_s16(i * 2, int(val * 24000.0))
@@ -245,8 +257,13 @@ func _connect_event_bus() -> void:
 		)
 
 	if EventBus.has_signal("building_completed"):
-		EventBus.building_completed.connect(func(_node, _b_id, coords):
-			play_sound_3d(&"build", Vector3(coords.x, 0, coords.y), 2.0, 1.2)
+		EventBus.building_completed.connect(func(building_node, _b_id, coords):
+			var pos: Vector3 = Vector3(coords.x, 0, coords.y)
+			if building_node is Node3D:
+				pos = (building_node as Node3D).global_position
+			elif GridManager != null:
+				pos = GridManager.map_to_world_3d(coords, 0.0)
+			play_sound_3d(&"build_complete", pos, 2.5, 1.0)
 		)
 
 	if EventBus.has_signal("player_died"):
@@ -258,3 +275,17 @@ func _connect_event_bus() -> void:
 		EventBus.item_picked_up.connect(func(_collector, _item_id, _amount):
 			play_sound(&"pickup", -3.0, randf_range(0.95, 1.1))
 		)
+
+
+func _exit_tree() -> void:
+	for p in _players_2d:
+		if is_instance_valid(p):
+			p.stop()
+			p.stream = null
+	for p3 in _players_3d:
+		if is_instance_valid(p3):
+			p3.stop()
+			p3.stream = null
+	_players_2d.clear()
+	_players_3d.clear()
+	_sounds.clear()

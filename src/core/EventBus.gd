@@ -105,6 +105,10 @@ signal job_completed(job_id: StringName, colonist_node: Node)
 ## Завдання скасовано або повернено у чергу
 signal job_canceled(job_id: StringName, reason: String)
 
+## Запит на наказ або перемикання режиму виділення ресурсів для робітників колонії
+signal order_harvest_requested
+signal order_harvest_mode_toggled(active: bool)
+
 
 # ------------------------------------------------------------------------------
 # 6. Події колоністів (Colonist Simulation)

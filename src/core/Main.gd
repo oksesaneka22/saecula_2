@@ -16,6 +16,7 @@ const AdminPanelUIScript = preload("res://src/ui/hud/AdminPanelUI.gd")
 const Job = preload("res://src/systems/jobs/Job.gd")
 const Colonist3DScene = preload("res://src/entities3d/colonist/Colonist3D.tscn")
 const Colonist3DScript = preload("res://src/entities3d/colonist/Colonist3D.gd")
+const StorageUIScene = preload("res://src/ui/storage/StorageUI.tscn")
 
 @export var run_unit_tests: bool = false
 
@@ -137,8 +138,38 @@ func _run_all_unit_tests() -> void:
 	# 32. Валідація відкриття сховища (Stockpile BuildingEntity3D), взаємодії з інвентарем та розділення з багаттям (Player3D, CrosshairUI, StorageUI)
 	_test_stockpile_interaction_and_storage_ui()
 
+	# 33. Валідація покращеного інвентаря, прямого 1-в-1 відображення слотів, перенесення по 1 шт. (ПКМ) та обміну/організації слотів (swap_slots, StorageUI, ColonistDialogUI, InventoryUI)
+	_test_inventory_transfer_and_swap_polish()
+
 	# 29. Валідація покращеного пошуку шляху та обходу фізичних перешкод поселенцями (GridManager, AStarGrid2D діагоналі, solid-start recovery, Whisker raycasts, slide deflection)
 	_test_colonist_obstacle_avoidance_and_pathfinding()
+
+	# 34. Валідація системи обертання будівельних креслень (BuildingPlacementController, ConstructionSite3D, BuildingEntity3D, ModularPiece3D, клавіша R)
+	_test_blueprint_rotation_system()
+
+	# 35. Валідація ефектів завершення будівництва (звук build_complete, спливаючий текст, пилові ефекти)
+	_test_building_completion_effects()
+
+	# 36. Валідація розвантаження колоністів на склад після скасування/завершення робіт
+	_test_colonist_unloading_to_stockpile()
+
+	# 37. Валідація розумного розподілу точок підходу до складу (Anti-crowding perimeters, LogisticsManager, Colonist3D, ColonistHaulState3D)
+	_test_stockpile_anti_crowding_perimeter_distribution()
+
+	# 38. Валідація системи демонтажу на [X] для будівельних майданчиків (ConstructionSite3D) та готових споруд (BuildingEntity3D)
+	_test_demolish_system_sites_and_buildings()
+
+	# 39. Валідація збору дикої трави: збір руками (без коси), авто-екіпірування коси зі складу, збереження коси в інвентарі робітника та наказ на [H]
+	_test_colonist_wild_grass_harvest_and_auto_scythe()
+
+	# 40. Валідація кнопки [🌾 Збір [H]] на HUDActionBar, сигналу EventBus.order_harvest_requested та режиму виділення ресурсів RTSCamera3D
+	_test_hud_action_bar_harvest_order()
+
+	# 41. Валідація пакетного наказу на збір рамкою (Box Selection / Drag-to-Harvest) у RTSCamera3D
+	_test_rts_harvest_box_selection()
+
+	# 42. Валідація виправлень взаємодії та логістики: interact() в RTS-камері, settler->hauler, захист переповнених складів, скидання unreachable при знесенні
+	_test_colonist_and_logistics_fixes()
 
 
 func _test_inventory_component(wood: Resource) -> void:
@@ -844,13 +875,15 @@ func _test_grass_and_scythe() -> void:
 	# Трава НЕ повинна блокувати клітинку для руху
 	assert(GridManager.is_cell_walkable(grass_cell) == true, "Grass cell must be walkable for player/colonists")
 
-	# 4. Спроба видобутку без коси (руками/сокирою/киркою)
-	grass_node.harvest(1.0, 0) # bare hands
-	assert(grass_node.current_health == 1.0, "Grass must take NO damage from bare hands")
+	# 4. Спроба видобутку невідповідними інструментами (сокирою/киркою)
 	grass_node.harvest(1.0, 1) # axe
 	assert(grass_node.current_health == 1.0, "Grass must take NO damage from axe")
 	grass_node.harvest(1.0, 2) # pickaxe
 	assert(grass_node.current_health == 1.0, "Grass must take NO damage from pickaxe")
+
+	# Видобуток голіруч (tool_type = 0): можна скубти траву руками (0.5 * 0.5 = 0.25 шкоди)
+	grass_node.harvest(0.5, 0) # bare hands
+	assert(grass_node.current_health == 0.75, "Grass takes reduced damage from bare hands")
 
 	# 5. Видобуток косою (tool_type = 5)
 	var straw_dropped: Array[bool] = [false]
@@ -2279,3 +2312,761 @@ func _test_stockpile_interaction_and_storage_ui() -> void:
 	stockpile_entity.queue_free()
 
 	print("[Main] Stockpile vs Campfire Interaction & StorageUI unit tests passed successfully!")
+
+
+func _test_inventory_transfer_and_swap_polish() -> void:
+	print("[Main] Testing Inventory Transfer 1-to-1 Mapping, Partial 1-Item Transfer (RMB) & Slot Swapping...")
+
+	# 1. Створюємо інвентарі гравця та сховища
+	var p_inv: Node = InventoryComponentScript.new()
+	p_inv.set("slot_count", 6)
+	add_child(p_inv)
+
+	var s_inv: Node = InventoryComponentScript.new()
+	s_inv.set("slot_count", 6)
+	add_child(s_inv)
+
+	var wood: Resource = ItemDatabase.get_item(&"wood")
+	var stone: Resource = ItemDatabase.get_item(&"stone")
+	assert(wood != null and stone != null, "Wood and stone resources must exist")
+
+	# 2. Розміщуємо предмети з пропусками (слот 0 порожній, слот 2 містить 10 деревини)
+	p_inv.slots[2].item = wood
+	p_inv.slots[2].count = 10
+	p_inv.slots[4].item = stone
+	p_inv.slots[4].count = 5
+
+	assert(p_inv.slots[0].is_empty() == true, "Slot 0 must be empty")
+	assert(p_inv.slots[2].count == 10, "Slot 2 must have 10 wood")
+	assert(p_inv.slots[4].count == 5, "Slot 4 must have 5 stone")
+
+	# 3. Перевірка swap_slots (переміщення у порожній слот)
+	var swapped: bool = p_inv.swap_slots(2, 0)
+	assert(swapped == true, "swap_slots(2, 0) must succeed")
+	assert(p_inv.slots[0].count == 10 and p_inv.slots[0].get_item_id() == &"wood", "Slot 0 must now have 10 wood")
+	assert(p_inv.slots[2].is_empty() == true, "Slot 2 must now be empty")
+
+	# 4. Перевірка swap_slots (об'єднання однакових предметів)
+	p_inv.slots[1].item = wood
+	p_inv.slots[1].count = 5
+	var merged: bool = p_inv.swap_slots(1, 0)
+	assert(merged == true, "Merging identical slots must succeed")
+	assert(p_inv.slots[1].is_empty() == true, "Slot 1 should be emptied after merge")
+	assert(p_inv.slots[0].count == 15, "Slot 0 should now hold 15 wood")
+
+	# 5. Перевірка StorageUI прямого 1-в-1 мапінгу та часткового перенесення 1 шт.
+	var storage_ui = StorageUIScene.instantiate()
+	add_child(storage_ui)
+	storage_ui._player_inventory = p_inv
+	storage_ui._stockpile_inventory = s_inv
+	storage_ui.refresh_ui()
+
+	# Перевіряємо що слот 0 на екрані показує деревину, а слот 1 порожній
+	assert(storage_ui._player_slots[0].item_count == 15, "UI Slot 0 must show 15 wood")
+	assert(storage_ui._player_slots[1].item_count == 0, "UI Slot 1 must be empty")
+
+	# Переносимо 1 шт. деревини на склад через _transfer_from_player(0, 1)
+	storage_ui._transfer_from_player(0, 1)
+	assert(p_inv.slots[0].count == 14, "Player slot 0 must have 14 wood left after 1 item transfer")
+	assert(s_inv.get_item_count(&"wood") == 1, "Stockpile must have received 1 wood")
+
+	# Переносимо весь залишок стеку через _transfer_from_player(0, -1)
+	storage_ui._transfer_from_player(0, -1)
+	assert(p_inv.slots[0].is_empty() == true, "Player slot 0 must be empty after full transfer")
+	assert(s_inv.get_item_count(&"wood") == 15, "Stockpile must now have 15 wood")
+
+	# Переносимо 1 шт. назад зі складу через _transfer_from_stockpile
+	storage_ui._transfer_from_stockpile(0, 1)
+	assert(s_inv.slots[0].count == 14, "Stockpile slot 0 must have 14 wood left")
+	assert(p_inv.get_item_count(&"wood") == 1, "Player must have received 1 wood back")
+
+	# 6. Очищення
+	storage_ui.free()
+	p_inv.free()
+	s_inv.free()
+
+	print("[Main] Inventory Transfer 1-to-1 Mapping, Partial 1-Item Transfer & Slot Swapping unit tests passed successfully!")
+
+
+func _test_blueprint_rotation_system() -> void:
+	print("[Main] Testing Blueprint Rotation System (0°/90°/180°/270°, effective size, sites & entities)...")
+
+	# 1. Тестування циклу обертання в BuildingPlacementController
+	BuildingPlacementController.current_rotation = 0
+	BuildingPlacementController.rotate_placement(1)
+	assert(BuildingPlacementController.current_rotation == 1, "Rotation step +1 must yield index 1 (90°)")
+	BuildingPlacementController.rotate_placement(1)
+	assert(BuildingPlacementController.current_rotation == 2, "Rotation step +1 must yield index 2 (180°)")
+	BuildingPlacementController.rotate_placement(1)
+	assert(BuildingPlacementController.current_rotation == 3, "Rotation step +1 must yield index 3 (270°)")
+	BuildingPlacementController.rotate_placement(1)
+	assert(BuildingPlacementController.current_rotation == 0, "Rotation step +1 from 3 must wrap back to index 0 (0°)")
+	BuildingPlacementController.rotate_placement(-1)
+	assert(BuildingPlacementController.current_rotation == 3, "Negative rotation step from 0 must wrap to index 3 (270°)")
+	BuildingPlacementController.current_rotation = 0
+
+	# 2. Тестування get_effective_size для асиметричної споруди (stockpile 4x3)
+	var stockpile_data = BuildingPlacementController.get_building(&"stockpile")
+	assert(stockpile_data != null, "Stockpile data must exist")
+	var orig_size = stockpile_data.size_in_tiles
+
+	BuildingPlacementController.current_rotation = 0
+	assert(BuildingPlacementController.get_effective_size(stockpile_data) == orig_size, "Rot 0 effective size must equal original")
+
+	BuildingPlacementController.current_rotation = 1
+	var rot_size_1 = BuildingPlacementController.get_effective_size(stockpile_data)
+	assert(rot_size_1 == Vector2i(orig_size.y, orig_size.x), "Rot 1 effective size must swap x and y")
+
+	BuildingPlacementController.current_rotation = 2
+	assert(BuildingPlacementController.get_effective_size(stockpile_data) == orig_size, "Rot 2 effective size must equal original")
+
+	BuildingPlacementController.current_rotation = 3
+	var rot_size_3 = BuildingPlacementController.get_effective_size(stockpile_data)
+	assert(rot_size_3 == Vector2i(orig_size.y, orig_size.x), "Rot 3 effective size must swap x and y")
+	BuildingPlacementController.current_rotation = 0
+
+	# 3. Тестування розміщення та орієнтації ConstructionSite3D з поворотом 90° (rot_index = 1)
+	var test_cell := Vector2i(60, 60)
+	var site: StaticBody3D = ConstructionSite3DScript.new()
+	add_child(site)
+	site.setup_site(stockpile_data, test_cell, 1)
+
+	assert(site.rotation_index == 1, "Site rotation_index must be 1")
+	assert(is_equal_approx(site.rotation_degrees.y, 90.0), "Site rotation_degrees.y must be 90°")
+	# Перевірка зайнятих клітинок відповідно до поверненого розміру (orig_size.y по X, orig_size.x по Y)
+	assert(site.occupied_cells.size() == orig_size.x * orig_size.y, "Occupied cells count must match total tiles")
+	var expected_eff_size = Vector2i(orig_size.y, orig_size.x)
+	var expected_center = BuildingPlacementController.get_building_world_center(test_cell, expected_eff_size)
+	assert(site.global_position.is_equal_approx(expected_center), "Site center must match rotated effective size center")
+
+	# Доставляємо матеріали та завершуємо будівництво
+	for req_id in site.required_materials.keys():
+		var need: int = site.get_remaining_needed(req_id)
+		site.deliver_material(req_id, need)
+	assert(site.is_materials_ready() == true, "Materials must be ready")
+
+	var built_stockpile = site.complete_construction()
+	assert(built_stockpile != null, "complete_construction must return BuildingEntity3D")
+	assert(built_stockpile.rotation_index == 1, "BuildingEntity3D must inherit rotation_index 1")
+	assert(is_equal_approx(built_stockpile.rotation_degrees.y, 90.0), "BuildingEntity3D must have rotation_degrees.y 90°")
+	assert(built_stockpile.global_position.is_equal_approx(expected_center), "BuildingEntity3D center must match rotated effective size center")
+	built_stockpile.demolish()
+
+	# 4. Тестування повороту модульного елемента (ModularPiece3D)
+	var modular_cell := Vector2i(69, 69)
+	var mod_floor = ModularManager.place_blueprint(&"modular_floor", modular_cell, 0.0)
+	assert(mod_floor != null, "Modular floor blueprint must be placed before wall")
+	var mod_piece = ModularManager.place_blueprint(&"modular_wall", modular_cell, 90.0)
+	assert(mod_piece != null, "Modular wall piece blueprint must be created")
+	assert(is_equal_approx(mod_piece.rotation_degrees.y, 90.0), "ModularPiece3D must have rotation_degrees.y 90°")
+	assert(mod_piece.rotation_index == 1, "ModularPiece3D must have rotation_index 1")
+	mod_piece.demolish(null)
+	mod_floor.demolish(null)
+
+	# 5. Тестування обертання проти годинникової стрілки (Shift+R)
+	BuildingPlacementController.current_rotation = 0
+	BuildingPlacementController.rotate_placement(-1)
+	assert(BuildingPlacementController.current_rotation == 3, "Step -1 from 0 must yield 3 (270°)")
+	BuildingPlacementController.rotate_placement(-1)
+	assert(BuildingPlacementController.current_rotation == 2, "Step -1 from 3 must yield 2 (180°)")
+	BuildingPlacementController.rotate_placement(-1)
+	assert(BuildingPlacementController.current_rotation == 1, "Step -1 from 2 must yield 1 (90°)")
+	BuildingPlacementController.rotate_placement(-1)
+	assert(BuildingPlacementController.current_rotation == 0, "Step -1 from 1 must yield 0 (0°)")
+
+	# 6. Перевірка індикатора фасаду на BuildingGhost3D
+	var world_3d = get_node_or_null("World3D")
+	if world_3d != null and world_3d.building_ghost != null:
+		var ghost = world_3d.building_ghost
+		BuildingPlacementController.start_placement_by_id(&"wooden_hut")
+		assert(ghost.visible == true, "Ghost must be visible during placement")
+		var facade_node = ghost.get_node_or_null("FacadeIndicator")
+		assert(facade_node != null, "Ghost must have FacadeIndicator child node")
+		assert(facade_node.get_child_count() >= 3, "FacadeIndicator must contain arrow shaft, tip and label")
+		BuildingPlacementController.rotate_placement(1)
+		assert(is_equal_approx(ghost.rotation_degrees.y, 90.0), "Ghost rotation must update to 90°")
+		BuildingPlacementController.cancel_placement()
+		assert(ghost.visible == false, "Ghost must be hidden after cancel")
+
+	print("[Main] Blueprint Rotation System (0°/90°/180°/270°, effective size, sites & entities) unit tests passed successfully!")
+
+
+func _test_building_completion_effects() -> void:
+	print("[Main] Testing Building Completion Audio, Floating Text & Dust Particles...")
+
+	# 1. Перевірка наявності процедурного звуку build_complete в AudioManager
+	assert(AudioManager != null, "AudioManager must exist")
+	assert(AudioManager._sounds.has(&"build_complete"), "AudioManager must have build_complete pregenerated sound")
+	var p3d = AudioManager.play_sound_3d(&"build_complete", Vector3(10.0, 0.0, 10.0), 1.0)
+	assert(p3d != null, "play_sound_3d for build_complete must return active audio player")
+	p3d.stop()
+	p3d.stream = null
+
+	# 2. Перевірка спливаючого напису про успішне будівництво
+	assert(FloatingTextManager != null, "FloatingTextManager must exist")
+	var ft = FloatingTextManager.spawn_text(Vector3(12.0, 2.0, 12.0), "✅ Збудовано: Сховище!", Color(0.2, 1.0, 0.4), 1.0)
+	assert(ft != null, "spawn_text must return FloatingText3D instance")
+	assert("✅ Збудовано" in ft.text, "Text must contain completion badge")
+
+	# 3. Перевірка BuildingEntity3D: анімація появи та пиловий ефект
+	var b_data = BuildingPlacementController.get_building(&"stockpile")
+	var test_entity: StaticBody3D = BuildingEntity3DScript.new()
+	add_child(test_entity)
+	test_entity.setup_building(b_data, Vector2i(80, 80), 0)
+	test_entity.play_spawn_animation()
+
+	var dust = test_entity.get_node_or_null("BuildingDustPuff")
+	assert(dust != null, "BuildingEntity3D must spawn BuildingDustPuff child")
+	assert(dust is CPUParticles3D, "BuildingDustPuff must be CPUParticles3D")
+	assert(dust.emitting == true, "Dust particles must be emitting")
+
+	test_entity.demolish()
+
+	# 4. Перевірка ModularPiece3D: звуковий та пиловий ефект при завершенні зведення
+	var mod_cell := Vector2i(85, 85)
+	var mod_piece = ModularPiece3DScript.new()
+	add_child(mod_piece)
+	mod_piece.setup_piece(&"modular_wall", mod_cell, false, 0.0)
+	mod_piece.apply_built_state(true)
+
+	var mod_dust = mod_piece.get_node_or_null("ModularDustPuff")
+	assert(mod_dust != null, "ModularPiece3D must spawn ModularDustPuff child")
+	assert(mod_dust is CPUParticles3D, "ModularDustPuff must be CPUParticles3D")
+	assert(mod_dust.emitting == true, "Modular dust must be emitting")
+
+	mod_piece.demolish(null)
+
+	print("[Main] Building Completion Audio, Floating Text & Dust Particles unit tests passed successfully!")
+
+
+func _test_colonist_unloading_to_stockpile() -> void:
+	print("[Main] Testing Colonist Unloading to Stockpile after Job Completion/Cancellation...")
+
+	# 1. Створюємо тестове сховище через BuildingEntity3D
+	var b_data = BuildingPlacementController.get_building(&"stockpile")
+	var stockpile_entity: StaticBody3D = BuildingEntity3DScript.new()
+	add_child(stockpile_entity)
+	stockpile_entity.setup_building(b_data, Vector2i(68, 68), 0)
+	assert(LogisticsManager.get_stockpiles_count() >= 1, "Stockpile must be registered in LogisticsManager")
+
+	var initial_wood_in_stockpile = LogisticsManager.get_available_item_count(&"wood")
+
+	# 2. Створюємо тестового колоніста
+	var col: CharacterBody3D = Colonist3DScene.instantiate()
+	add_child(col)
+	col.setup_colonist("Тестовик_Вантажник", &"hauler")
+	col.global_position = Vector3(75.0, 0.0, 75.0)
+
+	# Перевіряємо початковий інвентар
+	assert(col.inventory != null, "Colonist must have inventory")
+	assert(col.inventory.is_empty() == true, "Colonist inventory must initially be empty")
+	assert(col.has_items_to_unload() == false, "Colonist has no items to unload initially")
+
+	# 3. Видаємо колоністу вантаж (15 деревини)
+	col.inventory.add_item_by_id(&"wood", 15)
+	assert(col.inventory.is_empty() == false, "Colonist inventory must not be empty after adding wood")
+	assert(col.has_items_to_unload() == true, "Colonist has_items_to_unload() must return true")
+	assert(col.get_first_cargo_item_id() == &"wood", "First cargo item must be wood")
+
+	# 4. Перевірка виклику розвантаження: колоніст переходить у moveto -> haul з вантажем у руках
+	var unload_started = col.start_unloading_to_stockpile(stockpile_entity)
+	assert(unload_started == true, "start_unloading_to_stockpile must return true")
+	assert(col.state_machine.current_state.name.to_lower() == "moveto", "State must be moveto towards stockpile")
+	assert(col.carried_cargo_root.get_child_count() > 0, "Cargo mesh must be visible in colonist hands")
+	assert("Несе на склад" in col.label_3d.text, "Status label must indicate delivery to stockpile")
+
+	# 5. Симуляція завершення доставки на склад
+	var deposited_count = col.unload_all_inventory_to_stockpile(stockpile_entity)
+	assert(deposited_count == 15, "Must deposit 15 wood into stockpile")
+	assert(col.inventory.is_empty() == true, "Colonist inventory must be empty after unload")
+	assert(col.inventory.get_item_count(&"wood") == 0, "Colonist wood count must be 0")
+	assert(col.carried_cargo_root.get_child_count() == 0, "Hand cargo must be hidden after unload")
+	assert(LogisticsManager.get_available_item_count(&"wood") == initial_wood_in_stockpile + 15, "LogisticsManager must account for deposited wood")
+
+	# 6. Перевірка поведінки при скасуванні завдання через JobManager
+	var test_job = JobManager.create_job(
+		Job.JobType.BUILD,
+		Vector3(72.0, 0.0, 72.0),
+		null,
+		1,
+		&"hauler"
+	)
+	test_job.status = Job.JobStatus.ASSIGNED
+	test_job.assigned_colonist = col
+	col.current_job = test_job
+	col.inventory.add_item_by_id(&"stone", 8)
+
+	JobManager.cancel_job(test_job, "Тестове скасування завдання")
+	assert(col.current_job == null, "Colonist current_job must be cleared upon cancel")
+	assert(col.state_machine.current_state.name.to_lower() == "moveto", "Colonist must auto-transition to moveto stockpile after job cancellation")
+	assert(col.get_first_cargo_item_id() == &"stone", "Cargo must be stone")
+
+	col.unload_all_inventory_to_stockpile(stockpile_entity)
+	assert(col.inventory.is_empty() == true, "Inventory empty after stone unload")
+
+	# 7. Перевірка завершення робіт у ColonistBuildState3D із залишком матеріалів
+	col.inventory.add_item_by_id(&"wood", 5)
+	var build_state = col.state_machine.states.get(&"build") as ColonistBuildState3D
+	assert(build_state != null, "BuildState must exist")
+	build_state.actor = col
+	build_state._finish_job()
+	assert(col.state_machine.current_state.name.to_lower() == "moveto", "Must transition to moveto stockpile after build finish with leftover items")
+
+	col.unload_all_inventory_to_stockpile(stockpile_entity)
+	assert(col.inventory.is_empty() == true, "Inventory cleared")
+
+	# Очищення тестових вузлів
+	col.queue_free()
+	stockpile_entity.demolish()
+
+	print("[Main] Colonist Unloading to Stockpile after Job Completion/Cancellation unit tests passed successfully!")
+
+
+func _test_stockpile_anti_crowding_perimeter_distribution() -> void:
+	print("[Main] Testing Stockpile Anti-Crowding Perimeter Distribution...")
+
+	# 1. Створюємо склад розміром 6x6 на координатах (50, 50)
+	var b_data = BuildingPlacementController.get_building(&"stockpile")
+	var stockpile_entity: StaticBody3D = BuildingEntity3DScript.new()
+	add_child(stockpile_entity)
+	stockpile_entity.setup_building(b_data, Vector2i(50, 50), 0)
+
+	# Перевіряємо обчислення точок периметра
+	var perim_cells = LogisticsManager.get_stockpile_perimeter_cells(stockpile_entity)
+	assert(not perim_cells.is_empty(), "Perimeter cells must not be empty for a 6x6 stockpile")
+	assert(perim_cells.size() >= 20, "Perimeter should have at least 20 surrounding cells")
+
+	# 2. Створюємо першого колоніста (підходить із заходу: x=42, z=53)
+	var col_a: CharacterBody3D = Colonist3DScene.instantiate()
+	add_child(col_a)
+	col_a.setup_colonist("Тестовик_А", &"hauler")
+	col_a.global_position = Vector3(42.0, 0.0, 53.0)
+
+	var target_a: Vector3 = LogisticsManager.get_stockpile_arrival_position(stockpile_entity, col_a)
+	assert(target_a != Vector3.ZERO, "Arrival position for colonist A must be valid")
+	assert(target_a.distance_to(stockpile_entity.global_position) > 1.5, "Colonist A target must be on perimeter, not at center")
+	assert(target_a.x <= 51.0, "Colonist A approaching from west should target western perimeter")
+
+	# 3. Створюємо другого колоніста, який також підходить із заходу поруч (x=43, z=53)
+	var col_b: CharacterBody3D = Colonist3DScene.instantiate()
+	add_child(col_b)
+	col_b.setup_colonist("Тестовик_Б", &"hauler")
+	col_b.global_position = Vector3(43.0, 0.0, 53.0)
+
+	var target_b: Vector3 = LogisticsManager.get_stockpile_arrival_position(stockpile_entity, col_b)
+	assert(target_b != Vector3.ZERO, "Arrival position for colonist B must be valid")
+	var dist_ab = target_a.distance_to(target_b)
+	assert(dist_ab >= 0.8, "Colonist A and B must receive distinct perimeter slots to prevent crowding (dist: %f)" % dist_ab)
+
+	# 4. Створюємо третього колоніста зі сходу (x=60, z=53)
+	var col_c: CharacterBody3D = Colonist3DScene.instantiate()
+	add_child(col_c)
+	col_c.setup_colonist("Тестовик_В", &"hauler")
+	col_c.global_position = Vector3(60.0, 0.0, 53.0)
+
+	var target_c: Vector3 = LogisticsManager.get_stockpile_arrival_position(stockpile_entity, col_c)
+	assert(target_c.x >= 55.0, "Colonist C approaching from east should target eastern perimeter")
+
+	# 5. Перевірка звільнення слота (release_arrival_position)
+	LogisticsManager.release_arrival_position(col_a)
+	var col_d: CharacterBody3D = Colonist3DScene.instantiate()
+	add_child(col_d)
+	col_d.setup_colonist("Тестовик_Г", &"hauler")
+	col_d.global_position = Vector3(42.0, 0.0, 53.0)
+
+	var target_d: Vector3 = LogisticsManager.get_stockpile_arrival_position(stockpile_entity, col_d)
+	assert(target_d.distance_to(target_a) < 0.2, "Colonist D should be able to claim previously released slot A")
+
+	# 6. Очищення тестових вузлів
+	col_a.queue_free()
+	col_b.queue_free()
+	col_c.queue_free()
+	col_d.queue_free()
+	stockpile_entity.demolish()
+
+	print("[Main] Stockpile Anti-Crowding Perimeter Distribution unit tests passed successfully!")
+
+
+func _test_demolish_system_sites_and_buildings() -> void:
+	print("[Main] Testing Demolish System for Sites and Buildings (ConstructionSite3D & BuildingEntity3D)...")
+
+	# 1. Створюємо інвентар гравця для тесту повернення ресурсів
+	var player_inv = InventoryComponentScript.new()
+	player_inv.set("slot_count", 10)
+	add_child(player_inv)
+
+	# 2. Тестування демонтажу будівельного майданчика (ConstructionSite3D)
+	var campfire_data = BuildingPlacementController.get_building(&"campfire")
+	assert(campfire_data != null, "Campfire data must exist")
+
+	var test_site = ConstructionSite3DScript.new()
+	add_child(test_site)
+	test_site.setup_site(campfire_data, Vector2i(80, 80), 0)
+
+	assert(GridManager.get_occupant(Vector2i(80, 80)) == test_site, "Site must occupy cell (80, 80)")
+	assert(not GridManager.is_cell_walkable(Vector2i(80, 80)), "Cell (80, 80) must not be walkable while occupied")
+
+	# Доставляємо матеріали на майданчик (наприклад, 4 деревини)
+	test_site.delivered_materials[&"wood"] = 4
+
+	# Демонтуємо / скасовуємо майданчик на [X] з поверненням матеріалів у player_inv
+	var site_res = test_site.demolish(player_inv)
+	assert(site_res.get("success", false) == true, "demolish on ConstructionSite3D must succeed")
+	assert(site_res.get("refunded", {}).get(&"wood", 0) == 4, "Delivered wood must be refunded")
+	assert(player_inv.get_item_count(&"wood") == 4, "Player inventory must receive 4 refunded wood")
+	assert(GridManager.get_occupant(Vector2i(80, 80)) == null, "GridManager occupant must be freed after site demolish")
+	assert(GridManager.is_cell_walkable(Vector2i(80, 80)), "Cell (80, 80) must be walkable after site demolish")
+
+	# 3. Тестування демонтажу споруди зі сховищем (Stockpile BuildingEntity3D)
+	var stockpile_data = BuildingPlacementController.get_building(&"stockpile")
+	assert(stockpile_data != null, "Stockpile data must exist")
+
+	var stockpile_ent = BuildingEntity3DScript.new()
+	add_child(stockpile_ent)
+	stockpile_ent.setup_building(stockpile_data, Vector2i(85, 85), 0)
+
+	assert(GridManager.get_occupant(Vector2i(85, 85)) == stockpile_ent, "Stockpile must occupy cell (85, 85)")
+	assert(LogisticsManager.get_all_stockpiles().has(stockpile_ent), "Stockpile must be registered in LogisticsManager")
+
+	# Заповнюємо склад товаром (наприклад, 12 кременю)
+	assert(stockpile_ent.inventory != null, "Stockpile must have inventory")
+	stockpile_ent.inventory.add_item_by_id(&"flint", 12)
+
+	# Зносимо склад через demolish(player_inv)
+	var bld_res = stockpile_ent.demolish(player_inv)
+	assert(bld_res.get("success", false) == true, "demolish on Stockpile must succeed")
+	assert(not LogisticsManager.get_all_stockpiles().has(stockpile_ent), "Stockpile must be unregistered from LogisticsManager")
+	assert(GridManager.get_occupant(Vector2i(85, 85)) == null, "Occupied cell (85, 85) must be cleared in GridManager")
+
+	# Перевіряємо що вміст складу не пропав, а випав у DroppedItem3D
+	var dropped_nodes = get_tree().get_nodes_in_group("dropped_items")
+	var found_flint_drop = false
+	for d in dropped_nodes:
+		if d is Node3D and d.get("item_id") == &"flint" and d.get("amount") == 12:
+			found_flint_drop = true
+			d.queue_free()
+			break
+	assert(found_flint_drop == true, "Demolishing a stockpile must drop its stored contents onto the ground as DroppedItem3D")
+
+	# 4. Тестування демонтажу вогнища (Campfire)
+	var campfire_ent = BuildingEntity3DScript.new()
+	add_child(campfire_ent)
+	campfire_ent.setup_building(campfire_data, Vector2i(88, 88), 0)
+	assert(campfire_ent.is_in_group("campfires"), "Campfire must be in campfires group")
+
+	var camp_res = campfire_ent.demolish(player_inv)
+	assert(camp_res.get("success", false) == true, "demolish on Campfire must succeed")
+	assert(not campfire_ent.is_in_group("campfires"), "Campfire must be removed from campfires group")
+	assert(GridManager.get_occupant(Vector2i(88, 88)) == null, "Cell (88, 88) must be freed")
+
+	player_inv.queue_free()
+
+	print("[Main] Demolish System for Sites and Buildings unit tests passed successfully!")
+
+
+func _test_colonist_wild_grass_harvest_and_auto_scythe() -> void:
+	print("[Main] Testing wild grass harvesting: bare-hands plucking, auto-equipping scythe from stockpile, and order harvest [H]...")
+
+	# 1. Створюємо вузол трави (WorldResourceNode3D) на вільній клітинці
+	var grass_cell := Vector2i(92, 92)
+	var prev_occ = GridManager.get_occupant(grass_cell)
+	if prev_occ is Node:
+		prev_occ.queue_free()
+	GridManager.unregister_occupant(grass_cell, true)
+
+	var grass_node: StaticBody3D = WorldResourceNode3DScene.instantiate()
+	grass_node.position = GridManager.map_to_world_3d(grass_cell, 0.0)
+	grass_node.resource_type = 5 # GRASS
+	grass_node.drop_item_id = &"straw"
+	grass_node.drop_min_amount = 1
+	grass_node.drop_max_amount = 2
+	grass_node.max_health = 1.0
+	grass_node.current_health = 1.0
+	add_child(grass_node)
+
+	# 2. Створюємо поселенця без коси в інвентарі
+	var col: CharacterBody3D = Colonist3DScene.instantiate()
+	add_child(col)
+	col.setup_colonist("Тестовик_Травник", &"colonist")
+	col.global_position = grass_node.global_position + Vector3(1.2, 0.0, 0.0)
+
+	assert(col.inventory.has_item(&"scythe", 1) == false, "Colonist must not have a scythe initially")
+
+	# 3. Тестування збору трави голіруч (якщо немає коси)
+	var harvest_state = col.state_machine.states.get(&"harvest")
+	assert(harvest_state != null, "Harvest state must exist on colonist")
+
+	harvest_state.enter({ "target_node": grass_node })
+	assert(col.label_3d != null, "Colonist must have 3D label")
+	assert("вручну" in col.label_3d.text, "Status display must indicate harvesting by hand when no scythe available")
+	assert(harvest_state.get("_has_scythe") == false, "_has_scythe must be false")
+
+	# Помах руками 1: шкода 0.5 * 1.0 = 0.5, здоров'я трави падає з 1.0 до 0.5
+	harvest_state._perform_swing()
+	assert(is_instance_valid(grass_node), "Grass must survive first bare-hands hit")
+	assert(is_equal_approx(grass_node.current_health, 0.5), "Grass health must be 0.5 after first hand swing")
+
+	# Помах руками 2: здоров'я падає до 0, трава знищується і випадає солома
+	var straw_dropped: Array[bool] = [false]
+	EventBus.item_dropped.connect(func(item_id, _amt, _pos):
+		if item_id == &"straw":
+			straw_dropped[0] = true
+	, CONNECT_ONE_SHOT)
+
+	harvest_state._perform_swing()
+	assert(straw_dropped[0] == true, "Bare hands harvest must drop straw on grass destroy")
+	harvest_state.exit()
+
+	# 4. Тестування авто-екіпірування коси зі складу
+	var stockpile_data = BuildingPlacementController.get_building(&"stockpile")
+	var sp_ent = BuildingEntity3DScript.new()
+	add_child(sp_ent)
+	sp_ent.setup_building(stockpile_data, Vector2i(95, 95), 0)
+	sp_ent.inventory.add_item_by_id(&"scythe", 1)
+	assert(LogisticsManager.has_item(&"scythe", 1) == true, "LogisticsManager must find scythe in stockpile")
+
+	# Створюємо новий вузол трави
+	var grass_node2: StaticBody3D = WorldResourceNode3DScene.instantiate()
+	grass_node2.position = GridManager.map_to_world_3d(Vector2i(93, 93), 0.0)
+	grass_node2.resource_type = 5 # GRASS
+	grass_node2.drop_item_id = &"straw"
+	grass_node2.drop_min_amount = 1
+	grass_node2.drop_max_amount = 2
+	grass_node2.max_health = 1.0
+	grass_node2.current_health = 1.0
+	add_child(grass_node2)
+
+	# Поселенець розпочинає збір другої трави - має взяти косу зі складу
+	harvest_state.enter({ "target_node": grass_node2 })
+	assert(col.inventory.has_item(&"scythe", 1) == true, "Colonist must auto-withdraw scythe from colony stockpile")
+	assert(sp_ent.inventory.has_item(&"scythe", 1) == false, "Stockpile must have 0 scythes left")
+	assert(harvest_state.get("_has_scythe") == true, "_has_scythe must now be true")
+	assert("коса" in col.label_3d.text.to_lower(), "Status display must indicate scythe harvesting")
+
+	# 1 помах косою миттєво зрізає траву завдяки 2.0x множнику
+	var straw_dropped2: Array[bool] = [false]
+	EventBus.item_dropped.connect(func(item_id, _amt, _pos):
+		if item_id == &"straw":
+			straw_dropped2[0] = true
+	, CONNECT_ONE_SHOT)
+
+	harvest_state._perform_swing()
+	assert(straw_dropped2[0] == true, "Scythe harvest must instantly destroy grass and drop straw")
+	harvest_state.exit()
+
+	# 5. Перевіряємо, що колоніст зберігає косу при поверненні вантажу на склад
+	col.inventory.add_item_by_id(&"straw", 5)
+	assert(col.has_items_to_unload() == true, "Colonist has straw to unload")
+	var dep: int = col.unload_all_inventory_to_stockpile(sp_ent)
+	assert(dep >= 5, "Stockpile must receive delivered straw")
+	assert(sp_ent.inventory.get_item_count(&"straw") >= 5, "Stockpile has delivered straw")
+	assert(col.inventory.has_item(&"scythe", 1) == true, "Colonist MUST KEEP equipped scythe in inventory after unloading loot")
+	assert(col.has_items_to_unload() == false, "Colonist has no more items to unload (only scythe remains)")
+
+	# 6. Тестування JobManager.has_job_for_target()
+	var test_target = Node3D.new()
+	add_child(test_target)
+	assert(JobManager.has_job_for_target(test_target) == false, "Target should have no job initially")
+	var j = JobManager.create_job(Job.JobType.HARVEST, test_target.global_position, test_target, 2, &"")
+	assert(JobManager.has_job_for_target(test_target) == true, "JobManager.has_job_for_target must return true for pending job")
+	JobManager.cancel_job(j)
+	assert(JobManager.has_job_for_target(test_target) == false, "JobManager.has_job_for_target must return false after job cancelled")
+
+	# Прибирання
+	test_target.queue_free()
+	sp_ent.queue_free()
+	col.queue_free()
+
+	print("[Main] Colonist wild grass harvesting and auto-scythe unit tests passed successfully!")
+
+func _test_hud_action_bar_harvest_order() -> void:
+	print("[Main] Testing HUDActionBar Harvest Button [H] & RTS Harvest Order Mode...")
+	# 1. Перевірка наявності кнопки у HUD.tscn
+	var hud_scene: PackedScene = load("res://src/ui/hud/HUD.tscn")
+	assert(hud_scene != null, "HUD scene must exist")
+	var hud = hud_scene.instantiate()
+	add_child(hud)
+
+	var action_bar = hud.get_node_or_null("HUDActionBar")
+	assert(action_bar != null, "HUDActionBar must exist in HUD")
+
+	var harvest_btn: Button = action_bar.get_node_or_null("HBoxContainer/HarvestButton")
+	assert(harvest_btn != null, "HarvestButton must exist under HUDActionBar/HBoxContainer")
+	assert("Збір" in harvest_btn.text and "[H]" in harvest_btn.text, "Button text must indicate [H] harvest")
+	assert("H" in harvest_btn.tooltip_text, "Tooltip must describe [H] harvest order")
+
+	# 2. Перевірка випромінювання сигналу EventBus.order_harvest_requested при натисканні
+	var requested_emitted: Array[bool] = [false]
+	var req_handler = func(): requested_emitted[0] = true
+	EventBus.order_harvest_requested.connect(req_handler)
+
+	harvest_btn.pressed.emit()
+	assert(requested_emitted[0] == true, "Pressing HarvestButton must emit EventBus.order_harvest_requested")
+	EventBus.order_harvest_requested.disconnect(req_handler)
+
+	# 3. Перевірка реакції HUDActionBar на EventBus.order_harvest_mode_toggled
+	EventBus.order_harvest_mode_toggled.emit(true)
+	assert("(ЛКМ)" in harvest_btn.text, "Button text must update to indicate LMB active mode when toggled on")
+	EventBus.order_harvest_mode_toggled.emit(false)
+	assert("[H]" in harvest_btn.text, "Button text must revert to [H] when toggled off")
+
+	# 4. Перевірка RTSCamera3D: активація та перемикання режиму виділення ресурсів
+	var rts_cam_scene: PackedScene = load("res://src/core3d/RTSCamera3D.tscn")
+	assert(rts_cam_scene != null, "RTSCamera3D scene must exist")
+	var rts_cam = rts_cam_scene.instantiate()
+	add_child(rts_cam)
+	rts_cam.set_active(true)
+	assert(rts_cam.is_harvest_order_mode == false, "Initial harvest order mode must be false")
+
+	# Симулюємо запит на збір без наведення на ресурси
+	rts_cam._on_order_harvest_requested()
+	assert(rts_cam.is_harvest_order_mode == true, "RTS camera must toggle into harvest order mode when no node under cursor")
+
+	# Перевірка деактивації при вимкненні активності камери
+	rts_cam.set_active(false)
+	assert(rts_cam.is_harvest_order_mode == false, "Deactivating RTS camera must exit harvest order mode")
+
+	# Прибирання
+	rts_cam.queue_free()
+	hud.queue_free()
+
+	print("[Main] HUDActionBar Harvest Button [H] & RTS Harvest Order Mode unit tests passed successfully!")
+
+func _test_rts_harvest_box_selection() -> void:
+	print("[Main] Testing RTS Camera Box Selection / Drag-to-Harvest...")
+
+	var rts_cam_scene: PackedScene = load("res://src/core3d/RTSCamera3D.tscn")
+	assert(rts_cam_scene != null, "RTSCamera3D scene must exist")
+	var rts_cam = rts_cam_scene.instantiate()
+	add_child(rts_cam)
+	rts_cam.set_active(true)
+	rts_cam.focus_on_position(Vector3(200.0, 0.0, 200.0))
+
+	# 1. Перевірка наявності оверлею малювання рамки
+	assert(rts_cam._selection_canvas != null, "Selection canvas layer must be created")
+	assert(rts_cam._selection_drawer != null, "Selection drawer control must be created")
+
+	# 2. Створюємо тестові ресурсні вузли для перевірки рамки
+	var res_scene: PackedScene = load("res://src/world3d/WorldResourceNode3D.tscn")
+	assert(res_scene != null, "WorldResourceNode3D scene must exist")
+
+	var node_a = res_scene.instantiate()
+	node_a.name = "TestTreeA"
+	node_a.resource_type = 0 # Wood
+	add_child(node_a)
+	node_a.global_position = Vector3(200.0, 0.0, 196.0)
+
+	var node_b = res_scene.instantiate()
+	node_b.name = "TestRockB"
+	node_b.resource_type = 1 # Stone
+	add_child(node_b)
+	node_b.global_position = Vector3(202.0, 0.0, 196.0)
+
+	var node_far = res_scene.instantiate()
+	node_far.name = "TestTreeFar"
+	node_far.resource_type = 0 # Wood
+	add_child(node_far)
+	node_far.global_position = Vector3(400.0, 0.0, 400.0)
+
+	# 3. Перевіряємо проєкцію та виконання пакетного виділення через _order_harvest_in_box
+	var screen_a: Vector2 = rts_cam.camera.unproject_position(node_a.global_position)
+	var screen_b: Vector2 = rts_cam.camera.unproject_position(node_b.global_position)
+
+	var box_min: Vector2 = Vector2(minf(screen_a.x, screen_b.x) - 20.0, minf(screen_a.y, screen_b.y) - 20.0)
+	var box_max: Vector2 = Vector2(maxf(screen_a.x, screen_b.x) + 20.0, maxf(screen_a.y, screen_b.y) + 20.0)
+
+	var count_ordered: int = rts_cam._order_harvest_in_box(box_min, box_max)
+	assert(count_ordered >= 2, "Box selection must order at least 2 resources inside box")
+	assert(JobManager.has_job_for_target(node_a), "JobManager must have job for node_a")
+	assert(JobManager.has_job_for_target(node_b), "JobManager must have job for node_b")
+	assert(not JobManager.has_job_for_target(node_far), "Far node outside box must not receive a job")
+
+	# Повторне виділення тієї ж зони не повинно дублювати завдання
+	var repeat_ordered: int = rts_cam._order_harvest_in_box(box_min, box_max)
+	assert(repeat_ordered == 0, "Repeated box selection must not duplicate existing harvest jobs")
+
+	# 4. Перевірка скидання та скасування перетягування рамки
+	rts_cam.set_harvest_order_mode(true)
+	rts_cam._is_dragging_harvest = true
+	rts_cam._drag_start_screen = Vector2(100, 100)
+	rts_cam._drag_current_screen = Vector2(250, 250)
+	rts_cam._cancel_box_selection()
+	assert(rts_cam._is_dragging_harvest == false, "Cancel box selection must reset _is_dragging_harvest")
+
+	# Очищення
+	JobManager.cancel_jobs_for_target(node_a, "Test cleanup")
+	JobManager.cancel_jobs_for_target(node_b, "Test cleanup")
+	node_a.queue_free()
+	node_b.queue_free()
+	node_far.queue_free()
+	rts_cam.queue_free()
+
+	print("[Main] RTS Camera Box Selection / Drag-to-Harvest unit tests passed successfully!")
+
+
+
+func _test_colonist_and_logistics_fixes() -> void:
+	print("[Main] Testing Colonist & Logistics Bugfixes (Iteration 7.46)...")
+
+	# 1. Тест Colonist3D.interact() без аргументів та з player аргументом
+	var col = Colonist3DScene.instantiate()
+	col.colonist_name = "FixTestColonist"
+	col.profession = &"settler"
+	add_child(col)
+
+	var dialog_requested_count: Array[int] = [0]
+	var dialog_handler = func(colonist_node):
+		if colonist_node == col:
+			dialog_requested_count[0] += 1
+	EventBus.colonist_dialog_requested.connect(dialog_handler)
+
+	# Виклик без аргументів (як викликає RTS-камера при прямому натисканні)
+	col.interact()
+	assert(dialog_requested_count[0] == 1, "Colonist3D.interact() without arguments must emit colonist_dialog_requested")
+
+	# Виклик з аргументом гравця
+	col.interact(self)
+	assert(dialog_requested_count[0] == 2, "Colonist3D.interact(player) must emit colonist_dialog_requested")
+	EventBus.colonist_dialog_requested.disconnect(dialog_handler)
+
+	# 2. Тест: settler колоніст може приймати hauler завдання у JobManager
+	JobManager.clear_all_jobs()
+	var haul_job = JobManager.create_job(Job.JobType.HAUL, Vector3(5, 0, 5), null, 3, &"hauler")
+	assert(haul_job != null, "Haul job must be created")
+	var assigned = JobManager.request_job(col)
+	assert(assigned == haul_job, "Settler colonist must be allowed to accept hauler job in JobManager")
+	JobManager.release_job(assigned)
+	JobManager.clear_all_jobs()
+
+	# 3. Тест: захист від зациклення на заповнених складах (find_best_stockpile_to_unload повертає null)
+	var stockpile_data = BuildingPlacementController.get_building(&"stockpile")
+	var full_sp = BuildingEntity3DScript.new()
+	add_child(full_sp)
+	full_sp.setup_building(stockpile_data, Vector2i(80, 80), 0)
+	full_sp.global_position = Vector3(80, 0, 80)
+	# Заповнюємо склад повністю іншим предметом (stone)
+	var stone_res = ItemDatabase.get_item(&"stone")
+	for i in range(full_sp.inventory.slots.size()):
+		full_sp.inventory.slots[i].item = stone_res
+		full_sp.inventory.slots[i].count = 64
+
+	col.inventory.add_item_by_id(&"wood", 10)
+	assert(col.has_items_to_unload() == true, "Colonist has cargo")
+	# Коли всі склади переповнені іншими предметами, find_best_stockpile_to_unload повинен повернути null
+	var best_sp = col.find_best_stockpile_to_unload()
+	assert(best_sp == null, "find_best_stockpile_to_unload must return null if no stockpile can accept cargo")
+
+	# 4. Тест: очищення unreachable_until при знесенні споруди
+	var blocked_job = JobManager.create_job(Job.JobType.BUILD, Vector3(12, 0, 12), null, 2, &"builder")
+	blocked_job.set_meta("unreachable_until", 999999.0)
+	assert(blocked_job.has_meta("unreachable_until") == true, "Job has unreachable cooldown")
+	# Симулюємо демонтаж будівлі
+	EventBus.building_demolished.emit(&"wood_wall", Vector2i(12, 12))
+	assert(blocked_job.has_meta("unreachable_until") == false, "unreachable_until meta must be removed after building_demolished")
+	JobManager.clear_all_jobs()
+
+	# Прибирання
+	full_sp.queue_free()
+	col.queue_free()
+
+	print("[Main] Colonist & Logistics Bugfixes unit tests passed successfully!")

@@ -121,7 +121,7 @@ anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -840.0
+offset_left = -1020.0
 offset_top = -68.0
 offset_right = -16.0
 offset_bottom = -16.0
@@ -144,6 +144,12 @@ custom_minimum_size = Vector2(136, 42)
 layout_mode = 2
 tooltip_text = "Відкрити меню споруд та креслень (B)"
 text = "🔨 Будівництво [B]"
+
+[node name="HarvestButton" type="Button" parent="HUDActionBar/HBoxContainer"]
+custom_minimum_size = Vector2(146, 42)
+layout_mode = 2
+tooltip_text = "Наказати робітникам збір ресурсу: клік або рамка (H)"
+text = "🌾 Збір [H]"
 
 [node name="CraftButton" type="Button" parent="HUDActionBar/HBoxContainer"]
 custom_minimum_size = Vector2(106, 42)

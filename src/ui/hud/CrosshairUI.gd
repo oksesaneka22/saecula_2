@@ -10,6 +10,7 @@ extends Control
 @export var outline_color: Color = Color(0.0, 0.0, 0.0, 0.5)
 
 var _interact_label: Label = null
+var _cached_player: Node3D = null
 
 
 func _ready() -> void:
@@ -73,7 +74,9 @@ func _draw() -> void:
 func _check_interact_target() -> void:
 	if _interact_label == null:
 		return
-	var player = get_tree().get_first_node_in_group("player")
+	if _cached_player == null or not is_instance_valid(_cached_player):
+		_cached_player = get_tree().get_first_node_in_group("player") as Node3D
+	var player: Node3D = _cached_player
 	if player == null or not is_instance_valid(player):
 		_interact_label.visible = false
 		return
@@ -175,7 +178,7 @@ func _check_interact_target() -> void:
 				var site_name: String = "Будмайданчик"
 				if "building_data" in collider and collider.building_data != null and collider.building_data.display_name != "":
 					site_name = collider.building_data.display_name
-				_interact_label.text = "🔨 %s • %.1fм\n[E]/[ЛКМ] Будувати молотком" % [site_name, hit_dist]
+				_interact_label.text = "🔨 %s • %.1fм\n[E]/[ЛКМ] Будувати молотком  |  [X] Скасувати" % [site_name, hit_dist]
 				_interact_label.add_theme_color_override("font_color", Color("48CAE4"))
 				_interact_label.visible = true
 				return
@@ -184,6 +187,7 @@ func _check_interact_target() -> void:
 			if collider.is_in_group("resource_nodes") or collider.has_method("harvest"):
 				var res_name: String = "Ресурс"
 				var r_type = collider.get("resource_type")
+				var is_grass: bool = false
 				if r_type != null:
 					match int(r_type):
 						0: res_name = "Дерево"
@@ -191,14 +195,27 @@ func _check_interact_target() -> void:
 						2: res_name = "Кущ ягід"
 						3: res_name = "Поклади глини"
 						4: res_name = "Кремінь"
-						5: res_name = "Дика трава"
+						5:
+							res_name = "Дика трава"
+							is_grass = true
 						_: res_name = "Природний ресурс"
 				elif "display_name" in collider:
 					res_name = str(collider.display_name)
 
 				var cur_hp: int = int(collider.get("current_health")) if "current_health" in collider else 1
 				var max_hp: int = int(collider.get("max_health")) if "max_health" in collider else 1
-				_interact_label.text = "⛏️ %s • %.1fм • Міцність: %d/%d\n[ЛКМ]/[E] Видобути ресурс" % [res_name, hit_dist, cur_hp, max_hp]
+
+				if is_grass:
+					var player_node = get_tree().get_first_node_in_group("player")
+					var has_scythe: bool = false
+					if player_node != null and player_node.has_method("_get_active_tool_type"):
+						has_scythe = (player_node._get_active_tool_type() == 5)
+					if has_scythe:
+						_interact_label.text = "🌾 %s • %.1fм • Міцність: %d/%d\n[ЛКМ]/[E] Косити косою  |  [H] Наказати робітникам" % [res_name, hit_dist, cur_hp, max_hp]
+					else:
+						_interact_label.text = "🌾 %s • %.1fм • Міцність: %d/%d\n[ЛКМ]/[E] Збирати руками (коса прискорить)  |  [H] Наказати робітникам" % [res_name, hit_dist, cur_hp, max_hp]
+				else:
+					_interact_label.text = "⛏️ %s • %.1fм • Міцність: %d/%d\n[ЛКМ]/[E] Видобути ресурс  |  [H] Наказати робітникам" % [res_name, hit_dist, cur_hp, max_hp]
 				_interact_label.add_theme_color_override("font_color", Color(0.55, 0.95, 0.65, 0.98))
 				_interact_label.visible = true
 				return

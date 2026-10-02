@@ -254,8 +254,9 @@ func _build_ui_layout() -> void:
 		var slot_ui: Control = ItemSlotUIScript.new()
 		slot_ui.name = "PlayerSlot_%d" % i
 		slot_ui.set("slot_index", i)
-		if slot_ui.has_signal("slot_clicked"):
-			slot_ui.slot_clicked.connect(_on_player_slot_clicked)
+		slot_ui.slot_clicked.connect(func(idx): _transfer_to_colonist(idx, -1))
+		if slot_ui.has_signal("slot_secondary_clicked"):
+			slot_ui.slot_secondary_clicked.connect(func(idx): _transfer_to_colonist(idx, 1))
 		_player_grid.add_child(slot_ui)
 		_player_slots.append(slot_ui)
 
@@ -265,10 +266,18 @@ func _build_ui_layout() -> void:
 		var slot_ui: Control = ItemSlotUIScript.new()
 		slot_ui.name = "ColonistSlot_%d" % i
 		slot_ui.set("slot_index", i)
-		if slot_ui.has_signal("slot_clicked"):
-			slot_ui.slot_clicked.connect(_on_colonist_slot_clicked)
+		slot_ui.slot_clicked.connect(func(idx): _transfer_from_colonist(idx, -1))
+		if slot_ui.has_signal("slot_secondary_clicked"):
+			slot_ui.slot_secondary_clicked.connect(func(idx): _transfer_from_colonist(idx, 1))
 		_colonist_grid.add_child(slot_ui)
 		_colonist_slots.append(slot_ui)
+
+	var hint := Label.new()
+	hint.text = "💡 ЛКМ: передати весь стек  •  ПКМ: передати 1 шт.  •  'E' або 'Esc': закрити"
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.add_theme_font_size_override("font_size", 12)
+	hint.add_theme_color_override("font_color", Color(0.65, 0.72, 0.8))
+	root_vbox.add_child(hint)
 
 
 func open_dialog(colonist_node: Node) -> void:
@@ -395,38 +404,34 @@ func _on_toggle_follow_pressed() -> void:
 func refresh_ui() -> void:
 	_update_colonist_info()
 
-	# Оновлення слотів гравця
+	# Оновлення слотів гравця (пряме відображення 1-в-1)
 	if _player_inventory != null:
-		var p_items: Array = _player_inventory.get_all_items()
 		var p_used: int = 0
 		for i in range(_player_slots.size()):
 			var slot_ui: Control = _player_slots[i]
-			if i < p_items.size():
-				var s = p_items[i]
+			var s = _player_inventory.get_slot(i) if i < _player_inventory.slots.size() else null
+			if s != null and not s.is_empty():
 				slot_ui.set_slot_data(s.item, s.count)
-				if s.item != null and s.count > 0:
-					p_used += 1
+				p_used += 1
 			else:
 				slot_ui.set_slot_data(null, 0)
 		_player_capacity_label.text = "%d/%d" % [p_used, _player_inventory.slot_count]
 
-	# Оновлення слотів поселенця
+	# Оновлення слотів поселенця (пряме відображення 1-в-1)
 	if _colonist_inventory != null:
-		var c_items: Array = _colonist_inventory.get_all_items()
 		var c_used: int = 0
 		for i in range(_colonist_slots.size()):
 			var slot_ui: Control = _colonist_slots[i]
-			if i < c_items.size():
-				var s = c_items[i]
+			var s = _colonist_inventory.get_slot(i) if i < _colonist_inventory.slots.size() else null
+			if s != null and not s.is_empty():
 				slot_ui.set_slot_data(s.item, s.count)
-				if s.item != null and s.count > 0:
-					c_used += 1
+				c_used += 1
 			else:
 				slot_ui.set_slot_data(null, 0)
 		_colonist_capacity_label.text = "%d/%d" % [c_used, _colonist_inventory.slot_count]
 
 
-func _on_player_slot_clicked(slot_index: int) -> void:
+func _transfer_to_colonist(slot_index: int, max_amount: int = -1) -> void:
 	if _player_inventory == null or _colonist_inventory == null:
 		return
 	if slot_index < 0 or slot_index >= _player_inventory.slots.size():
@@ -436,7 +441,7 @@ func _on_player_slot_clicked(slot_index: int) -> void:
 	if slot == null or slot.item == null or slot.count <= 0:
 		return
 
-	var transfer_amount: int = slot.count
+	var transfer_amount: int = slot.count if max_amount <= 0 else mini(slot.count, max_amount)
 	var item_to_give: Resource = slot.item
 	var leftover: int = _colonist_inventory.add_item(item_to_give, transfer_amount)
 	var transferred: int = transfer_amount - leftover
@@ -449,7 +454,7 @@ func _on_player_slot_clicked(slot_index: int) -> void:
 		_colonist_inventory.inventory_updated.emit()
 
 
-func _on_colonist_slot_clicked(slot_index: int) -> void:
+func _transfer_from_colonist(slot_index: int, max_amount: int = -1) -> void:
 	if _player_inventory == null or _colonist_inventory == null:
 		return
 	if slot_index < 0 or slot_index >= _colonist_inventory.slots.size():
@@ -459,7 +464,7 @@ func _on_colonist_slot_clicked(slot_index: int) -> void:
 	if slot == null or slot.item == null or slot.count <= 0:
 		return
 
-	var transfer_amount: int = slot.count
+	var transfer_amount: int = slot.count if max_amount <= 0 else mini(slot.count, max_amount)
 	var item_to_take: Resource = slot.item
 	var leftover: int = _player_inventory.add_item(item_to_take, transfer_amount)
 	var transferred: int = transfer_amount - leftover
@@ -470,6 +475,14 @@ func _on_colonist_slot_clicked(slot_index: int) -> void:
 			slot.clear()
 		_colonist_inventory.inventory_updated.emit()
 		_player_inventory.inventory_updated.emit()
+
+
+func _on_player_slot_clicked(slot_index: int) -> void:
+	_transfer_to_colonist(slot_index, -1)
+
+
+func _on_colonist_slot_clicked(slot_index: int) -> void:
+	_transfer_from_colonist(slot_index, -1)
 
 
 func _on_give_all_pressed() -> void:

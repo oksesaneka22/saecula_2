@@ -238,6 +238,9 @@ func _finish_job() -> void:
 		if actor.current_job != null and JobManager != null:
 			JobManager.complete_job(actor.current_job)
 		actor.current_job = null
+		if actor.has_method("has_items_to_unload") and actor.has_items_to_unload():
+			if actor.start_unloading_to_stockpile():
+				return
 	state_machine.transition_to(&"idle")
 
 
@@ -247,4 +250,7 @@ func _abort_job(reason: String = "Перервано") -> void:
 		if actor.current_job != null and JobManager != null:
 			JobManager.release_job(actor.current_job, reason)
 		actor.current_job = null
+		if actor.has_method("has_items_to_unload") and actor.has_items_to_unload():
+			if actor.start_unloading_to_stockpile():
+				return
 	state_machine.transition_to(&"idle")
