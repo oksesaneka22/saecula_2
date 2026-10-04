@@ -62,6 +62,7 @@ func _ready() -> void:
 	add_to_group("player")
 	set_active(true)
 	interact_ray.target_position = Vector3(0, 0, -reach_distance)
+	interact_ray.collision_mask |= 8
 
 	block_ghost = BlockGhost3DScript.new()
 	block_ghost.name = "BlockGhost3D"

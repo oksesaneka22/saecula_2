@@ -316,6 +316,8 @@ func _transfer_from_player(slot_index: int, max_amount: int = -1) -> void:
 			slot.clear()
 		_player_inventory.inventory_updated.emit()
 		_stockpile_inventory.inventory_updated.emit()
+		if AudioManager != null:
+			AudioManager.play_sound(&"pickup", -4.0, randf_range(0.9, 1.1))
 
 
 ## Перенесення ресурсу зі складу до інвентаря гравця (max_amount: -1 = весь стек, 1 = 1 шт.)
@@ -341,6 +343,8 @@ func _transfer_from_stockpile(slot_index: int, max_amount: int = -1) -> void:
 			slot.clear()
 		_stockpile_inventory.inventory_updated.emit()
 		_player_inventory.inventory_updated.emit()
+		if AudioManager != null:
+			AudioManager.play_sound(&"pickup", -4.0, randf_range(0.9, 1.1))
 
 
 func _on_player_slot_clicked(slot_index: int) -> void:
@@ -372,6 +376,8 @@ func _on_deposit_all_pressed() -> void:
 	if changed:
 		_player_inventory.inventory_updated.emit()
 		_stockpile_inventory.inventory_updated.emit()
+		if AudioManager != null:
+			AudioManager.play_sound(&"pickup", -4.0, randf_range(0.9, 1.1))
 
 
 ## Забрати всі ресурси зі складу в інвентар гравця
@@ -395,6 +401,8 @@ func _on_take_all_pressed() -> void:
 	if changed:
 		_stockpile_inventory.inventory_updated.emit()
 		_player_inventory.inventory_updated.emit()
+		if AudioManager != null:
+			AudioManager.play_sound(&"pickup", -4.0, randf_range(0.9, 1.1))
 
 
 func _on_backdrop_gui_input(event: InputEvent) -> void:

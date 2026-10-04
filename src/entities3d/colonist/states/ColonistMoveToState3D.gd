@@ -72,6 +72,12 @@ func physics_update(delta: float) -> void:
 	if actor == null:
 		return
 
+	# Перевірка валідності цільового вузла (якщо ціль видалено/знищено під час ходи)
+	var target_node = next_state_msg.get("target_node", null)
+	if target_node != null and (not is_instance_valid(target_node) or target_node.is_queued_for_deletion()):
+		_abort_unreachable_job("Ціль видалено під час руху")
+		return
+
 	# Гравітація
 	if not actor.is_on_floor():
 		actor.velocity.y -= 19.6 * delta
@@ -216,6 +222,7 @@ func _detect_obstacle_avoidance(desired_dir: Vector3) -> Vector3:
 	# Центральний промінь: довжина 1.35м прямо по курсу
 	var fwd_query := PhysicsRayQueryParameters3D.create(origin, origin + (desired_dir * 1.35))
 	fwd_query.exclude = exclude
+	fwd_query.collision_mask = 1
 	fwd_query.collide_with_bodies = true
 	fwd_query.collide_with_areas = false
 	var fwd_hit: Dictionary = space_state.intersect_ray(fwd_query)
@@ -230,12 +237,14 @@ func _detect_obstacle_avoidance(desired_dir: Vector3) -> Vector3:
 
 	var left_query := PhysicsRayQueryParameters3D.create(origin, origin + (left_dir * 1.15))
 	left_query.exclude = exclude
+	left_query.collision_mask = 1
 	left_query.collide_with_bodies = true
 	left_query.collide_with_areas = false
 	var left_hit: Dictionary = space_state.intersect_ray(left_query)
 
 	var right_query := PhysicsRayQueryParameters3D.create(origin, origin + (right_dir * 1.15))
 	right_query.exclude = exclude
+	right_query.collision_mask = 1
 	right_query.collide_with_bodies = true
 	right_query.collide_with_areas = false
 	var right_hit: Dictionary = space_state.intersect_ray(right_query)
@@ -267,6 +276,7 @@ func _has_clear_line_of_sight(from_pos: Vector3, to_pos: Vector3) -> bool:
 	var dest: Vector3 = to_pos + Vector3(0.0, 0.6, 0.0)
 	var query := PhysicsRayQueryParameters3D.create(origin, dest)
 	query.exclude = [actor.get_rid()]
+	query.collision_mask = 1
 	query.collide_with_bodies = true
 	query.collide_with_areas = false
 	var hit: Dictionary = space_state.intersect_ray(query)

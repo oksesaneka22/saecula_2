@@ -24,7 +24,7 @@ var _haul_scan_timer: float = 0.0
 func _ready() -> void:
 	print("[JobManager] Менеджер завдань колонії успішно ініціалізовано.")
 
-	# Підписка на події розміщення будмайданчиків
+	# Підписка на події розміщення будмайданчиків та життєвого циклу будівель
 	if EventBus != null:
 		if EventBus.has_signal("construction_site_placed"):
 			EventBus.construction_site_placed.connect(_on_construction_site_placed)
@@ -32,6 +32,8 @@ func _ready() -> void:
 			EventBus.item_dropped.connect(_on_item_dropped)
 		if EventBus.has_signal("building_demolished"):
 			EventBus.building_demolished.connect(_on_building_demolished)
+		if EventBus.has_signal("building_completed"):
+			EventBus.building_completed.connect(_on_building_completed)
 
 
 func _process(delta: float) -> void:
@@ -361,6 +363,20 @@ func _on_building_demolished(_bld_id: Variant = null, _coords: Variant = null) -
 	for j in _pending_jobs:
 		if j != null and j.has_meta("unreachable_until"):
 			j.remove_meta("unreachable_until")
+
+
+func _on_building_completed(building_node: Node, _building_id: StringName, _map_coords: Vector2i) -> void:
+	# Коли будівництво завершено, скасовуємо будь-які залишкові завдання BUILD,
+	# цільовий будмайданчик яких вже знищено або завершено
+	var to_cancel: Array[Job] = []
+	for j in _pending_jobs:
+		if j != null and j.type == Job.JobType.BUILD:
+			if j.target_node == null or not is_instance_valid(j.target_node) or j.target_node.is_queued_for_deletion():
+				to_cancel.append(j)
+			elif j.target_node == building_node:
+				to_cancel.append(j)
+	for j in to_cancel:
+		cancel_job(j, "Будівництво завершено")
 
 
 func _on_construction_site_placed(site_node: Node, building_id: StringName, _map_coords: Vector2i) -> void:

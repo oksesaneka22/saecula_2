@@ -8,18 +8,25 @@ const Job = preload("res://src/systems/jobs/Job.gd")
 
 var _job_search_timer: float = 0.0
 var _wander_timer: float = 0.0
+var _is_entering: bool = false
 
 
 func enter(_msg: Dictionary = {}) -> void:
+	if _is_entering:
+		return
+	_is_entering = true
+
 	if actor != null:
 		actor.velocity = Vector3.ZERO
 		actor.set_status_display("💤 Очікує")
 		actor.hide_hand_items()
 		if not actor.is_following_player and actor.has_method("has_items_to_unload") and actor.has_items_to_unload():
 			if actor.start_unloading_to_stockpile():
+				_is_entering = false
 				return
 	_job_search_timer = 0.2
 	_wander_timer = randf_range(4.0, 8.0)
+	_is_entering = false
 
 
 func physics_update(delta: float) -> void:
@@ -102,4 +109,3 @@ func _try_idle_wander() -> void:
 		"next_state": &"idle",
 		"arrival_distance": 0.8
 	})
-

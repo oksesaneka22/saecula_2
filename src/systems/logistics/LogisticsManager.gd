@@ -213,14 +213,14 @@ func withdraw_item(item_id: StringName, amount: int) -> int:
 func _get_stockpile_inventory(stockpile: Node) -> Node:
 	if stockpile == null:
 		return null
-	if stockpile.has_method("get_all_items") and stockpile.has_method("add_item"):
-		return stockpile # Сам об'єкт є компонентом інвентаря
 	if "inventory" in stockpile and stockpile.inventory != null:
 		return stockpile.inventory
 	if stockpile.has_node("BuildingInventory"):
 		return stockpile.get_node("BuildingInventory")
 	if stockpile.has_node("InventoryComponent"):
 		return stockpile.get_node("InventoryComponent")
+	if stockpile.has_method("get_all_items") and stockpile.has_method("add_item"):
+		return stockpile # Сам об'єкт є компонентом інвентаря
 	return null
 
 

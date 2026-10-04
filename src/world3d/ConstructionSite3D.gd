@@ -48,6 +48,8 @@ func _process(delta: float) -> void:
 func _ready() -> void:
 	add_to_group("construction_sites")
 	add_to_group("interactable")
+	collision_layer = 8
+	collision_mask = 0
 
 
 func setup_site(p_building_data: BuildingData, p_origin_cell: Vector2i, p_rotation_index: int = 0) -> void:
@@ -66,9 +68,12 @@ func setup_site(p_building_data: BuildingData, p_origin_cell: Vector2i, p_rotati
 	var center_m: Vector3 = BuildingPlacementController.get_building_world_center(origin_cell, eff_size)
 	global_position = center_m
 
-	# 3. Блокування клітинок у GridManager на час будівництва
+	collision_layer = 8
+	collision_mask = 0
+
+	# 3. Реєстрація клітинок у GridManager на час будівництва (прохідний для гравця та колоністів, is_solid = false)
 	for c in occupied_cells:
-		GridManager.register_occupant(c, self, true)
+		GridManager.register_occupant(c, self, false)
 
 	# 4. Ініціалізація вимог до матеріалів
 	required_materials.clear()

@@ -204,15 +204,11 @@ func find_best_stockpile_to_unload() -> Node:
 ## Ініціює перехід до вивантаження на склад
 func start_unloading_to_stockpile(sp: Node = null) -> bool:
 	if not has_items_to_unload():
-		if state_machine != null:
-			state_machine.transition_to(&"idle")
 		return false
 
 	var stockpile = sp if sp != null and is_instance_valid(sp) else find_best_stockpile_to_unload()
 	if stockpile == null:
 		set_status_display("⚠️ Склади відсутні або заповнені")
-		if state_machine != null:
-			state_machine.transition_to(&"idle")
 		return false
 
 	var first_id: StringName = get_first_cargo_item_id()

@@ -40,6 +40,29 @@ func is_empty() -> bool:
 			return false
 	return true
 
+
+## Перевіряє, чи є хоча б один вільний слот
+func has_free_slot() -> bool:
+	for slot in slots:
+		if slot.is_empty():
+			return true
+	return false
+
+
+## Перевіряє, чи може інвентар прийняти вказаний предмет
+func can_accept_item(item: Resource, amount: int = 1) -> bool:
+	if item == null or amount <= 0:
+		return false
+	if has_free_slot():
+		return true
+	var item_id: StringName = _extract_item_id(item)
+	var max_stack: int = _extract_max_stack(item)
+	for slot in slots:
+		if not slot.is_empty() and slot.item != null and _extract_item_id(slot.item) == item_id:
+			if slot.count < max_stack:
+				return true
+	return false
+
 func _init_slots() -> void:
 	slots.clear()
 	for i in range(slot_count):

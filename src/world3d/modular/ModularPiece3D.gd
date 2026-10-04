@@ -37,7 +37,7 @@ const TextureHelper = preload("res://src/core3d/TextureHelper.gd")
 func _ready() -> void:
 	add_to_group("modular_pieces")
 	add_to_group("interactable")
-	collision_layer = 1
+	collision_layer = 1 if is_built else 8
 	collision_mask = 0
 	set_process(not is_built)
 
@@ -52,6 +52,8 @@ func setup_piece(p_type: StringName, p_cell: Vector2i, p_built: bool = false, p_
 	piece_type = p_type
 	cell_coord = p_cell
 	is_built = p_built
+	collision_layer = 1 if is_built else 8
+	collision_mask = 0
 	rotation_degrees.y = p_rot_deg
 	rotation_index = int(round(p_rot_deg / 90.0)) % 4
 	name = "%s_%d_%d" % [piece_type, cell_coord.x, cell_coord.y]
@@ -338,6 +340,8 @@ func _update_label_text() -> void:
 
 func apply_blueprint_state() -> void:
 	is_built = false
+	collision_layer = 8
+	collision_mask = 0
 	set_process(true)
 	if _visual_root != null:
 		_set_material_recursive(_visual_root, _holo_mat)
@@ -347,6 +351,8 @@ func apply_blueprint_state() -> void:
 
 func apply_built_state(animate: bool = true) -> void:
 	is_built = true
+	collision_layer = 1
+	collision_mask = 0
 	set_process(false)
 	var built_mat = _get_built_material()
 	if _visual_root != null:

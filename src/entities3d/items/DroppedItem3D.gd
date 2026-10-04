@@ -110,6 +110,15 @@ func _setup_visual() -> void:
 			mesh_instance.mesh = box
 			fallback_color = Color("BDC3C7")
 
+		&"straw":
+			var cyl: CylinderMesh = CylinderMesh.new()
+			cyl.top_radius = 0.12
+			cyl.bottom_radius = 0.14
+			cyl.height = 0.25
+			mesh_instance.mesh = cyl
+			mesh_instance.rotation_degrees = Vector3(90, 0, 0)
+			fallback_color = Color("F4D03F")
+
 		_:
 			var box: BoxMesh = BoxMesh.new()
 			box.size = Vector3(0.25, 0.25, 0.25)

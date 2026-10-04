@@ -171,6 +171,12 @@ func _run_all_unit_tests() -> void:
 	# 42. Валідація виправлень взаємодії та логістики: interact() в RTS-камері, settler->hauler, захист переповнених складів, скидання unreachable при знесенні
 	_test_colonist_and_logistics_fixes()
 
+	# 43. Валідація фіксів та покращень (Ітерація 7.47): перевірка валідності цілі в русі, автоскасування build-завдань, візуал соломи straw та аудіо в StorageUI
+	_test_iteration_747_fixes()
+
+	# 44. Валідація прохідних будівельних креслень (Ітерація 7.48: ConstructionSite3D, ModularPiece3D, layer 8, GridManager walkability)
+	_test_passable_blueprints()
+
 
 func _test_inventory_component(wood: Resource) -> void:
 	var test_inv: Node = InventoryComponentScript.new()
@@ -356,10 +362,10 @@ func _test_construction_site() -> void:
 	add_child(site)
 	site.setup_site(campfire, test_origin)
 
-	# 2. Перевіряємо блокування сітки (2x2 = 4 клітинки)
+	# 2. Перевіряємо реєстрацію в сітці (клітинки займаються сайтом, але залишаються прохідними для пересування)
 	assert(site.occupied_cells.size() == 16, "Campfire site must occupy 16 cells")
 	for c in site.occupied_cells:
-		assert(GridManager.is_cell_solid(c) == true, "Site cells must be solid")
+		assert(GridManager.is_cell_walkable(c) == true, "Site cells must be walkable in blueprint stage")
 		assert(GridManager.get_occupant(c) == site, "Site cells must have site as occupant")
 
 	# 3. Перевіряємо потреби в матеріалах (4 дерева + 4 каменю)
@@ -2704,7 +2710,7 @@ func _test_demolish_system_sites_and_buildings() -> void:
 	test_site.setup_site(campfire_data, Vector2i(80, 80), 0)
 
 	assert(GridManager.get_occupant(Vector2i(80, 80)) == test_site, "Site must occupy cell (80, 80)")
-	assert(not GridManager.is_cell_walkable(Vector2i(80, 80)), "Cell (80, 80) must not be walkable while occupied")
+	assert(GridManager.is_cell_walkable(Vector2i(80, 80)), "Cell (80, 80) must be walkable in blueprint stage")
 
 	# Доставляємо матеріали на майданчик (наприклад, 4 деревини)
 	test_site.delivered_materials[&"wood"] = 4
@@ -3050,11 +3056,18 @@ func _test_colonist_and_logistics_fixes() -> void:
 		full_sp.inventory.slots[i].item = stone_res
 		full_sp.inventory.slots[i].count = 64
 
+	# Тимчасово ізолюємо список складів лише до full_sp для тестування ситуації 100% заповненості всіх складів
+	var original_stockpiles = LogisticsManager._stockpiles.duplicate()
+	LogisticsManager._stockpiles = [full_sp]
+
 	col.inventory.add_item_by_id(&"wood", 10)
 	assert(col.has_items_to_unload() == true, "Colonist has cargo")
 	# Коли всі склади переповнені іншими предметами, find_best_stockpile_to_unload повинен повернути null
 	var best_sp = col.find_best_stockpile_to_unload()
 	assert(best_sp == null, "find_best_stockpile_to_unload must return null if no stockpile can accept cargo")
+
+	# Відновлюємо список складів
+	LogisticsManager._stockpiles = original_stockpiles
 
 	# 4. Тест: очищення unreachable_until при знесенні споруди
 	var blocked_job = JobManager.create_job(Job.JobType.BUILD, Vector3(12, 0, 12), null, 2, &"builder")
@@ -3070,3 +3083,118 @@ func _test_colonist_and_logistics_fixes() -> void:
 	col.queue_free()
 
 	print("[Main] Colonist & Logistics Bugfixes unit tests passed successfully!")
+
+
+func _test_iteration_747_fixes() -> void:
+	print("[Main] Testing Bugfixes & Mini-improvements (Iteration 7.47)...")
+
+	# 1. Тест: ColonistMoveToState3D aborts if target_node is deleted/freed during walk
+	var col = Colonist3DScene.instantiate()
+	col.colonist_name = "MoveTargetValidityTester"
+	add_child(col)
+	var dummy_target = Node3D.new()
+	add_child(dummy_target)
+	dummy_target.global_position = Vector3(50, 0, 50)
+
+	var move_job = JobManager.create_job(Job.JobType.BUILD, dummy_target.global_position, dummy_target, 3, &"builder")
+	col.current_job = move_job
+	col.state_machine.transition_to(&"moveto", {
+		"target_pos": dummy_target.global_position,
+		"next_state": &"build",
+		"next_msg": { "target_node": dummy_target }
+	})
+	assert(col.state_machine.current_state.name == "MoveTo", "Colonist should be in MoveTo state")
+
+	# Simulate target deletion during movement
+	dummy_target.queue_free()
+	col.state_machine.current_state.physics_update(0.016)
+	assert(col.state_machine.current_state.name == "Idle", "ColonistMoveToState3D must abort to Idle when target_node is deleted")
+	col.queue_free()
+	JobManager.clear_all_jobs()
+
+	# 2. Тест: JobManager._on_building_completed скасовує сирітські/завершені BUILD jobs
+	var dummy_site = Node3D.new()
+	add_child(dummy_site)
+	var bld_job = JobManager.create_job(Job.JobType.BUILD, Vector3(20, 0, 20), dummy_site, 3, &"builder")
+	assert(JobManager.get_pending_jobs_count() == 1, "One pending build job should exist")
+	dummy_site.queue_free()
+
+	var dummy_building = Node3D.new()
+	add_child(dummy_building)
+	EventBus.building_completed.emit(dummy_building, &"stockpile", Vector2i(20, 20))
+	assert(JobManager.get_pending_jobs_count() == 0, "JobManager._on_building_completed must cancel stale BUILD jobs")
+	dummy_building.queue_free()
+	JobManager.clear_all_jobs()
+
+	# 3. Тест: DroppedItem3D з соломою (straw) має CylinderMesh замість generic box
+	var drop_straw = load("res://src/entities3d/items/DroppedItem3D.tscn").instantiate()
+	add_child(drop_straw)
+	drop_straw.set_item(&"straw", 5)
+	assert(drop_straw.visual_root.get_child_count() > 0, "DroppedItem3D must have child in visual_root")
+	var straw_mesh_inst = drop_straw.visual_root.get_child(0) as MeshInstance3D
+	assert(straw_mesh_inst != null, "Straw visual child must be MeshInstance3D")
+	assert(straw_mesh_inst.mesh is CylinderMesh, "Straw dropped item must use CylinderMesh (straw bundle)")
+	drop_straw.queue_free()
+
+	# 4. Тест: StorageUI перенесення предметів викликає AudioManager без помилок
+	var storage_ui = StorageUIScene.instantiate()
+	add_child(storage_ui)
+	var p_inv = InventoryComponentScript.new()
+	p_inv.set("slot_count", 6)
+	add_child(p_inv)
+	var s_inv = InventoryComponentScript.new()
+	s_inv.set("slot_count", 6)
+	add_child(s_inv)
+	storage_ui._player_inventory = p_inv
+	storage_ui._stockpile_inventory = s_inv
+	p_inv.add_item_by_id(&"wood", 5)
+	storage_ui.refresh_ui()
+	storage_ui._transfer_from_player(0, 2)
+	assert(p_inv.get_item_count(&"wood") == 3, "Player should have 3 wood left")
+	assert(s_inv.get_item_count(&"wood") == 2, "Stockpile should have received 2 wood")
+	storage_ui._transfer_from_stockpile(0, 1)
+	assert(p_inv.get_item_count(&"wood") == 4, "Player should have 4 wood after transfer back")
+	storage_ui.queue_free()
+	p_inv.queue_free()
+	s_inv.queue_free()
+
+	print("[Main] Bugfixes & Mini-improvements (Iteration 7.47) unit tests passed successfully!")
+
+
+func _test_passable_blueprints() -> void:
+	print("[Main] Testing Passable Blueprints & Construction Sites (Iteration 7.48)...")
+
+	# 1. Тест: ConstructionSite3D має collision_layer = 8 (прохідний для гравця та колоністів) та walkable у GridManager
+	var b_data = BuildingPlacementController.get_building(&"campfire")
+	var site = ConstructionSite3DScript.new()
+	add_child(site)
+	site.setup_site(b_data, Vector2i(70, 70), 0)
+	assert(site.collision_layer == 8, "ConstructionSite3D must be on collision layer 8 (blueprints)")
+	assert(site.collision_mask == 0, "ConstructionSite3D must have collision_mask 0")
+	assert(GridManager.get_occupant(Vector2i(70, 70)) == site, "ConstructionSite3D must occupy cell (70, 70)")
+	assert(GridManager.is_cell_walkable(Vector2i(70, 70)) == true, "ConstructionSite3D cell must be walkable (passable)")
+
+	# 2. Тест: Player3D interact_ray може детектувати ConstructionSite3D на layer 8
+	var player = Player3DScene.instantiate()
+	add_child(player)
+	assert(player.interact_ray.collision_mask & 8 != 0, "Player3D interact_ray must include layer 8 in collision_mask")
+	player.queue_free()
+
+	# 3. Тест: ModularPiece3D у стані креслення (blueprint) має collision_layer = 8, а після побудови — 1
+	var mod_piece = ModularPiece3DScript.new()
+	add_child(mod_piece)
+	mod_piece.setup_piece(&"modular_wall", Vector2i(72, 72), false)
+	assert(mod_piece.collision_layer == 8, "ModularPiece3D blueprint must have collision_layer = 8")
+	mod_piece.apply_built_state(false)
+	assert(mod_piece.collision_layer == 1, "ModularPiece3D constructed must have collision_layer = 1")
+	mod_piece.apply_blueprint_state()
+	assert(mod_piece.collision_layer == 8, "ModularPiece3D returning to blueprint must have collision_layer = 8")
+	mod_piece.demolish(null)
+
+	# 4. Тест: пересування колоніста крізь клітинку з кресленням (A* шлях проходить крізь креслення)
+	var path_through = GridManager.get_world_path_3d(Vector3(68.5, 0, 70.5), Vector3(72.5, 0, 70.5), 0.0)
+	assert(not path_through.is_empty(), "Pathfinding must be able to walk straight through blueprints")
+
+	site.cancel_construction()
+
+	print("[Main] Passable Blueprints & Construction Sites unit tests passed successfully!")
