@@ -53,15 +53,29 @@ func has_free_slot() -> bool:
 func can_accept_item(item: Resource, amount: int = 1) -> bool:
 	if item == null or amount <= 0:
 		return false
-	if has_free_slot():
-		return true
+	var remaining_needed: int = amount
 	var item_id: StringName = _extract_item_id(item)
 	var max_stack: int = _extract_max_stack(item)
 	for slot in slots:
-		if not slot.is_empty() and slot.item != null and _extract_item_id(slot.item) == item_id:
-			if slot.count < max_stack:
-				return true
+		if slot.is_empty():
+			remaining_needed -= max_stack
+		elif slot.item != null and _extract_item_id(slot.item) == item_id:
+			var space: int = max_stack - slot.count
+			if space > 0:
+				remaining_needed -= space
+		if remaining_needed <= 0:
+			return true
 	return false
+
+
+## Перевіряє можливість прийняти предмет за його id
+func can_accept_item_by_id(p_item_id: StringName, p_amount: int = 1) -> bool:
+	if ItemDatabase == null:
+		return has_free_slot()
+	var item_res: Resource = ItemDatabase.get_item(p_item_id)
+	if item_res == null:
+		return false
+	return can_accept_item(item_res, p_amount)
 
 func _init_slots() -> void:
 	slots.clear()

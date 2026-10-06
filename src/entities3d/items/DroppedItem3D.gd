@@ -161,6 +161,10 @@ func _search_for_player(delta: float) -> void:
 
 	if _cached_player_ref != null and is_instance_valid(_cached_player_ref):
 		if global_position.distance_to(_cached_player_ref.global_position) <= magnet_radius:
+			var inv = _cached_player_ref.get_node_or_null("InventoryComponent")
+			if inv != null and inv.has_method("can_accept_item_by_id"):
+				if not inv.can_accept_item_by_id(item_id, 1):
+					return
 			_target_player = _cached_player_ref
 
 
@@ -181,16 +185,36 @@ func _process_magnet(delta: float) -> void:
 	global_position += dir * magnet_speed * delta
 
 
-func _pickup() -> void:
+func _pickup(target_node: Node = null) -> void:
+	if target_node != null:
+		_target_player = target_node
 	if _is_being_picked_up:
 		return
 	_is_being_picked_up = true
 
-	if _target_player != null and _target_player.has_node("InventoryComponent"):
-		var inv = _target_player.get_node("InventoryComponent")
-		if inv.has_method("add_item_by_id"):
-			inv.add_item_by_id(item_id, amount)
-		if EventBus != null and EventBus.has_signal("item_picked_up"):
-			EventBus.item_picked_up.emit(_target_player, item_id, amount)
+	var inv: Node = null
+	if _target_player != null:
+		if _target_player.has_node("InventoryComponent"):
+			inv = _target_player.get_node("InventoryComponent")
+		elif "inventory" in _target_player and _target_player.inventory != null:
+			inv = _target_player.inventory
+
+	if inv != null and inv.has_method("add_item_by_id"):
+		var leftover: int = inv.add_item_by_id(item_id, amount)
+		var picked: int = amount - leftover
+		if picked > 0:
+			if EventBus != null and EventBus.has_signal("item_picked_up"):
+				EventBus.item_picked_up.emit(_target_player, item_id, picked)
+			if AudioManager != null:
+				AudioManager.play_sound(&"pickup", -4.0, randf_range(0.95, 1.05))
+		if leftover <= 0:
+			queue_free()
+			return
+		else:
+			# Інвентар заповнений: залишаємо залишок на землі
+			amount = leftover
+			_is_being_picked_up = false
+			_target_player = null
+			return
 
 	queue_free()

@@ -6,6 +6,8 @@ extends Node3D
 
 signal cell_clicked(cell: Vector2i, world_pos: Vector3)
 signal object_clicked(object: Node)
+signal colonist_selected(colonist: Node)
+signal colonist_deselected
 
 @export_group("Movement")
 @export var pan_speed: float = 28.0
@@ -17,6 +19,7 @@ signal object_clicked(object: Node)
 @export_group("State")
 @export var is_active: bool = false
 var is_harvest_order_mode: bool = false
+var selected_colonist: Node = null
 
 var current_zoom_height: float = 26.0
 var _target_zoom_height: float = 26.0
@@ -73,6 +76,8 @@ func _on_selection_drawer_draw() -> void:
 func set_active(active: bool) -> void:
 	is_active = active
 	_cancel_box_selection()
+	if not active:
+		deselect_colonist()
 	if not active and is_harvest_order_mode:
 		set_harvest_order_mode(false)
 	if _selection_canvas != null:
@@ -96,6 +101,43 @@ func focus_on_position(pos: Vector3) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not is_active:
 		return
+
+	# 0. Керування виділеним колоністом (Esc / E / Z / C / ПКМ)
+	if event.is_action_pressed("cancel"):
+		if selected_colonist != null:
+			deselect_colonist()
+			get_viewport().set_input_as_handled()
+			return
+
+	# Зупинка обраного колоніста на клавішу [Z]
+	var is_z_key: bool = event is InputEventKey and event.is_pressed() and not event.is_echo() and (event.physical_keycode == KEY_Z or event.keycode == KEY_Z)
+	if is_z_key and selected_colonist != null and is_instance_valid(selected_colonist):
+		if selected_colonist.has_method("order_stop"):
+			selected_colonist.order_stop()
+			_spawn_command_ping(selected_colonist.global_position, Color(1.0, 0.3, 0.3), "🛑 Стоп")
+			get_viewport().set_input_as_handled()
+			return
+
+	# Циклічне перемикання колоністів на клавішу [C] / [Shift+C]
+	var is_c_key: bool = event is InputEventKey and event.is_pressed() and not event.is_echo() and (event.physical_keycode == KEY_C or event.keycode == KEY_C)
+	if is_c_key and not is_harvest_order_mode and not (BuildingPlacementController != null and BuildingPlacementController.is_placing()):
+		var step: int = -1 if ((event is InputEventWithModifiers and event.shift_pressed) or Input.is_key_pressed(KEY_SHIFT)) else 1
+		cycle_colonist_selection(step)
+		get_viewport().set_input_as_handled()
+		return
+
+	var is_e_key: bool = (event.is_action_pressed("interact") or (event is InputEventKey and event.is_pressed() and not event.is_echo() and (event.physical_keycode == KEY_E or event.keycode == KEY_E)))
+	if is_e_key and selected_colonist != null and is_instance_valid(selected_colonist):
+		if EventBus != null and EventBus.has_signal("colonist_dialog_requested"):
+			EventBus.colonist_dialog_requested.emit(selected_colonist)
+			get_viewport().set_input_as_handled()
+			return
+
+	if event.is_action_pressed("secondary_action") and not is_harvest_order_mode and not (BuildingPlacementController != null and BuildingPlacementController.is_placing()):
+		if selected_colonist != null and is_instance_valid(selected_colonist):
+			if _handle_rts_colonist_command():
+				get_viewport().set_input_as_handled()
+				return
 
 	# 1. Обробка активного перетягування рамки збору
 	if _is_dragging_harvest:
@@ -177,8 +219,14 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 
-	# 7. Стандартний клік мишкою у 3D просторі
+	# 7. Стандартний клік мишкою у 3D просторі (Виділення або взаємодія)
 	if event.is_action_pressed("primary_action"):
+		if not is_harvest_order_mode:
+			if _try_select_colonist_at_mouse():
+				get_viewport().set_input_as_handled()
+				return
+			elif selected_colonist != null:
+				deselect_colonist()
 		_handle_mouse_click()
 		get_viewport().set_input_as_handled()
 
@@ -489,6 +537,8 @@ func set_harvest_order_mode(active: bool) -> void:
 		return
 	is_harvest_order_mode = active
 	_cancel_box_selection()
+	if active and selected_colonist != null:
+		deselect_colonist()
 
 	if EventBus != null and EventBus.has_signal("order_harvest_mode_toggled"):
 		EventBus.order_harvest_mode_toggled.emit(is_harvest_order_mode)
@@ -498,3 +548,175 @@ func set_harvest_order_mode(active: bool) -> void:
 			FloatingTextManager.spawn_info(global_position + Vector3(0, 3.0, 0), "🌾 Режим виділення: клікайте або виділяйте рамкою (ПКМ/Esc для виходу)", Color("55E6C1"))
 		else:
 			FloatingTextManager.spawn_info(global_position + Vector3(0, 3.0, 0), "🌾 Режим виділення збору вимкнено", Color("BDC581"))
+
+
+# ------------------------------------------------------------------------------
+# Керування виділенням та прямими наказами колоністам (RTS Unit Control)
+# ------------------------------------------------------------------------------
+func select_colonist(col: Node) -> void:
+	if selected_colonist == col:
+		return
+	if selected_colonist != null and is_instance_valid(selected_colonist):
+		if selected_colonist.has_method("set_selected"):
+			selected_colonist.set_selected(false)
+	selected_colonist = col
+	if selected_colonist != null and is_instance_valid(selected_colonist):
+		if selected_colonist.has_method("set_selected"):
+			selected_colonist.set_selected(true)
+		if AudioManager != null:
+			AudioManager.play_sound(&"click")
+		var col_name: String = selected_colonist.get("colonist_name") if "colonist_name" in selected_colonist else "Колоніст"
+		if FloatingTextManager != null:
+			FloatingTextManager.spawn_info(selected_colonist.global_position + Vector3(0, 2.0, 0), "🎯 " + col_name, Color(0.2, 0.95, 0.9))
+		colonist_selected.emit(selected_colonist)
+		if EventBus != null and EventBus.has_signal("colonist_selected"):
+			EventBus.colonist_selected.emit(selected_colonist)
+
+
+func deselect_colonist() -> void:
+	if selected_colonist != null and is_instance_valid(selected_colonist):
+		if selected_colonist.has_method("set_selected"):
+			selected_colonist.set_selected(false)
+	selected_colonist = null
+	colonist_deselected.emit()
+	if EventBus != null and EventBus.has_signal("colonist_deselected"):
+		EventBus.colonist_deselected.emit()
+
+
+func get_selected_colonist() -> Node:
+	if selected_colonist != null and is_instance_valid(selected_colonist):
+		return selected_colonist
+	return null
+
+
+## Циклічне перемикання виділення між колоністами (1: вперед, -1: назад)
+func cycle_colonist_selection(step: int = 1) -> Node:
+	var colonists := get_tree().get_nodes_in_group("colonists")
+	if colonists.is_empty():
+		return null
+	var current_idx: int = -1
+	if selected_colonist != null and is_instance_valid(selected_colonist):
+		current_idx = colonists.find(selected_colonist)
+
+	var next_idx: int = 0
+	if current_idx != -1:
+		next_idx = (current_idx + step) % colonists.size()
+		if next_idx < 0:
+			next_idx += colonists.size()
+
+	var target = colonists[next_idx]
+	select_colonist(target)
+	if target is Node3D:
+		focus_on_position(target.global_position)
+	return target
+
+
+func _try_select_colonist_at_mouse() -> bool:
+	if camera == null:
+		return false
+	var mouse_pos: Vector2 = get_viewport().get_mouse_position()
+	var ray_origin: Vector3 = camera.project_ray_origin(mouse_pos)
+	var ray_normal: Vector3 = camera.project_ray_normal(mouse_pos)
+	var space_state = get_world_3d().direct_space_state
+	var query = PhysicsRayQueryParameters3D.create(ray_origin, ray_origin + (ray_normal * 200.0), 1)
+	var result = space_state.intersect_ray(query)
+	if result.is_empty():
+		return false
+	var collider = result.get("collider")
+	if collider != null:
+		var target = collider
+		while target != null and not target.is_in_group("colonists") and not target.name.begins_with("Colonist") and target.get_parent() != null and not (target.name == "World3D" or target.name == "Colonists"):
+			target = target.get_parent()
+		if target != null and (target.is_in_group("colonists") or target.name.begins_with("Colonist")):
+			select_colonist(target)
+			return true
+	return false
+
+
+func _spawn_command_ping(pos: Vector3, color: Color = Color(0.2, 1.0, 0.4), label: String = "") -> void:
+	if AudioManager != null:
+		AudioManager.play_sound_3d(&"click", pos, -6.0, 1.1)
+	if not label.is_empty() and FloatingTextManager != null:
+		FloatingTextManager.spawn_info(pos + Vector3(0, 0.5, 0), label, color)
+	var ping_mesh := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = 0.35
+	torus.outer_radius = 0.48
+	torus.rings = 20
+	torus.ring_segments = 10
+	ping_mesh.mesh = torus
+	ping_mesh.position = Vector3(pos.x, pos.y + 0.05, pos.z)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = color
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	ping_mesh.material_override = mat
+	var parent_node = get_parent() if get_parent() != null else self
+	parent_node.add_child(ping_mesh)
+	var tween = ping_mesh.create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(ping_mesh, "scale", Vector3(1.8, 1.0, 1.8), 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(mat, "albedo_color:a", 0.0, 0.35)
+	tween.chain().tween_callback(ping_mesh.queue_free)
+
+
+func _handle_rts_colonist_command() -> bool:
+	if camera == null or selected_colonist == null or not is_instance_valid(selected_colonist):
+		return false
+	var mouse_pos: Vector2 = get_viewport().get_mouse_position()
+	var ray_origin: Vector3 = camera.project_ray_origin(mouse_pos)
+	var ray_normal: Vector3 = camera.project_ray_normal(mouse_pos)
+	var space_state = get_world_3d().direct_space_state
+	var query = PhysicsRayQueryParameters3D.create(ray_origin, ray_origin + (ray_normal * 200.0), 9)
+	var result = space_state.intersect_ray(query)
+	if not result.is_empty():
+		var collider = result.get("collider")
+		var hit_pos: Vector3 = result.get("position")
+		if collider != null and (collider.is_in_group("colonists") or collider.name.begins_with("Colonist")):
+			if collider != selected_colonist:
+				select_colonist(collider)
+				return true
+			else:
+				# Клік ПКМ по поточному виділеному колоністу — наказ зупинитися
+				if selected_colonist.has_method("order_stop"):
+					selected_colonist.order_stop()
+					_spawn_command_ping(hit_pos, Color(1.0, 0.3, 0.3), "🛑 Стоп")
+					return true
+		var target = collider
+		while target != null and not target.is_in_group("resource_nodes") and not target.has_method("harvest") and target.get_parent() != null and not (target.name == "World3D" or target.name == "ChunkStreamer"):
+			target = target.get_parent()
+		if target != null and (target.is_in_group("resource_nodes") or target.has_method("harvest")):
+			if selected_colonist.has_method("order_harvest_node"):
+				selected_colonist.order_harvest_node(target)
+				_spawn_command_ping(hit_pos, Color(1.0, 0.85, 0.2), "🪓 Збір")
+				return true
+		target = collider
+		while target != null and not target.has_method("interact_construct") and not target.is_in_group("construction_sites") and not target.is_in_group("modular_blueprints") and target.get_parent() != null and not (target.name == "World3D" or target.name == "Buildings" or target.name == "ModularContainer"):
+			target = target.get_parent()
+		if target != null and (target.has_method("interact_construct") or target.is_in_group("construction_sites") or target.is_in_group("modular_blueprints")):
+			if selected_colonist.has_method("order_build_site"):
+				selected_colonist.order_build_site(target)
+				_spawn_command_ping(hit_pos, Color(0.2, 0.9, 1.0), "🔨 Будівництво")
+				return true
+		target = collider
+		while target != null and not target.has_method("interact_storage") and not target.is_in_group("stockpiles") and target.get_parent() != null and not (target.name == "World3D" or target.name == "Buildings"):
+			target = target.get_parent()
+		if target != null and (target.has_method("interact_storage") or target.is_in_group("stockpiles")):
+			if selected_colonist.has_method("has_items_to_unload") and selected_colonist.has_items_to_unload():
+				if selected_colonist.has_method("start_unloading_to_stockpile"):
+					selected_colonist.start_unloading_to_stockpile(target)
+					_spawn_command_ping(hit_pos, Color(0.9, 0.6, 0.2), "📦 Склад")
+					return true
+		if selected_colonist.has_method("order_move_to"):
+			selected_colonist.order_move_to(hit_pos)
+			_spawn_command_ping(hit_pos, Color(0.2, 1.0, 0.4), "🚶 Йти")
+			return true
+	if absf(ray_normal.y) > 0.0001:
+		var t: float = -ray_origin.y / ray_normal.y
+		if t > 0.0:
+			var ground_point: Vector3 = ray_origin + (ray_normal * t)
+			if selected_colonist.has_method("order_move_to"):
+				selected_colonist.order_move_to(ground_point)
+				_spawn_command_ping(ground_point, Color(0.2, 1.0, 0.4), "🚶 Йти")
+				return true
+	return false

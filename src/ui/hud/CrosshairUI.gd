@@ -220,4 +220,11 @@ func _check_interact_target() -> void:
 				_interact_label.visible = true
 				return
 
+	# 7. Водойма (Питна вода)
+	if player.has_method("is_looking_at_water") and player.is_looking_at_water():
+		_interact_label.text = "💧 Водойма (Питна вода)\n[E] / [ПКМ] Пити свіжу воду (Втамувати спрагу)"
+		_interact_label.add_theme_color_override("font_color", Color(0.3, 0.75, 1.0, 0.98))
+		_interact_label.visible = true
+		return
+
 	_interact_label.visible = false

@@ -41,6 +41,7 @@ func _ready() -> void:
 
 	EventBus.colonist_dialog_requested.connect(open_dialog)
 	EventBus.inventory_window_toggle_requested.connect(_on_inventory_toggle_requested)
+	EventBus.colonist_died.connect(_on_colonist_died)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -55,6 +56,19 @@ func _on_inventory_toggle_requested() -> void:
 	if visible:
 		close_dialog()
 
+
+
+func _process(_delta: float) -> void:
+	if visible:
+		if not is_instance_valid(_target_colonist) or not _target_colonist.is_inside_tree():
+			close_dialog()
+			return
+		_update_colonist_status_labels()
+
+
+func _on_colonist_died(colonist: Node, _cause: String = "") -> void:
+	if visible and colonist == _target_colonist:
+		close_dialog()
 
 func _build_ui_layout() -> void:
 	# 1. Затемнення фону
@@ -285,6 +299,10 @@ func open_dialog(colonist_node: Node) -> void:
 		return
 
 	_target_colonist = colonist_node as CharacterBody3D
+	if _target_colonist != null and _target_colonist.has_method("set_selected"):
+		_target_colonist.set_selected(true)
+	if AudioManager != null:
+		AudioManager.play_sound(&"click", -2.0, 1.1)
 	_colonist_inventory = _target_colonist.get("inventory") if _target_colonist != null else null
 	_find_player_inventory()
 
@@ -311,9 +329,12 @@ func close_dialog() -> void:
 
 	visible = false
 
-	if _colonist_inventory != null and _colonist_inventory.inventory_updated.is_connected(refresh_ui):
+	if is_instance_valid(_target_colonist) and _target_colonist.has_method("set_selected"):
+		_target_colonist.set_selected(false)
+
+	if is_instance_valid(_colonist_inventory) and _colonist_inventory.inventory_updated.is_connected(refresh_ui):
 		_colonist_inventory.inventory_updated.disconnect(refresh_ui)
-	if _player_inventory != null and _player_inventory.inventory_updated.is_connected(refresh_ui):
+	if is_instance_valid(_player_inventory) and _player_inventory.inventory_updated.is_connected(refresh_ui):
 		_player_inventory.inventory_updated.disconnect(refresh_ui)
 
 	_target_colonist = null
@@ -327,10 +348,9 @@ func close_dialog() -> void:
 		EventBus.colonist_dialog_closed.emit()
 
 
-func _update_colonist_info() -> void:
-	if _target_colonist == null:
+func _update_colonist_status_labels() -> void:
+	if not is_instance_valid(_target_colonist):
 		return
-
 	var c_name: String = _target_colonist.colonist_name if "colonist_name" in _target_colonist else "Поселенець"
 	var c_prof: String = _target_colonist.get_profession_name() if _target_colonist.has_method("get_profession_name") else ""
 	_name_label.text = "👤 %s [%s]" % [c_name, c_prof]
@@ -348,6 +368,12 @@ func _update_colonist_info() -> void:
 		var cur_hp: int = int(_target_colonist.get("current_health")) if "current_health" in _target_colonist else 100
 		var max_hp: int = int(_target_colonist.get("max_health")) if "max_health" in _target_colonist else 100
 		_hp_label.text = "❤️ %d/%d HP" % [cur_hp, max_hp]
+
+
+func _update_colonist_info() -> void:
+	if not is_instance_valid(_target_colonist):
+		return
+	_update_colonist_status_labels()
 
 	# Вибір поточного індексу професії
 	var p_code: StringName = _target_colonist.profession if "profession" in _target_colonist else &"settler"
@@ -450,6 +476,8 @@ func _transfer_to_colonist(slot_index: int, max_amount: int = -1) -> void:
 		slot.count -= transferred
 		if slot.count <= 0:
 			slot.clear()
+		if AudioManager != null:
+			AudioManager.play_sound(&"pickup", -3.0, randf_range(0.95, 1.05))
 		_player_inventory.inventory_updated.emit()
 		_colonist_inventory.inventory_updated.emit()
 
@@ -473,6 +501,8 @@ func _transfer_from_colonist(slot_index: int, max_amount: int = -1) -> void:
 		slot.count -= transferred
 		if slot.count <= 0:
 			slot.clear()
+		if AudioManager != null:
+			AudioManager.play_sound(&"pickup", -3.0, randf_range(0.95, 1.05))
 		_colonist_inventory.inventory_updated.emit()
 		_player_inventory.inventory_updated.emit()
 

@@ -478,9 +478,9 @@ func demolish(player_inventory: Node = null) -> Dictionary:
 				var drop_amt: int = slot_info.get("count", 0)
 				if drop_id != &"" and drop_amt > 0 and DroppedItem3DScene != null and get_parent() != null:
 					var drop = DroppedItem3DScene.instantiate()
-					drop.position = global_position + Vector3(randf_range(-1.2, 1.2), 0.4, randf_range(-1.2, 1.2))
-					drop.set_item(drop_id, drop_amt)
 					get_parent().add_child(drop)
+					drop.global_position = global_position + Vector3(randf_range(-1.2, 1.2), 0.4, randf_range(-1.2, 1.2))
+					drop.set_item(drop_id, drop_amt)
 		if LogisticsManager != null:
 			LogisticsManager.unregister_stockpile(self)
 
@@ -505,9 +505,9 @@ func demolish(player_inventory: Node = null) -> Dictionary:
 					rem = player_inventory.add_item(cost.item, amt)
 				if rem > 0 and DroppedItem3DScene != null and get_parent() != null:
 					var drop = DroppedItem3DScene.instantiate()
-					drop.position = global_position + Vector3(randf_range(-0.8, 0.8), 0.4, randf_range(-0.8, 0.8))
-					drop.set_item(item_id, rem)
 					get_parent().add_child(drop)
+					drop.global_position = global_position + Vector3(randf_range(-0.8, 0.8), 0.4, randf_range(-0.8, 0.8))
+					drop.set_item(item_id, rem)
 
 	# 4. Аудіо та візуальні ефекти
 	if AudioManager != null:

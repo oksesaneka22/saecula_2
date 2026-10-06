@@ -1,6 +1,6 @@
 extends Node
 
-## EventBus: Глобальна шина подій для проекту Saecula.
+## EventBus: Глобальна шина подій для проєкту Saecula.
 ## Забезпечує повністю decoupled (слабкозв'язану) взаємодію між підсистемами гри:
 ## сутностями (гравець, колоністи), світом (GridManager, ресурси), будівництвом, логістикою та UI.
 
@@ -133,6 +133,12 @@ signal colonist_dialog_closed
 
 ## Запит на відкриття/закриття списку поселенців (Roster)
 signal colonist_roster_toggle_requested
+
+## Колоніста виділено гравцем (наприклад, кліком у режимі RTS)
+signal colonist_selected(colonist_node: Node)
+
+## Виділення з колоніста знято
+signal colonist_deselected
 
 
 # ------------------------------------------------------------------------------

@@ -235,6 +235,38 @@ func request_job(colonist: Node) -> Job:
 	return null
 
 
+## Безпосередньо призначає завдання конкретному колоністу (наприклад, прямий наказ з RTS-камери)
+func assign_job_to_colonist(job: Job, colonist: Node) -> bool:
+	if job == null or colonist == null:
+		return false
+	# Якщо колоніст вже мав завдання — вивільняємо старе
+	for active in _active_jobs:
+		if active != job and active.assigned_colonist == colonist:
+			release_job(active, "Перепризначено нове завдання")
+			break
+
+	_pending_jobs.erase(job)
+	if not _active_jobs.has(job):
+		_active_jobs.append(job)
+
+	job.status = Job.JobStatus.ASSIGNED
+	job.assigned_colonist = colonist
+
+	job_assigned.emit(job, colonist)
+	if EventBus != null and EventBus.has_signal("job_assigned"):
+		EventBus.job_assigned.emit(job.id, colonist)
+
+	if colonist.has_method("assign_job"):
+		colonist.assign_job(job)
+
+	print("[JobManager] 🎯 Прямий наказ: завдання %s [%s] призначено робітнику '%s'" % [
+		job.get_type_name(),
+		job.id,
+		colonist.name
+	])
+	return true
+
+
 # ------------------------------------------------------------------------------
 # Завершення або скасування завдань
 # ------------------------------------------------------------------------------

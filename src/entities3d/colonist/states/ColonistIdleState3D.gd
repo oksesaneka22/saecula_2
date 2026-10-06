@@ -11,14 +11,17 @@ var _wander_timer: float = 0.0
 var _is_entering: bool = false
 
 
-func enter(_msg: Dictionary = {}) -> void:
+func enter(msg: Dictionary = {}) -> void:
 	if _is_entering:
 		return
 	_is_entering = true
 
 	if actor != null:
 		actor.velocity = Vector3.ZERO
-		actor.set_status_display("💤 Очікує")
+		if msg.has("custom_status"):
+			actor.set_status_display(msg["custom_status"])
+		else:
+			actor.set_status_display("💤 Очікує")
 		actor.hide_hand_items()
 		if not actor.is_following_player and actor.has_method("has_items_to_unload") and actor.has_items_to_unload():
 			if actor.start_unloading_to_stockpile():
@@ -102,10 +105,18 @@ func physics_update(delta: float) -> void:
 func _try_idle_wander() -> void:
 	if actor == null:
 		return
-	var offset := Vector3(randf_range(-3.0, 3.0), 0.0, randf_range(-3.0, 3.0))
-	var target := actor.global_position + offset
-	state_machine.transition_to(&"moveto", {
-		"target_pos": target,
-		"next_state": &"idle",
-		"arrival_distance": 0.8
-	})
+	for attempt in range(5):
+		var offset := Vector3(randf_range(-3.5, 3.5), 0.0, randf_range(-3.5, 3.5))
+		if offset.length_squared() < 1.0:
+			continue
+		var target := actor.global_position + offset
+		if GridManager != null:
+			var cell: Vector2i = GridManager.world_to_map_3d(target)
+			if not GridManager.is_within_bounds(cell) or not GridManager.is_cell_walkable(cell):
+				continue
+		state_machine.transition_to(&"moveto", {
+			"target_pos": target,
+			"next_state": &"idle",
+			"arrival_distance": 0.8
+		})
+		return

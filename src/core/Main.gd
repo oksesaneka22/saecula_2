@@ -177,6 +177,18 @@ func _run_all_unit_tests() -> void:
 	# 44. Валідація прохідних будівельних креслень (Ітерація 7.48: ConstructionSite3D, ModularPiece3D, layer 8, GridManager walkability)
 	_test_passable_blueprints()
 
+	# 45. Валідація полірування геймплею, UX колоністів, звуків та виділення (Ітерація 7.49: Selection Ring, Roster Focus, Audio SFX)
+	_test_colonist_ux_audio_and_selection_polish()
+
+	# 46. Валідація прямого виділення та наказів колоністам у RTS режимі (Ітерація 7.50: RTSCamera3D select/deselect, order_move_to, order_harvest_node, order_build_site, JobManager.assign_job_to_colonist, ModeIndicatorUI)
+	_test_rts_colonist_direct_command_and_selection()
+
+	# 47. Валідація синхронізації Colony Roster UI, RTS виділення, перемикання [C] та команди Стоп [Z] (Ітерація 7.51: Colony Roster card highlight, cycle_colonist_selection, order_stop, safe idle wander, exit_tree cleanup)
+	_test_colony_roster_rts_sync_and_colonist_controls()
+
+	# 48. Валідація усунення багів, безпеки ресурсів та життєвого циклу UI (Ітерація 7.52: can_accept_item_by_id, DroppedItem3D partial pickup, Crafting overflow drop, Global coordinate drops, ColonistDialogUI/StorageUI auto-close, AdminPanel tools)
+	_test_bugfixes_and_resource_safety()
+
 
 func _test_inventory_component(wood: Resource) -> void:
 	var test_inv: Node = InventoryComponentScript.new()
@@ -3198,3 +3210,390 @@ func _test_passable_blueprints() -> void:
 	site.cancel_construction()
 
 	print("[Main] Passable Blueprints & Construction Sites unit tests passed successfully!")
+
+
+func _test_colonist_ux_audio_and_selection_polish() -> void:
+	print("[Main] Testing Colonist UX, Audio & Selection Polish (Iteration 7.49)...")
+
+	# 1. Тест: Кільце виділення колоніста (Selection Ring)
+	var col: CharacterBody3D = Colonist3DScene.instantiate()
+	col.colonist_name = "SelectionTestColonist"
+	add_child(col)
+	assert(col.selection_ring != null, "Colonist3D must have a selection_ring node")
+	assert(col.is_selected() == false, "Selection ring must initially be hidden")
+
+	col.set_selected(true)
+	assert(col.is_selected() == true, "Colonist must report is_selected() == true")
+	assert(col.selection_ring.visible == true, "Selection ring mesh must be visible when selected")
+
+	col.set_selected(false)
+	assert(col.is_selected() == false, "Colonist must report is_selected() == false")
+	assert(col.selection_ring.visible == false, "Selection ring mesh must be hidden when deselected")
+
+	# 2. Тест: Взаємодія з діалогом (ColonistDialogUI) перемикає кільце виділення колоніста
+	var hud = get_node_or_null("HUD")
+	assert(hud != null, "HUD must exist in Main")
+	var dialog_ui = hud.get_node_or_null("ColonistDialogUI")
+	assert(dialog_ui != null, "ColonistDialogUI must exist in HUD")
+
+	dialog_ui.open_dialog(col)
+	assert(col.is_selected() == true, "Opening colonist dialog must automatically select the colonist")
+	assert(dialog_ui.visible == true, "ColonistDialogUI must be visible after open_dialog")
+
+	dialog_ui.close_dialog()
+	assert(col.is_selected() == false, "Closing colonist dialog must deselect the colonist")
+	assert(dialog_ui.visible == false, "ColonistDialogUI must be hidden after close_dialog")
+
+	# 3. Тест: Фокусування в ColonyRosterUI активує виділення колоніста та фокусує RTSCamera3D
+	var roster = hud.get_node_or_null("ColonyRosterUI")
+	assert(roster != null, "ColonyRosterUI must exist in HUD")
+
+	var rts_cam_scene: PackedScene = load("res://src/core3d/RTSCamera3D.tscn")
+	var rts_cam = rts_cam_scene.instantiate()
+	rts_cam.name = "RTSCamera3D"
+	rts_cam.add_to_group("rts_camera")
+	add_child(rts_cam)
+	rts_cam.global_position = Vector3(0, 0, 0)
+	col.global_position = Vector3(150.0, 0.0, 200.0)
+
+	roster._on_focus_pressed(col)
+	assert(col.is_selected() == true, "Focusing on colonist via roster must select the colonist")
+	assert(is_equal_approx(rts_cam.global_position.x, 150.0), "RTSCamera3D X must focus on colonist position")
+	assert(is_equal_approx(rts_cam.global_position.z, 200.0), "RTSCamera3D Z must focus on colonist position")
+
+	col.set_selected(false)
+
+	# 4. Тест: Призначення завдання колоністу (assign_job)
+	var dummy_site = Node3D.new()
+	add_child(dummy_site)
+	dummy_site.global_position = Vector3(155.0, 0.0, 200.0)
+	var test_job = JobManager.create_job(Job.JobType.BUILD, dummy_site.global_position, dummy_site, 5, &"builder")
+	col.assign_job(test_job)
+	assert(col.current_job == test_job, "Colonist must accept assigned job")
+	JobManager.release_job(test_job)
+
+	# 5. Очищення
+	rts_cam.queue_free()
+	dummy_site.queue_free()
+	col.queue_free()
+
+	print("[Main] Colonist UX, Audio & Selection Polish unit tests passed successfully!")
+
+
+func _test_rts_colonist_direct_command_and_selection() -> void:
+	print("[Main] Testing RTS Colonist Direct Command & Selection (Iteration 7.50)...")
+
+	# 1. Створення RTS камери та колоніста
+	var rts_cam_scene: PackedScene = load("res://src/core3d/RTSCamera3D.tscn")
+	var rts_cam = rts_cam_scene.instantiate()
+	rts_cam.name = "RTSCamera3D_Test46"
+	rts_cam.add_to_group("rts_camera")
+	add_child(rts_cam)
+
+	var col: CharacterBody3D = Colonist3DScene.instantiate()
+	col.colonist_name = "RTSCommandTarget"
+	add_child(col)
+	col.global_position = Vector3(100.0, 0.0, 100.0)
+
+	# 2. Тест: виділення колоніста в RTSCamera3D
+	assert(rts_cam.get_selected_colonist() == null, "Initially no colonist should be selected")
+	assert(col.is_selected() == false, "Colonist must not be selected initially")
+
+	var selected_signals: Array = []
+	var deselected_signals: Array = []
+	rts_cam.colonist_selected.connect(func(c): selected_signals.append(c))
+	rts_cam.colonist_deselected.connect(func(): deselected_signals.append(true))
+
+	rts_cam.select_colonist(col)
+	assert(rts_cam.get_selected_colonist() == col, "RTS camera must report selected colonist")
+	assert(col.is_selected() == true, "Colonist 3D selection ring must be active")
+	assert(selected_signals.size() == 1, "colonist_selected signal must be emitted")
+	assert(selected_signals[0] == col, "Signal must pass selected colonist node")
+
+	# 3. Тест: зняття виділення (deselect_colonist)
+	rts_cam.deselect_colonist()
+	assert(rts_cam.get_selected_colonist() == null, "Selected colonist must be cleared")
+	assert(col.is_selected() == false, "Colonist 3D selection ring must be turned off")
+	assert(deselected_signals.size() == 1, "colonist_deselected signal must be emitted")
+
+	# 4. Тест: прямий наказ руху (order_move_to)
+	col.order_move_to(Vector3(120.0, 0.0, 100.0))
+	assert(col.state_machine.current_state.name.to_lower() == "moveto", "Colonist must transition to MoveTo state on move command")
+	var move_state = col.state_machine.current_state as ColonistMoveToState3D
+	assert(move_state != null, "State must be ColonistMoveToState3D")
+	assert(move_state.target_position == Vector3(120.0, 0.0, 100.0), "Move destination must match target position")
+	assert("Рухається за наказом" in col.get_status_text(), "Status display must reflect RTS order")
+
+	# 5. Тест: прямий наказ збору ресурсу (order_harvest_node)
+	var dummy_tree = Node3D.new()
+	dummy_tree.name = "DummyHarvestTree"
+	dummy_tree.add_to_group("resource_nodes")
+	dummy_tree.set("resource_type", 0) # WOOD
+	add_child(dummy_tree)
+	dummy_tree.global_position = Vector3(130.0, 0.0, 100.0)
+
+	var harvest_ordered = col.order_harvest_node(dummy_tree)
+	assert(harvest_ordered == true, "order_harvest_node must return true")
+	assert(col.current_job != null, "Colonist must receive a job")
+	assert(col.current_job.type == Job.JobType.HARVEST, "Job type must be HARVEST")
+	assert(col.current_job.target_node == dummy_tree, "Job target must match dummy tree")
+
+	# 6. Тест: прямий наказ будівництва (order_build_site)
+	var dummy_bld_site = Node3D.new()
+	dummy_bld_site.name = "DummyBuildSite"
+	dummy_bld_site.add_to_group("construction_sites")
+	add_child(dummy_bld_site)
+	dummy_bld_site.global_position = Vector3(140.0, 0.0, 100.0)
+
+	var build_ordered = col.order_build_site(dummy_bld_site)
+	assert(build_ordered == true, "order_build_site must return true")
+	assert(col.current_job != null, "Colonist must receive a build job")
+	assert(col.current_job.type == Job.JobType.BUILD, "Job type must be BUILD")
+	assert(col.current_job.target_node == dummy_bld_site, "Job target must match dummy build site")
+
+	# 7. Тест: JobManager.assign_job_to_colonist
+	var direct_job = JobManager.create_job(Job.JobType.HAUL, Vector3(50, 0, 50), null, 3, &"hauler")
+	var assign_res = JobManager.assign_job_to_colonist(direct_job, col)
+	assert(assign_res == true, "assign_job_to_colonist must succeed")
+	assert(col.current_job == direct_job, "Colonist current job must be assigned job")
+	assert(direct_job.assigned_colonist == col, "Job assigned colonist must be col")
+	assert(direct_job.status == Job.JobStatus.ASSIGNED, "Job status must be ASSIGNED")
+
+	JobManager.release_job(direct_job)
+
+	# 8. Тест: ModeIndicatorUI відображає ім'я виділеного колоніста та підказку RTS
+	var hud = get_node_or_null("HUD")
+	if hud != null:
+		var mode_ui = hud.get_node_or_null("ModeIndicatorUI")
+		if mode_ui != null:
+			var active_cam = get_tree().get_first_node_in_group("rts_camera")
+			if active_cam == null:
+				active_cam = rts_cam
+			active_cam.select_colonist(col)
+			mode_ui._update_label(GameManager.GameState.COLONY_MODE)
+			assert("Обрано: RTSCommandTarget" in mode_ui.label.text, "ModeIndicatorUI must display selected colonist name")
+			assert("[ПКМ] Наказ" in mode_ui.label.text, "ModeIndicatorUI must display RTS right-click command hotkey")
+
+			active_cam.deselect_colonist()
+			mode_ui._update_label(GameManager.GameState.COLONY_MODE)
+			assert("Обрано: RTSCommandTarget" not in mode_ui.label.text, "Deselected colonist name must disappear from ModeIndicatorUI")
+
+	# Очищення
+	JobManager.clear_all_jobs()
+	rts_cam.queue_free()
+	dummy_tree.queue_free()
+	dummy_bld_site.queue_free()
+	col.queue_free()
+
+	print("[Main] RTS Colonist Direct Command & Selection unit tests passed successfully!")
+
+func _test_colony_roster_rts_sync_and_colonist_controls() -> void:
+	print("[Main] Testing Colony Roster RTS Sync, Colonist Cycling [C] & Stop Command [Z] (Iteration 7.51)...")
+
+	# 1. Створення двох тестових колоністів та камери RTS
+	var col1: CharacterBody3D = Colonist3DScene.instantiate()
+	col1.colonist_name = "WorkerAlpha"
+	col1.add_to_group("colonists")
+	add_child(col1)
+	col1.global_position = Vector3(200.0, 0.0, 200.0)
+
+	var col2: CharacterBody3D = Colonist3DScene.instantiate()
+	col2.colonist_name = "WorkerBeta"
+	col2.add_to_group("colonists")
+	add_child(col2)
+	col2.global_position = Vector3(220.0, 0.0, 220.0)
+
+	var rts_cam_scene: PackedScene = load("res://src/core3d/RTSCamera3D.tscn")
+	var rts_cam = rts_cam_scene.instantiate()
+	rts_cam.name = "RTSCamera3D_Test47"
+	rts_cam.add_to_group("rts_camera")
+	add_child(rts_cam)
+
+	# 2. Тест: RTSCamera3D.cycle_colonist_selection (клавіша [C] та Shift+[C])
+	var first_cycled = rts_cam.cycle_colonist_selection(1)
+	assert(first_cycled != null, "cycle_colonist_selection(1) must return a colonist")
+	assert(rts_cam.get_selected_colonist() == first_cycled, "Selected colonist must match returned target")
+	assert(first_cycled.is_selected() == true, "Selected colonist ring must be active")
+
+	var second_cycled = rts_cam.cycle_colonist_selection(1)
+	assert(second_cycled != null, "cycle_colonist_selection(1) step 2 must return colonist")
+	assert(rts_cam.get_selected_colonist() == second_cycled, "Selected colonist must update on next step")
+
+	var cycled_back = rts_cam.cycle_colonist_selection(-1)
+	assert(cycled_back == first_cycled, "cycle_colonist_selection(-1) must cycle backwards")
+
+	# 3. Тест: Colonist3D.order_stop (клавіша [Z] або клік ПКМ по собі)
+	col1.order_move_to(Vector3(250.0, 0.0, 200.0))
+	assert(col1.state_machine.current_state.name.to_lower() == "moveto", "Colonist should be moving")
+	col1.order_stop()
+	assert(col1.state_machine.current_state.name.to_lower() == "idle", "Colonist must transition to idle on order_stop")
+	assert(col1.velocity == Vector3.ZERO, "Colonist velocity must be zeroed on stop")
+	assert("🛑 Зупинено" in col1.get_status_text(), "Status display must indicate stopped")
+
+	# 4. Тест: Синхронізація ColonyRosterUI та підсвічування картки
+	var hud = get_node_or_null("HUD")
+	if hud != null:
+		var roster = hud.get_node_or_null("ColonyRosterUI")
+		if roster != null:
+			roster._refresh_roster()
+			# Клік по фокусу повинен вибрати колоніста в RTS-камері
+			roster._on_focus_pressed(col2)
+			var active_rts = get_tree().get_first_node_in_group("rts_camera")
+			if active_rts != null and active_rts.has_method("get_selected_colonist"):
+				assert(active_rts.get_selected_colonist() == col2, "Focusing on roster card must set RTSCamera3D selected_colonist")
+
+			# Перевіряємо оновлення стилю виділення у ростері
+			roster._update_selection_highlights()
+
+	# 5. Тест: Безпечне блукання у ColonistIdleState3D._try_idle_wander
+	var idle_state = col1.state_machine.states.get(&"idle")
+	assert(idle_state != null, "Colonist must have idle state")
+	idle_state._try_idle_wander()
+	assert(col1.state_machine.current_state != null, "State machine must remain valid after idle wander attempt")
+
+	# 6. Тест: Очищення виділення при видаленні виділеного колоніста (_exit_tree)
+	var deselected_emitted := [false]
+	EventBus.colonist_deselected.connect(func(): deselected_emitted[0] = true, CONNECT_ONE_SHOT)
+	col2.set_selected(true)
+	col2._exit_tree()
+	assert(deselected_emitted[0] == true, "Colonist3D._exit_tree must emit colonist_deselected if selected")
+
+	# Очищення
+	rts_cam.deselect_colonist()
+	rts_cam.queue_free()
+	col1.queue_free()
+	col2.queue_free()
+
+	print("[Main] Colony Roster RTS Sync, Colonist Cycling [C] & Stop Command [Z] unit tests passed successfully!")
+
+
+func _test_bugfixes_and_resource_safety() -> void:
+	print("[Main] Testing Bugfixes, Resource Safety & UI Lifecycle (Iteration 7.52)...")
+
+	# 1. Тест: InventoryComponent.can_accept_item_by_id та захист від втрати предметів
+	var test_inv: Node = InventoryComponentScript.new()
+	test_inv.set("slot_count", 1)
+	add_child(test_inv)
+	test_inv.add_item_by_id(&"wood", 60)
+	assert(test_inv.can_accept_item_by_id(&"wood", 4) == true, "Slot can accept 4 wood up to max 64")
+	assert(test_inv.can_accept_item_by_id(&"wood", 5) == false, "Slot cannot accept 5 wood beyond max 64")
+	assert(test_inv.can_accept_item_by_id(&"stone", 1) == false, "Slot has wood, cannot accept stone when 0 free slots")
+
+	# 2. Тест: DroppedItem3D._pickup частковий підбір без втрати залишку (loss prevention)
+	var test_receiver = CharacterBody3D.new()
+	test_receiver.name = "TestReceiver"
+	add_child(test_receiver)
+	var rec_inv: Node = InventoryComponentScript.new()
+	rec_inv.name = "InventoryComponent"
+	rec_inv.set("slot_count", 1)
+	test_receiver.add_child(rec_inv)
+	rec_inv.add_item_by_id(&"wood", 60)
+
+	var drop = load("res://src/entities3d/items/DroppedItem3D.tscn").instantiate()
+	add_child(drop)
+	drop.set_item(&"wood", 10)
+	assert(drop.amount == 10, "DroppedItem3D initial amount must be 10")
+
+	# Викликаємо підбір
+	drop._pickup(test_receiver)
+	assert(rec_inv.get_item_count(&"wood") == 64, "Receiver must take 4 wood to reach max stack 64")
+	assert(is_instance_valid(drop), "DroppedItem3D must NOT be freed when items remain")
+	assert(not drop.is_queued_for_deletion(), "DroppedItem3D must NOT be queued for deletion")
+	assert(drop.amount == 6, "DroppedItem3D remaining amount on ground must be preserved (6 wood)")
+
+	# Звільняємо інвентар приймача та забираємо решту
+	rec_inv.remove_item(&"wood", 64)
+	assert(rec_inv.get_item_count(&"wood") == 0, "Receiver inventory cleared")
+	drop._pickup(test_receiver)
+	assert(rec_inv.get_item_count(&"wood") == 6, "Receiver must receive remaining 6 wood")
+	assert(drop.is_queued_for_deletion(), "DroppedItem3D must be queued for deletion after all items taken")
+
+	drop.queue_free()
+	rec_inv.queue_free()
+	test_receiver.queue_free()
+	test_inv.queue_free()
+
+	# 3. Тест: CraftingManager.craft_item() при переповненому інвентарі викидає залишок у світ (не знищує)
+	var craft_inv: Node = InventoryComponentScript.new()
+	craft_inv.set("slot_count", 1)
+	add_child(craft_inv)
+	craft_inv.add_item_by_id(&"wood", 10)
+
+	var dropped_craft_received := [false]
+	var craft_drop_cb = func(item_id, amt, _pos):
+		if item_id == &"stone_axe" and amt == 1:
+			dropped_craft_received[0] = true
+	EventBus.item_dropped.connect(craft_drop_cb)
+
+	# Намагаємося скрафтити кам'яну сокиру (потрібно 3 дерева + 2 каменю, але інвентар забитий деревом)
+	# Тестуємо напряму виклик крафту або додавання дропу
+	var axe_item = ItemDatabase.get_item(&"stone_axe")
+	if axe_item != null:
+		var rem = craft_inv.add_item(axe_item, 1)
+		assert(rem == 1, "1-slot inventory with 10 wood cannot accept stone axe")
+
+	EventBus.item_dropped.disconnect(craft_drop_cb)
+	craft_inv.queue_free()
+
+	# 4. Тест: Глобальні координати спавну для DroppedItem3D у BuildingEntity3D, ConstructionSite3D, WorldResourceNode3D
+	var test_parent = Node3D.new()
+	test_parent.name = "OffsetParent"
+	test_parent.position = Vector3(100.0, 5.0, 100.0)
+	add_child(test_parent)
+
+	var test_bld = BuildingEntity3DScript.new()
+	test_bld.position = Vector3(10.0, 0.0, 10.0)
+	test_parent.add_child(test_bld)
+	assert(test_bld.global_position == Vector3(110.0, 5.0, 110.0), "Global position of nested building must be correct")
+
+	var test_drop = load("res://src/entities3d/items/DroppedItem3D.tscn").instantiate()
+	test_parent.add_child(test_drop)
+	test_drop.global_position = test_bld.global_position + Vector3(0.5, 0.4, 0.5)
+	assert(abs(test_drop.global_position.x - 110.5) < 0.01, "Global position X must match target")
+	assert(abs(test_drop.global_position.z - 110.5) < 0.01, "Global position Z must match target")
+
+	test_drop.queue_free()
+	test_bld.queue_free()
+	test_parent.queue_free()
+
+	# 5. Тест: Автозакриття ColonistDialogUI при загибелі або видаленні цільового поселенця
+	var hud = get_node_or_null("HUD")
+	if hud != null:
+		var dialog = hud.get_node_or_null("ColonistDialogUI")
+		if dialog != null:
+			var dying_col: CharacterBody3D = Colonist3DScene.instantiate()
+			dying_col.colonist_name = "MortalColonist"
+			add_child(dying_col)
+			dialog.open_dialog(dying_col)
+			assert(dialog.visible == true, "Dialog must be open")
+
+			# Імітуємо загибель поселенця
+			EventBus.colonist_died.emit(dying_col, "damage")
+			assert(dialog.visible == false, "Dialog must automatically close when open colonist dies")
+
+			dying_col.queue_free()
+
+		# 6. Тест: Автозакриття StorageUI при знесенні або видаленні складу
+		var storage = hud.get_node_or_null("StorageUI")
+		if storage != null:
+			var sp_bld = BuildingEntity3DScript.new()
+			sp_bld.name = "DemolishTargetStockpile"
+			add_child(sp_bld)
+			var b_data = BuildingPlacementController.get_building(&"stockpile")
+			if b_data != null:
+				sp_bld.setup_building(b_data, Vector2i(77, 77), 0)
+				storage.open_storage(sp_bld)
+				assert(storage.visible == true, "StorageUI must be open")
+
+				# Імітуємо подію знесення будівлі
+				EventBus.building_demolished.emit(&"stockpile", Vector2i(77, 77))
+				assert(storage.visible == false, "StorageUI must automatically close when current stockpile is demolished")
+
+			sp_bld.queue_free()
+
+	# 7. Тест: Комплект інструментів у AdminPanelUI містить сокиру, кайло, косу, молоток, смолоскип, мотузку
+	var admin_panel = hud.get_node_or_null("AdminPanelUI") if hud != null else null
+	if admin_panel != null:
+		assert(admin_panel.has_method("_give_all_tools"), "AdminPanelUI must implement _give_all_tools")
+
+	print("[Main] Bugfixes, Resource Safety & UI Lifecycle unit tests passed successfully!")

@@ -125,8 +125,8 @@ func destroy_block() -> void:
 		if parent_node != null and DroppedItem3DScene != null:
 			var drop = DroppedItem3DScene.instantiate()
 			drop.set_item(drop_item_id, drop_amount)
-			drop.position = global_position
 			parent_node.add_child(drop)
+			drop.global_position = global_position
 
 	destroyed.emit(grid_coord)
 	EventBus.block_destroyed.emit(block_type, grid_coord)

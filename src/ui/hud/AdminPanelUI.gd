@@ -550,12 +550,12 @@ func _give_all_tools() -> void:
 	var player = _get_player()
 	if player == null or player.inventory == null:
 		return
-	var tool_ids = [&"stone_axe", &"stone_pickaxe", &"scythe"]
+	var tool_ids = [&"stone_axe", &"stone_pickaxe", &"scythe", &"hammer", &"torch", &"rope"]
 	for tid in tool_ids:
 		var item = ItemDatabase.get_item(tid)
 		if item != null:
 			player.inventory.add_item(item, 1)
-	print("[AdminPanel] 🛠️ Видано всі інструменти (Сокира, Кайло, Коса)!")
+	print("[AdminPanel] 🛠️ Видано всі інструменти (Сокира, Кайло, Коса, Молоток, Смолоскип, Мотузка)!")
 
 
 func _clear_player_inventory() -> void:

@@ -30,6 +30,10 @@ func _ready() -> void:
 			EventBus.colonist_profession_changed.connect(_on_colonists_changed)
 		if EventBus.has_signal("colonist_roster_toggle_requested"):
 			EventBus.colonist_roster_toggle_requested.connect(toggle_roster)
+		if EventBus.has_signal("colonist_selected"):
+			EventBus.colonist_selected.connect(func(_col): if is_inside_tree(): _update_selection_highlights())
+		if EventBus.has_signal("colonist_deselected"):
+			EventBus.colonist_deselected.connect(func(): if is_inside_tree(): _update_selection_highlights())
 
 	_refresh_roster()
 	set_process(not _is_collapsed)
@@ -224,6 +228,10 @@ func _create_colonist_card(colonist: Node) -> PanelContainer:
 	card_style.corner_radius_bottom_right = 4
 	card_style.corner_radius_bottom_left = 4
 	card.add_theme_stylebox_override("panel", card_style)
+	card.gui_input.connect(func(ev: InputEvent) -> void:
+		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+			_on_focus_pressed(colonist)
+	)
 
 	var c_margin := MarginContainer.new()
 	c_margin.add_theme_constant_override("margin_left", 6)
@@ -333,6 +341,7 @@ func _create_colonist_card(colonist: Node) -> PanelContainer:
 func _update_active_statuses() -> void:
 	if _list_vbox == null:
 		return
+	_update_selection_highlights()
 	var needs_refresh: bool = false
 	for card in _list_vbox.get_children():
 		if not is_instance_valid(card) or not card.has_meta("colonist_node"):
@@ -371,6 +380,8 @@ func _on_follow_pressed(colonist: Node, btn: Button, follow_icon: Label) -> void
 	if not is_instance_valid(colonist) or colonist.is_queued_for_deletion():
 		_refresh_roster()
 		return
+	if AudioManager != null:
+		AudioManager.play_sound(&"click", -3.0, 1.1)
 	if colonist.get("is_following_player") == true:
 		if colonist.has_method("order_stop_follow"):
 			colonist.order_stop_follow()
@@ -394,6 +405,8 @@ func _on_dialog_pressed(colonist: Node) -> void:
 	if not is_instance_valid(colonist) or colonist.is_queued_for_deletion():
 		_refresh_roster()
 		return
+	if AudioManager != null:
+		AudioManager.play_sound(&"click", -3.0, 1.1)
 	if EventBus != null and EventBus.has_signal("colonist_dialog_requested"):
 		EventBus.colonist_dialog_requested.emit(colonist)
 
@@ -405,9 +418,24 @@ func _on_focus_pressed(colonist: Node) -> void:
 	var col_3d := colonist as Node3D
 	var c_name: String = colonist.get("colonist_name") if colonist.get("colonist_name") != null and not str(colonist.get("colonist_name")).is_empty() else colonist.name
 
+	# Візуальне виділення колоніста кільцем
+	if col_3d.has_method("set_selected"):
+		col_3d.set_selected(true)
+
 	# Візуальний маяк над поселенцем
 	if FloatingTextManager != null:
 		FloatingTextManager.spawn_text(col_3d.global_position + Vector3(0, 2.2, 0), "📍 " + c_name, Color.CYAN, 2.0, 0.8)
+
+	# Якщо активна RTS камера, обираємо та фокусуємо камеру на колоністі
+	var rts_cam = get_tree().get_first_node_in_group("rts_camera")
+	if rts_cam == null:
+		rts_cam = get_viewport().find_child("RTSCamera3D", true, false)
+	if rts_cam != null:
+		if rts_cam.has_method("select_colonist"):
+			rts_cam.select_colonist(col_3d)
+		if rts_cam.has_method("focus_on_position"):
+			rts_cam.focus_on_position(col_3d.global_position)
+	_update_selection_highlights()
 
 	# Орієнтація гравця в напрямку поселенця
 	var player := get_tree().get_first_node_in_group("player") as Node3D
@@ -418,4 +446,38 @@ func _on_focus_pressed(colonist: Node) -> void:
 			FloatingTextManager.spawn_info(player.global_position + Vector3(0, 2.0, 0), "📍 %s (%.1f м)" % [c_name, dist])
 
 	if AudioManager != null:
-		AudioManager.play_sound(&"step", -3.0, 1.2)
+		AudioManager.play_sound(&"click", -3.0, 1.2)
+
+func _update_selection_highlights() -> void:
+	if not is_inside_tree() or get_tree() == null or _list_vbox == null:
+		return
+	var rts_cam = get_tree().get_first_node_in_group("rts_camera")
+	if rts_cam == null:
+		rts_cam = get_viewport().find_child("RTSCamera3D", true, false)
+	var selected_col: Node = rts_cam.get_selected_colonist() if (rts_cam != null and rts_cam.has_method("get_selected_colonist")) else null
+
+	for card in _list_vbox.get_children():
+		if not is_instance_valid(card) or not card.has_meta("colonist_node"):
+			continue
+		var col_node = card.get_meta("colonist_node")
+		var is_selected: bool = false
+		if is_instance_valid(col_node):
+			if col_node == selected_col or (col_node.has_method("is_selected") and col_node.is_selected()):
+				is_selected = true
+
+		var style: StyleBoxFlat = card.get_theme_stylebox("panel") as StyleBoxFlat
+		if style != null:
+			if is_selected:
+				style.bg_color = Color(0.16, 0.22, 0.28, 0.95)
+				style.border_color = Color(0.2, 0.95, 0.9, 0.9)
+				style.border_width_left = 2
+				style.border_width_top = 2
+				style.border_width_right = 2
+				style.border_width_bottom = 2
+			else:
+				style.bg_color = Color(0.12, 0.15, 0.18, 0.85)
+				style.border_color = Color(0.25, 0.32, 0.4, 0.5)
+				style.border_width_left = 1
+				style.border_width_top = 1
+				style.border_width_right = 1
+				style.border_width_bottom = 1

@@ -39,6 +39,7 @@ var right_leg_pivot: Node3D = null
 var hand_tool_root: Node3D = null
 var carried_cargo_root: Node3D = null
 var label_3d: Label3D = null
+var selection_ring: MeshInstance3D = null
 
 # Анімація
 var _walk_cycle: float = 0.0
@@ -54,6 +55,7 @@ func _ready() -> void:
 	_setup_collision()
 	_setup_inventory()
 	_setup_visual_body()
+	_setup_selection_ring()
 	_setup_label_3d()
 	_setup_fsm()
 
@@ -65,6 +67,10 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	if is_selected():
+		set_selected(false)
+		if EventBus != null and EventBus.has_signal("colonist_deselected"):
+			EventBus.colonist_deselected.emit()
 	if JobManager != null:
 		JobManager.unregister_colonist(self)
 	if LogisticsManager != null and LogisticsManager.has_method("release_arrival_position"):
@@ -133,7 +139,99 @@ func order_stop_follow() -> void:
 		start_unloading_to_stockpile()
 		return
 	if state_machine != null:
-		state_machine.transition_to(&"idle")
+		state_machine.transition_to(&"idle", {"custom_status": "🛑 Зупинено"})
+
+
+## Наказ гравця (RTS): Зупинити поточну дію та повернутися до стану спокою
+func order_stop() -> void:
+	if current_job != null:
+		if JobManager != null:
+			JobManager.release_job(current_job, "Зупинено наказом гравця")
+		current_job = null
+	is_following_player = false
+	target_follow_node = null
+	velocity = Vector3.ZERO
+	stop_walk_animation()
+	set_status_display("🛑 Зупинено")
+	if has_items_to_unload():
+		start_unloading_to_stockpile()
+		return
+	if state_machine != null:
+		state_machine.transition_to(&"idle", {"custom_status": "🛑 Зупинено"})
+	if AudioManager != null:
+		AudioManager.play_sound(&"click", -2.0, 0.9)
+	if FloatingTextManager != null:
+		FloatingTextManager.spawn_info(global_position + Vector3(0, 1.8, 0), "🛑 Стоп", Color(1.0, 0.4, 0.4))
+
+
+## Наказ гравця (RTS): Рухатися до вказаної точки у світі
+func order_move_to(target_pos: Vector3) -> void:
+	if current_job != null:
+		if JobManager != null:
+			JobManager.release_job(current_job, "Отримано наказ переміщення")
+		current_job = null
+	is_following_player = false
+	target_follow_node = null
+	set_status_display("🚶 Рухається за наказом")
+	if FloatingTextManager != null:
+		FloatingTextManager.spawn_info(global_position + Vector3(0, 1.8, 0), "🚶 Виконую!", Color(0.3, 0.9, 0.5))
+	if AudioManager != null:
+		AudioManager.play_sound(&"click")
+	if state_machine != null:
+		state_machine.transition_to(&"moveto", {
+			"target_pos": target_pos,
+			"next_state": &"idle",
+			"arrival_distance": 0.8,
+			"custom_status": "🚶 Рухається за наказом"
+		})
+
+
+## Наказ гравця (RTS): Зібрати вказаний ресурсний вузол
+func order_harvest_node(node: Node) -> bool:
+	if node == null or not is_instance_valid(node) or node.is_queued_for_deletion():
+		return false
+	if current_job != null:
+		if JobManager != null:
+			JobManager.release_job(current_job, "Отримано наказ збору")
+		current_job = null
+	is_following_player = false
+	target_follow_node = null
+
+	var job: Job = null
+	var node_pos: Vector3 = node.global_position if node is Node3D else global_position
+	if JobManager != null:
+		job = JobManager.create_job(Job.JobType.HARVEST, node_pos, node, 5)
+		if job != null:
+			JobManager.assign_job_to_colonist(job, self)
+			return true
+
+	job = Job.new(Job.JobType.HARVEST, node_pos, node, 5)
+	assign_job(job)
+	return true
+
+
+## Наказ гравця (RTS): Будувати вказаний будівельний майданчик/модуль
+func order_build_site(node: Node) -> bool:
+	if node == null or not is_instance_valid(node) or node.is_queued_for_deletion():
+		return false
+	if current_job != null:
+		if JobManager != null:
+			JobManager.release_job(current_job, "Отримано наказ будівництва")
+		current_job = null
+	is_following_player = false
+	target_follow_node = null
+
+	var job: Job = null
+	var node_pos: Vector3 = node.global_position if node is Node3D else global_position
+	if JobManager != null:
+		job = JobManager.create_job(Job.JobType.BUILD, node_pos, node, 5)
+		if job != null:
+			JobManager.assign_job_to_colonist(job, self)
+			return true
+
+	job = Job.new(Job.JobType.BUILD, node_pos, node, 5)
+	assign_job(job)
+	return true
 
 
 ## Викликається, коли поточне завдання скасовано або об'єкт видалено
@@ -310,6 +408,10 @@ func assign_job(job: Job) -> void:
 		return
 
 	current_job = job
+	if FloatingTextManager != null:
+		FloatingTextManager.spawn_info(global_position + Vector3(0, 1.9, 0), "🔨 До роботи!", Color(0.4, 0.85, 1.0))
+	if AudioManager != null:
+		AudioManager.play_sound_3d(&"click", global_position, -8.0, 1.2)
 
 	match job.type:
 		Job.JobType.BUILD:
@@ -358,7 +460,7 @@ func take_damage(amount: float) -> void:
 	current_health = clampf(current_health - amount, 0.0, max_health)
 	if current_health <= 0.0:
 		if EventBus != null and EventBus.has_signal("colonist_died"):
-			EventBus.colonist_died.emit(self)
+			EventBus.colonist_died.emit(self, "damage")
 		queue_free()
 
 
@@ -540,6 +642,34 @@ func _apply_profession_colors() -> void:
 	torso_mesh.material_override = tunic_mat
 
 
+func _setup_selection_ring() -> void:
+	selection_ring = MeshInstance3D.new()
+	selection_ring.name = "SelectionRing"
+	var torus := TorusMesh.new()
+	torus.inner_radius = 0.48
+	torus.outer_radius = 0.58
+	torus.rings = 24
+	torus.ring_segments = 12
+	selection_ring.mesh = torus
+	selection_ring.position = Vector3(0, 0.05, 0)
+	var ring_mat := StandardMaterial3D.new()
+	ring_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	ring_mat.albedo_color = Color(0.2, 0.95, 0.9, 0.85)
+	ring_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	selection_ring.material_override = ring_mat
+	selection_ring.visible = false
+	add_child(selection_ring)
+
+
+func set_selected(selected: bool) -> void:
+	if selection_ring != null:
+		selection_ring.visible = selected
+
+
+func is_selected() -> bool:
+	return selection_ring.visible if selection_ring != null else false
+
+
 func _setup_label_3d() -> void:
 	label_3d = Label3D.new()
 	label_3d.name = "StatusLabel"
@@ -591,7 +721,13 @@ func _setup_fsm() -> void:
 # ------------------------------------------------------------------------------
 func play_walk_animation(delta: float) -> void:
 	_is_walking = true
+	var prev_cycle: float = _walk_cycle
 	_walk_cycle += delta * 10.0
+
+	# Аудіо кроків: кожні PI радіан (напівкрок / крок)
+	if int(prev_cycle / PI) != int(_walk_cycle / PI):
+		if AudioManager != null:
+			AudioManager.play_sound_3d(&"walk", global_position, -16.0, randf_range(0.85, 1.15))
 
 	var leg_angle := sin(_walk_cycle) * 0.5
 	var arm_angle := -sin(_walk_cycle) * 0.4
@@ -703,12 +839,14 @@ func show_carried_cargo(item_id: StringName) -> void:
 func hide_hand_items() -> void:
 	if hand_tool_root != null:
 		for child in hand_tool_root.get_children():
-			child.get_parent().remove_child(child)
-			child.queue_free()
+			if is_instance_valid(child):
+				hand_tool_root.remove_child(child)
+				child.queue_free()
 	if carried_cargo_root != null:
 		for child in carried_cargo_root.get_children():
-			child.get_parent().remove_child(child)
-			child.queue_free()
+			if is_instance_valid(child):
+				carried_cargo_root.remove_child(child)
+				child.queue_free()
 
 	if not _is_walking:
 		if left_arm_pivot != null:

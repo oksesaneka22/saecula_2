@@ -145,6 +145,8 @@ func _perform_swing() -> void:
 func _finish_job() -> void:
 	if actor != null:
 		actor.hide_hand_items()
+		if FloatingTextManager != null:
+			FloatingTextManager.spawn_info(actor.global_position + Vector3(0, 1.9, 0), "🌾 Зібрано!", Color(1.0, 0.85, 0.2))
 		if actor.current_job != null:
 			if JobManager != null:
 				JobManager.complete_job(actor.current_job)

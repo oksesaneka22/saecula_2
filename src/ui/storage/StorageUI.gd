@@ -30,7 +30,22 @@ func _ready() -> void:
 
 	EventBus.storage_ui_requested.connect(open_storage)
 	EventBus.inventory_window_toggle_requested.connect(_on_inventory_toggle_requested)
+	EventBus.building_demolished.connect(_on_building_demolished)
 
+
+
+func _process(_delta: float) -> void:
+	if visible:
+		if not is_instance_valid(_target_stockpile) or not _target_stockpile.is_inside_tree():
+			close_storage()
+
+
+func _on_building_demolished(_bld_id: StringName, map_coords: Vector2i) -> void:
+	if visible and _target_stockpile != null:
+		if not is_instance_valid(_target_stockpile):
+			close_storage()
+		elif "origin_cell" in _target_stockpile and _target_stockpile.origin_cell == map_coords:
+			close_storage()
 
 func _build_ui_layout() -> void:
 	# 1. Затемнення заднього плану
@@ -219,9 +234,9 @@ func close_storage() -> void:
 
 	visible = false
 
-	if _stockpile_inventory != null and _stockpile_inventory.inventory_updated.is_connected(refresh_ui):
+	if is_instance_valid(_stockpile_inventory) and _stockpile_inventory.inventory_updated.is_connected(refresh_ui):
 		_stockpile_inventory.inventory_updated.disconnect(refresh_ui)
-	if _player_inventory != null and _player_inventory.inventory_updated.is_connected(refresh_ui):
+	if is_instance_valid(_player_inventory) and _player_inventory.inventory_updated.is_connected(refresh_ui):
 		_player_inventory.inventory_updated.disconnect(refresh_ui)
 
 	_target_stockpile = null

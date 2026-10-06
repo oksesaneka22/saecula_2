@@ -272,7 +272,6 @@ func confirm_placement(keep_placing: bool = false) -> bool:
 			ModularManager.place_blueprint(placed_building.id, placed_cell, float(placed_rot) * 90.0)
 	else:
 		placement_confirmed.emit(placed_building, placed_cell, placed_rot)
-		EventBus.construction_site_placed.emit(null, placed_building.id, placed_cell)
 
 	var should_continue: bool = keep_placing or Input.is_key_pressed(KEY_SHIFT)
 	if should_continue:

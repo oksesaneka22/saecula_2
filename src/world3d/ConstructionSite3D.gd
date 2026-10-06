@@ -390,9 +390,9 @@ func demolish(player_inventory: Node = null) -> Dictionary:
 				rem = player_inventory.add_item(item_id, count)
 			if rem > 0 and DroppedItem3DScene != null and get_parent() != null:
 				var drop = DroppedItem3DScene.instantiate()
-				drop.position = global_position + Vector3(randf_range(-1.0, 1.0), 0.4, randf_range(-1.0, 1.0))
-				drop.set_item(item_id, rem)
 				get_parent().add_child(drop)
+				drop.global_position = global_position + Vector3(randf_range(-1.0, 1.0), 0.4, randf_range(-1.0, 1.0))
+				drop.set_item(item_id, rem)
 
 	# 2. Скасовуємо завдання робітників
 	if JobManager != null:

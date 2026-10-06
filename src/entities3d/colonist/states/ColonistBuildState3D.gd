@@ -235,6 +235,10 @@ func _get_site_display_name() -> String:
 func _finish_job() -> void:
 	if actor != null:
 		actor.hide_hand_items()
+		if AudioManager != null:
+			AudioManager.play_sound_3d(&"place", actor.global_position, 0.0, 1.2)
+		if FloatingTextManager != null:
+			FloatingTextManager.spawn_info(actor.global_position + Vector3(0, 1.9, 0), "✅ Збудовано!", Color(0.3, 1.0, 0.5))
 		if actor.current_job != null and JobManager != null:
 			JobManager.complete_job(actor.current_job)
 		actor.current_job = null

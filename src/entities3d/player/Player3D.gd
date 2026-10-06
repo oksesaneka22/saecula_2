@@ -490,7 +490,13 @@ func _try_interact_or_harvest(is_interact_key: bool = false) -> void:
 	# Анімація помаху головою/камерою
 	_play_swing_animation()
 
+	if is_interact_key and is_looking_at_water() and current_thirst < max_thirst:
+		if _try_drink_water():
+			return
+
 	if interact_ray == null or not interact_ray.is_colliding():
+		if is_interact_key and _try_drink_water():
+			return
 		return
 
 	var collider = interact_ray.get_collider()

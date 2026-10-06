@@ -144,8 +144,21 @@ func craft_item(recipe: Resource, inventory: Node) -> bool:
 	# 2. Додаємо результат у інвентар
 	var remainder: int = inventory.add_item(result_item, result_amount)
 	if remainder > 0:
-		# Якщо інвентар переповнений і результат не помістився повністю
-		print("[CraftingManager] Увага: %d предметів не помістилося в інвентар!" % remainder)
+		# Якщо інвентар переповнений і результат не помістився повністю — викидаємо залишок на землю
+		var inv_parent = inventory.get_parent()
+		var drop_pos: Vector3 = inv_parent.global_position if (inv_parent != null and inv_parent is Node3D) else Vector3.ZERO
+		var item_id_str: StringName = StringName(result_item.get("id"))
+		if EventBus != null and EventBus.has_signal("item_dropped"):
+			EventBus.item_dropped.emit(item_id_str, remainder, Vector2(drop_pos.x, drop_pos.z))
+		var world_parent = inv_parent.get_parent() if inv_parent != null else null
+		if world_parent != null:
+			var drop_scene = load("res://src/entities3d/items/DroppedItem3D.tscn")
+			if drop_scene != null:
+				var drop = drop_scene.instantiate()
+				world_parent.add_child(drop)
+				drop.global_position = drop_pos + Vector3(0, 0.4, 0)
+				drop.set_item(item_id_str, remainder)
+		print("[CraftingManager] ⚠️ %d скрафчених предметів не помістилося в інвентар і випало на землю!" % remainder)
 
 	recipe_crafted.emit(recipe, result_item, result_amount - remainder)
 	if AudioManager != null:
