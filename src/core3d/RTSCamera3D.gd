@@ -1,5 +1,9 @@
 extends Node3D
 
+const WorldResourceNode3D = preload("res://src/world3d/WorldResourceNode3D.gd")
+
+const CollisionLayers = preload("res://src/core3d/CollisionLayers.gd")
+
 ## RTSCamera3D: Камера стратегічного виду зверху (Top-Down RTS) у стилі Dota 2 / Factorio.
 ## Забезпечує панорамування WASD, масштабування (зум) коліщатком миші,
 ## вибір клітинок/об'єктів у 3D світі, та пакетний наказ на збір рамкою (Box Selection).
@@ -98,6 +102,17 @@ func focus_on_position(pos: Vector3) -> void:
 	global_position = Vector3(pos.x, 0.0, pos.z)
 
 
+func _find_ancestor_matching(collider: Node, predicate: Callable, max_depth: int = 6) -> Node:
+	var current: Node = collider
+	var depth: int = 0
+	while current != null and depth < max_depth:
+		if predicate.call(current):
+			return current
+		current = current.get_parent()
+		depth += 1
+	return null
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not is_active:
 		return
@@ -110,8 +125,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 
 	# Зупинка обраного колоніста на клавішу [Z]
-	var is_z_key: bool = event is InputEventKey and event.is_pressed() and not event.is_echo() and (event.physical_keycode == KEY_Z or event.keycode == KEY_Z)
-	if is_z_key and selected_colonist != null and is_instance_valid(selected_colonist):
+	if event.is_action_pressed("colonist_stop") and selected_colonist != null and is_instance_valid(selected_colonist):
 		if selected_colonist.has_method("order_stop"):
 			selected_colonist.order_stop()
 			_spawn_command_ping(selected_colonist.global_position, Color(1.0, 0.3, 0.3), "🛑 Стоп")
@@ -119,8 +133,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 
 	# Циклічне перемикання колоністів на клавішу [C] / [Shift+C]
-	var is_c_key: bool = event is InputEventKey and event.is_pressed() and not event.is_echo() and (event.physical_keycode == KEY_C or event.keycode == KEY_C)
-	if is_c_key and not is_harvest_order_mode and not (BuildingPlacementController != null and BuildingPlacementController.is_placing()):
+	if event.is_action_pressed("colonist_cycle") and not is_harvest_order_mode and not (BuildingPlacementController != null and BuildingPlacementController.is_placing()):
 		var step: int = -1 if ((event is InputEventWithModifiers and event.shift_pressed) or Input.is_key_pressed(KEY_SHIFT)) else 1
 		cycle_colonist_selection(step)
 		get_viewport().set_input_as_handled()
@@ -158,9 +171,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	# 2. Перевірка режиму розміщення креслення (Building Placement)
 	if BuildingPlacementController != null and BuildingPlacementController.is_placing():
-		var is_rotate_action: bool = event.is_action_pressed("rotate_building")
-		var is_r_key: bool = event is InputEventKey and event.pressed and not event.echo and (event.physical_keycode == KEY_R or event.keycode == KEY_R)
-		if is_rotate_action or is_r_key:
+		if event.is_action_pressed("rotate_building"):
 			var step: int = -1 if ((event is InputEventWithModifiers and event.shift_pressed) or Input.is_key_pressed(KEY_SHIFT)) else 1
 			BuildingPlacementController.rotate_placement(step)
 			get_viewport().set_input_as_handled()
@@ -175,7 +186,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				return
 
 	# 3. Режим виділення збору ресурсів або затиснута клавіша [H]
-	var is_h_held: bool = Input.is_action_pressed("order_harvest") or Input.is_key_pressed(KEY_H)
+	var is_h_held: bool = Input.is_action_pressed("order_harvest")
 	if is_harvest_order_mode or is_h_held:
 		if event.is_action_pressed("cancel") or event.is_action_pressed("secondary_action"):
 			if is_harvest_order_mode:
@@ -200,17 +211,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	# 5. Демонтаж на клавішу X під курсором миші в режимі RTS
-	var is_demolish_action: bool = event.is_action_pressed("demolish_building")
-	var is_x_key: bool = event is InputEventKey and event.is_pressed() and not event.is_echo() and (event.physical_keycode == KEY_X or event.keycode == KEY_X)
-	if is_demolish_action or is_x_key:
+	if event.is_action_pressed("demolish_building"):
 		if _handle_demolish_at_mouse():
 			get_viewport().set_input_as_handled()
 			return
 
 	# 6. Наказ на збір ресурсу на клавішу H під курсором миші або перемикання режиму виділення
-	var is_harvest_action: bool = event.is_action_pressed("order_harvest")
-	var is_h_key: bool = event is InputEventKey and event.is_pressed() and not event.is_echo() and (event.physical_keycode == KEY_H or event.keycode == KEY_H)
-	if is_harvest_action or is_h_key:
+	if event.is_action_pressed("order_harvest"):
 		if _handle_order_harvest_at_mouse():
 			get_viewport().set_input_as_handled()
 			return
@@ -341,9 +348,7 @@ func _handle_demolish_at_mouse() -> bool:
 		return false
 
 	var collider = result.get("collider")
-	var target = collider
-	while target != null and not target.has_method("demolish") and target.get_parent() != null and not (target.name == "Buildings" or target.name == "ModularContainer" or target.name == "World3D"):
-		target = target.get_parent()
+	var target = _find_ancestor_matching(collider, func(n: Node) -> bool: return n.has_method("demolish"))
 
 	if target != null and target.has_method("demolish"):
 		var player_node = get_tree().get_first_node_in_group("player")
@@ -373,7 +378,7 @@ func _create_harvest_job_for_node(target: Node) -> bool:
 	var prof: StringName = &""
 	if res_type != null:
 		match int(res_type):
-			0:
+			WorldResourceNode3D.ResourceType.TREE:
 				prof = &"lumberjack"
 			_:
 				prof = &""
@@ -397,11 +402,9 @@ func _handle_order_harvest_at_mouse() -> bool:
 		return false
 
 	var collider = result.get("collider")
-	var target = collider
-	while target != null and not target.is_in_group("resource_nodes") and not target.has_method("harvest") and target.get_parent() != null and not (target.name == "World3D" or target.name == "ChunkManager3D"):
-		target = target.get_parent()
+	var target = _find_ancestor_matching(collider, func(n: Node) -> bool: return n.is_in_group("resource_nodes") or n.has_method("harvest"))
 
-	if target == null or (not target.is_in_group("resource_nodes") and not target.has_method("harvest")):
+	if target == null:
 		return false
 
 	if JobManager == null:
@@ -416,12 +419,12 @@ func _handle_order_harvest_at_mouse() -> bool:
 	var res_name: String = "ресурс"
 	if res_type != null:
 		match int(res_type):
-			0: res_name = "Дерево"
-			1: res_name = "Камінь"
-			2: res_name = "Ягоди"
-			3: res_name = "Глину"
-			4: res_name = "Кремінь"
-			5: res_name = "Траву"
+			WorldResourceNode3D.ResourceType.TREE: res_name = "Дерево"
+			WorldResourceNode3D.ResourceType.ROCK: res_name = "Камінь"
+			WorldResourceNode3D.ResourceType.BUSH: res_name = "Ягоди"
+			WorldResourceNode3D.ResourceType.CLAY: res_name = "Глину"
+			WorldResourceNode3D.ResourceType.FLINT: res_name = "Кремінь"
+			WorldResourceNode3D.ResourceType.GRASS: res_name = "Траву"
 	elif "display_name" in target:
 		res_name = str(target.display_name)
 
@@ -618,16 +621,14 @@ func _try_select_colonist_at_mouse() -> bool:
 	var ray_origin: Vector3 = camera.project_ray_origin(mouse_pos)
 	var ray_normal: Vector3 = camera.project_ray_normal(mouse_pos)
 	var space_state = get_world_3d().direct_space_state
-	var query = PhysicsRayQueryParameters3D.create(ray_origin, ray_origin + (ray_normal * 200.0), 1)
+	var query = PhysicsRayQueryParameters3D.create(ray_origin, ray_origin + (ray_normal * 200.0), CollisionLayers.WORLD)
 	var result = space_state.intersect_ray(query)
 	if result.is_empty():
 		return false
 	var collider = result.get("collider")
 	if collider != null:
-		var target = collider
-		while target != null and not target.is_in_group("colonists") and not target.name.begins_with("Colonist") and target.get_parent() != null and not (target.name == "World3D" or target.name == "Colonists"):
-			target = target.get_parent()
-		if target != null and (target.is_in_group("colonists") or target.name.begins_with("Colonist")):
+		var target = _find_ancestor_matching(collider, func(n: Node) -> bool: return n.is_in_group("colonists") or n.name.begins_with("Colonist"))
+		if target != null:
 			select_colonist(target)
 			return true
 	return false
@@ -667,7 +668,7 @@ func _handle_rts_colonist_command() -> bool:
 	var ray_origin: Vector3 = camera.project_ray_origin(mouse_pos)
 	var ray_normal: Vector3 = camera.project_ray_normal(mouse_pos)
 	var space_state = get_world_3d().direct_space_state
-	var query = PhysicsRayQueryParameters3D.create(ray_origin, ray_origin + (ray_normal * 200.0), 9)
+	var query = PhysicsRayQueryParameters3D.create(ray_origin, ray_origin + (ray_normal * 200.0), CollisionLayers.WORLD_AND_BLUEPRINT)
 	var result = space_state.intersect_ray(query)
 	if not result.is_empty():
 		var collider = result.get("collider")
@@ -682,26 +683,20 @@ func _handle_rts_colonist_command() -> bool:
 					selected_colonist.order_stop()
 					_spawn_command_ping(hit_pos, Color(1.0, 0.3, 0.3), "🛑 Стоп")
 					return true
-		var target = collider
-		while target != null and not target.is_in_group("resource_nodes") and not target.has_method("harvest") and target.get_parent() != null and not (target.name == "World3D" or target.name == "ChunkStreamer"):
-			target = target.get_parent()
-		if target != null and (target.is_in_group("resource_nodes") or target.has_method("harvest")):
+		var target = _find_ancestor_matching(collider, func(n: Node) -> bool: return n.is_in_group("resource_nodes") or n.has_method("harvest"))
+		if target != null:
 			if selected_colonist.has_method("order_harvest_node"):
 				selected_colonist.order_harvest_node(target)
 				_spawn_command_ping(hit_pos, Color(1.0, 0.85, 0.2), "🪓 Збір")
 				return true
-		target = collider
-		while target != null and not target.has_method("interact_construct") and not target.is_in_group("construction_sites") and not target.is_in_group("modular_blueprints") and target.get_parent() != null and not (target.name == "World3D" or target.name == "Buildings" or target.name == "ModularContainer"):
-			target = target.get_parent()
-		if target != null and (target.has_method("interact_construct") or target.is_in_group("construction_sites") or target.is_in_group("modular_blueprints")):
+		target = _find_ancestor_matching(collider, func(n: Node) -> bool: return n.has_method("interact_construct") or n.is_in_group("construction_sites") or n.is_in_group("modular_blueprints"))
+		if target != null:
 			if selected_colonist.has_method("order_build_site"):
 				selected_colonist.order_build_site(target)
 				_spawn_command_ping(hit_pos, Color(0.2, 0.9, 1.0), "🔨 Будівництво")
 				return true
-		target = collider
-		while target != null and not target.has_method("interact_storage") and not target.is_in_group("stockpiles") and target.get_parent() != null and not (target.name == "World3D" or target.name == "Buildings"):
-			target = target.get_parent()
-		if target != null and (target.has_method("interact_storage") or target.is_in_group("stockpiles")):
+		target = _find_ancestor_matching(collider, func(n: Node) -> bool: return n.has_method("interact_storage") or n.is_in_group("stockpiles"))
+		if target != null:
 			if selected_colonist.has_method("has_items_to_unload") and selected_colonist.has_items_to_unload():
 				if selected_colonist.has_method("start_unloading_to_stockpile"):
 					selected_colonist.start_unloading_to_stockpile(target)

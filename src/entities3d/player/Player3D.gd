@@ -1,5 +1,7 @@
 extends CharacterBody3D
 
+const CollisionLayers = preload("res://src/core3d/CollisionLayers.gd")
+
 ## Player3D: Контролер гравця у 3D світі гри з видом від 1-ї особи (First-Person).
 ## Керується за допомогою WASD, огляд мишею через Head/Camera3D, взаємодія та збір ресурсів через RayCast3D.
 ## Підтримує будівництво воксельних блоків (Minecraft-style) на ПКМ та видобуток на ЛКМ.
@@ -62,7 +64,7 @@ func _ready() -> void:
 	add_to_group("player")
 	set_active(true)
 	interact_ray.target_position = Vector3(0, 0, -reach_distance)
-	interact_ray.collision_mask |= 8
+	interact_ray.collision_mask |= CollisionLayers.BLUEPRINT
 
 	block_ghost = BlockGhost3DScript.new()
 	block_ghost.name = "BlockGhost3D"
@@ -550,7 +552,7 @@ func _try_interact_or_harvest(is_interact_key: bool = false) -> void:
 			collider.interact(self)
 		return
 
-	# 3. Якщо це споруда зі сховищем / склад (BuildingEntity3D або StockpileBuilding)
+	# 3. Якщо це споруда зі сховищем / склад (BuildingEntity3D)
 	if collider.has_method("interact_storage"):
 		collider.interact_storage(self)
 		return
@@ -704,14 +706,23 @@ func start_sleep(duration: float = 2.8) -> void:
 	is_sleeping = true
 	velocity = Vector3.ZERO
 
+	var is_indoors: bool = false
+	if ModularManager != null:
+		var cell := Vector2i(int(floor(global_position.x / 2.0)), int(floor(global_position.z / 2.0)))
+		is_indoors = ModularManager.is_cell_indoors(cell)
+
+	var eff_duration: float = duration * 0.6 if is_indoors else duration
+	if is_indoors and FloatingTextManager != null:
+		FloatingTextManager.spawn_info(global_position + Vector3(0, 1.8, 0), "🏠 У затишному приміщенні", Color(0.2, 0.9, 0.4))
+
 	if _sleep_tween != null and _sleep_tween.is_valid():
 		_sleep_tween.kill()
 
 	_sleep_tween = create_tween()
 
 	if fps_camera != null:
-		_sleep_tween.parallel().tween_property(fps_camera, "rotation:x", deg_to_rad(-18.0), duration * 0.4)
-		_sleep_tween.parallel().tween_property(fps_camera, "position:y", -0.25, duration * 0.4)
+		_sleep_tween.parallel().tween_property(fps_camera, "rotation:x", deg_to_rad(-18.0), eff_duration * 0.4)
+		_sleep_tween.parallel().tween_property(fps_camera, "position:y", -0.25, eff_duration * 0.4)
 
 	_sleep_tween.parallel().tween_method(
 		func(val: float):
@@ -721,19 +732,19 @@ func start_sleep(duration: float = 2.8) -> void:
 				EventBus.player_stats_changed.emit(100.0, 100.0, current_energy, max_energy),
 		current_energy,
 		max_energy,
-		duration * 0.8
+		eff_duration * 0.8
 	)
 
 	if fps_camera != null:
-		_sleep_tween.chain().tween_property(fps_camera, "rotation:x", 0.0, duration * 0.4)
-		_sleep_tween.parallel().tween_property(fps_camera, "position:y", 0.0, duration * 0.4)
+		_sleep_tween.chain().tween_property(fps_camera, "rotation:x", 0.0, eff_duration * 0.4)
+		_sleep_tween.parallel().tween_property(fps_camera, "position:y", 0.0, eff_duration * 0.4)
 
 	_sleep_tween.tween_callback(complete_sleep)
 
 	if EventBus != null and EventBus.has_signal("player_sleep_started"):
-		EventBus.player_sleep_started.emit(duration)
+		EventBus.player_sleep_started.emit(eff_duration)
 
-	print("[Player3D] Гравець ліг спати біля багаття на %.1f сек. Енергію повністю відновлено!" % duration)
+	print("[Player3D] Гравець ліг спати біля багаття на %.1f сек. Енергію повністю відновлено!" % eff_duration)
 
 
 ## Завершення сну: гарантоване повернення камери та зняття блокування

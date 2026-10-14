@@ -1,7 +1,7 @@
 extends Node
 
 ## GridManager: Центральний менеджер тайлової сітки та пошуку шляхів (AStarGrid2D).
-## Забезпечує роботу з координатами як 2D, так і 3D (X-Z площина), реєстрацію твердих перешкод,
+## Забезпечує роботу з координатами 3D (X-Z площина), реєстрацію твердих перешкод,
 ## пошук шляхів для юнітів/колоністів та запити прохідності.
 
 # ------------------------------------------------------------------------------
@@ -15,7 +15,6 @@ signal grid_initialized(width: int, height: int)
 # ------------------------------------------------------------------------------
 # Константи та параметри
 # ------------------------------------------------------------------------------
-const TILE_SIZE: int = 32
 const TILE_SIZE_3D: float = 1.0 ## Розмір клітинки в метрах у 3D просторі (1 клітинка = 1x1м, ідентично воксельним блокам)
 
 @export var grid_width: int = 128
@@ -43,8 +42,8 @@ func initialize_grid(width: int, height: int) -> void:
 	_water_cells.clear()
 
 	astar_grid.region = Rect2i(0, 0, grid_width, grid_height)
-	astar_grid.cell_size = Vector2(TILE_SIZE, TILE_SIZE)
-	astar_grid.offset = Vector2(TILE_SIZE / 2.0, TILE_SIZE / 2.0)
+	astar_grid.cell_size = Vector2(TILE_SIZE_3D, TILE_SIZE_3D)
+	astar_grid.offset = Vector2(TILE_SIZE_3D / 2.0, TILE_SIZE_3D / 2.0)
 
 	# Для тайлової пісочниці діагональний рух з обмеженням зрізання кутів.
 	# DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES дозволяє природний плавний діагональний рух,
@@ -58,16 +57,11 @@ func initialize_grid(width: int, height: int) -> void:
 
 
 # ------------------------------------------------------------------------------
-# Трансформації координат 2D (Vector2 <-> Vector2i)
+# Трансформації координат (Vector2/Vector3 на площині X-Z <-> Vector2i)
 # ------------------------------------------------------------------------------
-## Перетворює 2D світові координати в пікселях на індекс клітинки сітки (Vector2i)
+## Перетворює 2D вектор на площині X-Z на індекс клітинки сітки (Vector2i)
 func world_to_map(world_pos: Vector2) -> Vector2i:
-	return Vector2i(int(floor(world_pos.x / float(TILE_SIZE))), int(floor(world_pos.y / float(TILE_SIZE))))
-
-
-## Перетворює індекс клітинки сітки на координати центра клітинки у 2D світі (Vector2)
-func map_to_world(map_pos: Vector2i) -> Vector2:
-	return (Vector2(map_pos) * float(TILE_SIZE)) + Vector2(TILE_SIZE / 2.0, TILE_SIZE / 2.0)
+	return Vector2i(int(floor(world_pos.x / TILE_SIZE_3D)), int(floor(world_pos.y / TILE_SIZE_3D)))
 
 
 # ------------------------------------------------------------------------------
@@ -162,47 +156,8 @@ func get_occupant(map_pos: Vector2i) -> Node:
 
 
 # ------------------------------------------------------------------------------
-# Пошук шляхів (Pathfinding) 2D та 3D
+# Пошук шляхів (Pathfinding) 3D
 # ------------------------------------------------------------------------------
-## Повертає масив 2D світових точок (Vector2) від початкової до кінцевої позиції.
-func get_world_path(from_world: Vector2, to_world: Vector2) -> PackedVector2Array:
-	var from_cell: Vector2i = world_to_map(from_world)
-	var to_cell: Vector2i = world_to_map(to_world)
-
-	if not is_within_bounds(from_cell) or not is_within_bounds(to_cell):
-		return PackedVector2Array()
-
-	if from_cell == to_cell:
-		if not astar_grid.is_point_solid(to_cell):
-			return PackedVector2Array([map_to_world(to_cell)])
-		to_cell = get_closest_walkable_neighbor(from_cell, to_cell)
-		if to_cell == Vector2i(-1, -1):
-			return PackedVector2Array()
-		return PackedVector2Array([map_to_world(to_cell)])
-
-	var from_was_solid: bool = astar_grid.is_point_solid(from_cell)
-	if from_was_solid:
-		astar_grid.set_point_solid(from_cell, false)
-
-	if astar_grid.is_point_solid(to_cell):
-		to_cell = get_closest_walkable_neighbor(from_cell, to_cell)
-		if to_cell == Vector2i(-1, -1):
-			if from_was_solid:
-				astar_grid.set_point_solid(from_cell, true)
-			return PackedVector2Array()
-
-	var id_path: Array[Vector2i] = astar_grid.get_id_path(from_cell, to_cell)
-
-	if from_was_solid:
-		astar_grid.set_point_solid(from_cell, true)
-
-	var world_path: PackedVector2Array = PackedVector2Array()
-	for cell in id_path:
-		world_path.append(map_to_world(cell))
-
-	return world_path
-
-
 ## Повертає масив 3D світових точок (Vector3) на площині X-Z для навігації колоністів
 func get_world_path_3d(from_world: Vector3, to_world: Vector3, y: float = 0.0) -> PackedVector3Array:
 	var from_cell: Vector2i = world_to_map_3d(from_world)

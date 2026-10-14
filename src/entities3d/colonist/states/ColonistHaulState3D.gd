@@ -1,6 +1,5 @@
 class_name ColonistHaulState3D
-extends "res://src/entities/fsm/State.gd"
-const Job = preload("res://src/systems/jobs/Job.gd")
+extends "res://src/entities3d/colonist/states/ColonistState3D.gd"
 const DroppedItem3D = preload("res://src/entities3d/items/DroppedItem3D.gd")
 
 ## ColonistHaulState3D: Стан доставки та перенесення предметів на склад колонії.

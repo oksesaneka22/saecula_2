@@ -1147,3 +1147,109 @@
   - [x] Оновити `EventBus.gd`: узгоджено сигнатуру сигналу `colonist_died(colonist_node: Node, cause: String)`.
   - [x] Оновити `Main.gd`: додано Unit Test Suite #48 `_test_bugfixes_and_resource_safety()`. Усі 48 наборів тестів успішно проходять (код 0).
 * **Критерії прийому:** Жоден ресурс не втрачається при підборі з переповненим інвентарем або при крафті; координати дропів у світі не зсуваються; вікна діалогу колоніста та складу коректно закриваються при загибелі жителя або знесенні споруди; водойми мають підказку та підтримку [E]/[ПКМ]; комплект адмін-інструментів повний; усі 48 юніт-тестів Godot проходять без помилок.
+
+
+### 7.53. Винесення тестів з Main.gd у спеціалізований тестовий раннер (GameTestSuite Architecture) (Iteration 7.53)
+* **Статус:** [x] Завершено
+* **Контекст:** Виконання прямого запиту користувача "Винеси тести з Main.gd". Файл `Main.gd` розрісся до 3600 рядків та ~200 КБ через накопичення 48 наборів автоматичних тестів, що ускладнювало підтримку та порушувало принцип єдиної відповідальності (SRP).
+* **Вимоги:**
+  - Створити окремий модульний клас тестового раннера `res://src/tests/GameTestSuite.gd` (`class_name GameTestSuite extends Node`).
+  - Перенести всі 48 наборів юніт-тестів та допоміжні preloads з `Main.gd` до `GameTestSuite.gd`.
+  - Забезпечити збереження повного контексту виконання для тестів (доступ до SceneTree, `World3D`, `HUD`, сумісність з `get_tree().get_first_node_in_group(...)` та `add_child()`).
+  - Спростити `Main.gd` до лаконічного файлу ініціалізації гри (~40 рядків), що делегує виконання тестів `GameTestSuite` при запуску в headless режимі або за наявності відповідних прапорців командного рядка (`--test`, `--run-tests`).
+  - Зберегти метод `_run_all_unit_tests()` у `Main.gd` для зворотної сумісності.
+  - Забезпечити 100% успішне проходження всіх 48 наборів тестів із 0 витоків пам'яті та кодом повернення 0.
+* **Завдання:**
+  - [x] Створити каталог `res://src/tests/` та файл `GameTestSuite.gd`.
+  - [x] Перенести всі тестові прелоади, константи, методи валідації та 48 тестових наборів.
+  - [x] Реалізувати безпечну резолюцію вузлів сцени через `_get_scene_node(path)`.
+  - [x] Переписати `Main.gd`: залишити лише обробку запуску, EventBus та делегування тестування до `GameTestSuite`.
+  - [x] Прогнати автоматичні тести через Godot Headless Runner: усі 48 наборів тестів проходять без помилок (код 0).
+* **Критерії прийому:** `Main.gd` скорочено з 3600 рядків до ~40 рядків; усі тести виносяться у `res://src/tests/GameTestSuite.gd`; гра та тести запускаються без жодних збоїв та витоків пам'яті.
+
+
+### 7.54. Повне очищення проекту від застарілого мертвого 2D коду (Legacy 2D Cleanup & Consolidation) (Iteration 7.54)
+* **Статус:** [x] Завершено
+* **Контекст:** Виконання прямого запиту користувача "видали мертвий код для 2D". Після повноцінного переходу гри у 3D простір (3D вокселі, модульні споруди, 3D поселенці, RTS-камера) у дереві вихідного коду залишилися застарілі 2D сцени, скрипти та папки з ранніх етапів прототипування (ітерації 1-3).
+* **Вимоги:**
+  - Видалити всі застарілі 2D сцени та скрипти: `GameCamera2D.gd`, `Player.tscn` / `Player.gd` / `PlayerVisual.gd`, `DroppedItem.tscn` / `DroppedItem.gd`, `World.tscn` / `World.gd` / `GroundLayer.gd`, `WorldResourceNode.tscn` / `WorldResourceNode.gd`, `ConstructionSite.gd`, `StockpileBuilding.gd`.
+  - Видалити порожні застарілі 2D директорії: `src/entities/player`, `src/entities/items`, `src/entities/colonist`, `src/world/buildings`.
+  - Зберегти загальні базові FSM класи `src/entities/fsm/State.gd` та `StateMachine.gd`, оскільки вони типізовані під `CharacterBody3D` та використовуються 3D колоністами.
+  - Очистити `GridManager.gd` від застарілих методів піксельного 2D перетворення (`map_to_world`, `get_world_path`, константи `TILE_SIZE = 32`). Стандартизувати розмір клітинки в `AStarGrid2D` на `TILE_SIZE_3D = 1.0` (метри).
+  - Оновити `GameTestSuite.gd`: перевести тест складу #9 на 100% 3D сутності `BuildingEntity3D` та видалити preload `StockpileBuildingScript`.
+  - Оновити `World3D.gd`: перевести `_on_resource_harvested` на `GridManager.world_to_map_3d`.
+  - Оновити `Player3D.gd`: очистити коментар щодо `StockpileBuilding`.
+  - Забезпечити 100% проходження всіх 48 наборів юніт-тестів без помилок та витоків пам'яті (exit code 0).
+* **Завдання:**
+  - [x] Видалити 24 файли мертвого 2D коду та відповідні .uid метафайли.
+  - [x] Видалити порожні директорії `player`, `items`, `colonist`, `buildings`.
+  - [x] Оновити `GridManager.gd`: видалити піксельні методи, уніфікувати сітку A* під `TILE_SIZE_3D`.
+  - [x] Оновити `GameTestSuite.gd`: адаптувати тести логістики виключно до 3D будівель.
+  - [x] Оновити `World3D.gd` та `Player3D.gd`.
+  - [x] Перевірити працездатність через Headless Godot: 48 з 48 тестів пройшли успішно (код 0).
+* **Критерії прийому:** В кодовій базі немає жодного неактуального 2D скрипта чи сцени; кодова база проєкту повністю уніфікована під 3D світ; тести проходять чисто (код 0).
+
+### 7.55. Комплексний рефакторинг кодової бази, сувора типізація, базовий стан ColonistState3D та усунення дублювання (Iteration 7.55)
+* **Статус:** [x] Завершено
+* **Контекст:** Виконання комплексного запиту користувача щодо підвищення якості коду, суворої типізації, відмови від рефлексії (get/set/has_method), усунення дублювання у FSM колоністів, винесення констант фізичних шарів колізій, очищення методів обходу предків у RTSCamera3D, використання чистих дій вводу та увімкнення лінтера GDScript без порушення логіки гри та з підтримкою 100% проходження 48 юніт-тестів.
+* **Вимоги:**
+  - Сувора типізація схем даних: ItemCost.item: ItemData, BuildingData.construction_cost: Array[ItemCost], RecipeData.ingredients: Array[ItemCost], RecipeData.result_item: ItemData.
+  - Відмова від рефлексії в ItemDatabase.gd: var item := res as ItemData із прямим доступом до полів id та icon замість res.get() / res.set().
+  - Відмова від рефлексії в StateMachine.gd: сувора типізація станів if child is State: із прямим присвоєнням child.state_machine та child.actor.
+  - Експорто-безпечне завантаження ресурсів у TextureHelper.gd: ResourceLoader.exists() та load(path) as Texture2D замість низькорівневого FileAccess + Image.load().
+  - Базовий клас ColonistState3D.gd (class_name ColonistState3D extends State): винесення константи GRAVITY = 19.6, методів apply_gravity(), face_target(), try_unload_or_idle().
+  - Переведення 6 станів колоніста (Build, Harvest, Haul, Idle, MoveTo, Rest) на наслідування ColonistState3D та видалення зайвих preload Job.
+  - Іменований утилітарний клас фізичних шарів CollisionLayers.gd (WORLD = 1, BLUEPRINT = 8, WORLD_AND_BLUEPRINT = 9) та заміщення магічних чисел у RTSCamera3D, ConstructionSite3D, ModularPiece3D, Player3D.
+  - Заміна магічних чисел ресурсів 0..5 на константи WorldResourceNode3D.ResourceType.*.
+  - Оновлення сигнатур просторових подій EventBus.gd на Vector3 (item_dropped, resource_harvested, job_created, floating_text_requested).
+  - Очищення RTSCamera3D.gd: допоміжний метод _find_ancestor_matching(collider, predicate, max_depth) замість повторюваних while-циклів із хардкодом імен сцен; заміна keycode-перевірок на event.is_action_pressed(...) з реєстрацією дій в project.godot.
+  - Увімкнення попереджень GDScript у project.godot (untyped_declaration=1, unsafe_property_access=1, unsafe_method_access=1, unsafe_cast=1).
+  - 100% проходження всіх 48 тестових наборів без помилок та витоків пам'яті.
+* **Завдання:**
+  - [x] Оновити ItemCost.gd, BuildingData.gd, RecipeData.gd з суворими типами ItemData та ItemCost.
+  - [x] Оновити ItemDatabase.gd: типізоване приведення без get/set.
+  - [x] Оновити StateMachine.gd: перевірка child is State та прямі присвоєння.
+  - [x] Оновити TextureHelper.gd: ResourceLoader.exists() та load() as Texture2D.
+  - [x] Створити res://src/core3d/CollisionLayers.gd з бітовими константами.
+  - [x] Створити res://src/entities3d/colonist/states/ColonistState3D.gd з базовою гравітацією, поворотом та розвантаженням.
+  - [x] Оновити всі 6 станів колоніста на спадкування ColonistState3D.
+  - [x] Замінити магічні числа типів ресурсів на WorldResourceNode3D.ResourceType.*.
+  - [x] Оновити сигнатури подій EventBus.gd на Vector3 та всі підсистеми емісії/отримання.
+  - [x] Оновити RTSCamera3D.gd: реалізувати _find_ancestor_matching(), підключити is_action_pressed().
+  - [x] Оновити project.godot: додати дії вводу colonist_stop, colonist_cycle, order_harvest, demolish_building, rotate_building та прапорці попереджень лінтера в [debug].
+  - [x] Прогнати автоматичні тести через Godot Headless Runner: усі 48 наборів успішно проходять (код 0).
+* **Критерії прийому:** Повна типізація схем і стану FSM; відсутність викликів get/set/has_method для ресурсів і станів; відсутність магічних чисел колізій та типів ресурсів; 0 дублювання гравітації та розвантаження у станах колоніста; чистий обхід предків без прив'язки до імен нод у RTS-камері; 48 наборів тестів виконуються з результатом 100% pass (exit code 0).
+
+### 7.56. Детектор кімнат (Going Medieval style) та система крафту на верстаку (JobType.CRAFT) (Етап 1)
+* **Статус:** [x] Завершено
+* **Контекст:** Реалізація Going Medieval Room Detection та фізичного верстака з виготовленням замовлень за типом роботи JobType.CRAFT.
+* **Вимоги:**
+  - Алгоритм Flood Fill у `ModularManager.gd`: перевірка наявності підлоги (`has_built_floor`), замкнутого контуру стін/дверей (`modular_wall`, `modular_door`) та перекриття дахом (`modular_roof`). Методи `detect_enclosed_room(start_cell: Vector2i) -> Dictionary` та `is_cell_indoors(cell: Vector2i) -> bool`.
+  - Бонус до швидкості відновлення енергії та статус «🏠 У затишному приміщенні» при відпочинку/сні у закритій кімнаті для колоністів (`ColonistRestState3D.gd`) та гравця (`Player3D.gd`).
+  - Фізичний верстак: `res://data/buildings/workbench.tres` (id = &"workbench", розмір 2x2, вартість 4 деревини, 2 камені, `job_type_provided = &"craft"`).
+  - 3D-візуалізація верстака: `BuildingEntity3D.gd` (`_build_workbench_visual`) та `BlueprintVisualHelper.gd` (`_build_workbench_holo`).
+  - Стан крафту `ColonistCraftState3D.gd` (`class_name ColonistCraftState3D extends ColonistState3D`) із реєстрацією у `Colonist3D.tscn`.
+  - Замовлення крафту на верстаку: `JobManager.create_craft_job()`, взяття матеріалів колоністом зі складу через `LogisticsManager`, робота протягом `craft_time`, додавання продукту в інвентар та віднесення готового виробу на склад.
+  - Юніт-тести #49 (`_test_room_detection`) та #50 (`_test_workbench_and_craft_job`) у `GameTestSuite.gd`.
+* **Результат:** Усі тести пройдено на 100%.
+
+### 7.57. Очищення архітектури тестів (TestRunner), видалення 2D-рудиментів та Save/Load система (Етап 2)
+* **Статус:** [x] Завершено
+* **Контекст:** Архітектурне виокремлення тестів у TestRunner, повне видалення 2D-рудиментів та повноцінна система збереження JSON (SaveManager).
+* **Вимоги:**
+  - `res://src/core/TestRunner.gd` (`class_name TestRunner`): винесення 48 тестів із `Main.gd` та запуск через `TestRunner.run_all_tests(self)`.
+  - Повне очищення невикористовуваних 2D-скриптів та сцен (`GameCamera2D.gd`, `entities/player`, `entities/items`, `world/World.*`, `GroundLayer.gd`, `ConstructionSite.gd`, `WorldResourceNode.*`, `StockpileBuilding.gd`).
+  - Autoload-синглтон `res://src/core/SaveManager.gd` (`user://saves/slot_X.json`): повна серіалізація/десеріалізація EraManager (епохи, відкриті технології), Player3D (позиція, поворот, здоров'я, енергія, інвентар), BlockManager (воксельні блоки), ModularManager (модульні компоненти підлоги, стін, дверей, дахів), BuildingEntity3D (споруди та вміст складів) та Colonist3D (живе населення, професії, стани, інвентарі).
+  - Гарячі клавіші швидкого збереження `F5` (`quick_save`) та завантаження `F9` (`quick_load`).
+  - Юніт-тест #51 `_test_save_load_system()` у `GameTestSuite.gd`.
+* **Результат:** 100% збереження та відновлення ігрового стану.
+
+### 7.58. Game Feel: Візуальний та звуковий відгук (Етап 3)
+* **Статус:** [x] Завершено
+* **Контекст:** Підвищення соковитості геймплею через візуальний ударний відгук, частинки, погойдування рослинності на вітрі та процедурне аудіо з фоновим ембієнтом.
+* **Вимоги:**
+  - Пружний ударний Tween-відгук (scale/rotation punch) та одноразовий спавн часток `CPUParticles3D` при руйнуванні/видобутку ресурсів у `WorldResourceNode3D.gd` (тріски деревини, пил/уламки каменю й кременю, листя кущів і трави, земляний пил глини).
+  - Процедурне плавне погойдування на вітрі крони дерев, кущів і трави у `WorldResourceNode3D.gd` (`_process`) з рандомізованою фазою коливань.
+  - `AudioManager.gd`: підтримка завантаження реальних аудіофайлів (.wav, .ogg, .mp3) із директорії `res://assets/audio/` з безшовним відкатом до процедурного синтезу `_generate_wav()`.
+  - Фоновий атмосферний ембієнт лісу: генерація та безшовний кросфейд між денним шелестом вітру в кронах і нічними цвіркунами/тріскотом багаття згідно з часом доби (`GameManager.is_night()`).
+* **Результат:** 51 з 51 тестів виконано успішно (Exit code 0).

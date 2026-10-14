@@ -1,6 +1,9 @@
 class_name ConstructionSite3D
 extends StaticBody3D
 
+const CollisionLayers = preload("res://src/core3d/CollisionLayers.gd")
+
+
 ## ConstructionSite3D: Фізичний будівельний майданчик споруди у 3D просторі.
 ## Спавниться після підтвердження розміщення креслення (Blueprint).
 ## Блокує свої тайли у GridManager, приймає необхідні матеріали
@@ -48,7 +51,7 @@ func _process(delta: float) -> void:
 func _ready() -> void:
 	add_to_group("construction_sites")
 	add_to_group("interactable")
-	collision_layer = 8
+	collision_layer = CollisionLayers.BLUEPRINT
 	collision_mask = 0
 
 
@@ -68,7 +71,7 @@ func setup_site(p_building_data: BuildingData, p_origin_cell: Vector2i, p_rotati
 	var center_m: Vector3 = BuildingPlacementController.get_building_world_center(origin_cell, eff_size)
 	global_position = center_m
 
-	collision_layer = 8
+	collision_layer = CollisionLayers.BLUEPRINT
 	collision_mask = 0
 
 	# 3. Реєстрація клітинок у GridManager на час будівництва (прохідний для гравця та колоністів, is_solid = false)

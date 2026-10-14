@@ -100,7 +100,7 @@ func _connect_event_bus() -> void:
 
 	if EventBus.has_signal("resource_harvested"):
 		EventBus.resource_harvested.connect(func(_source, item_id, amount, pos):
-			var spawn_pos := Vector3(pos.x, 1.2, pos.y)
+			var spawn_pos: Vector3 = (pos + Vector3(0, 1.2, 0)) if pos is Vector3 else Vector3(pos.x, 1.2, pos.y)
 			spawn_resource_harvest(spawn_pos, item_id, amount)
 		)
 

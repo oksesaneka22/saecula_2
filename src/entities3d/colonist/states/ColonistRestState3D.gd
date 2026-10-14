@@ -1,5 +1,5 @@
 class_name ColonistRestState3D
-extends "res://src/entities/fsm/State.gd"
+extends "res://src/entities3d/colonist/states/ColonistState3D.gd"
 
 ## ColonistRestState3D: Стан нічного відпочинку та сну колоніста біля табірного вогнища.
 ## Колоніст сідає на землю, гріється біля вогню, періодично випускає 'zzz',
@@ -17,10 +17,15 @@ func enter(msg: Dictionary = {}) -> void:
 		if not campfires.is_empty() and campfires[0] is Node3D:
 			target_campfire = campfires[0] as Node3D
 
+	var is_indoors: bool = false
+	if ModularManager != null and actor != null:
+		var cell := Vector2i(int(floor(actor.global_position.x / 2.0)), int(floor(actor.global_position.z / 2.0)))
+		is_indoors = ModularManager.is_cell_indoors(cell)
+
 	if actor != null:
 		actor.velocity = Vector3.ZERO
 		actor.hide_hand_items()
-		var status_str := "💤 Спить біля вогнища" if target_campfire != null else "💤 Відпочиває"
+		var status_str := "🏠 У затишному приміщенні" if is_indoors else ("💤 Спить біля вогнища" if target_campfire != null else "💤 Відпочиває")
 		actor.set_status_display(status_str)
 		_apply_sit_pose()
 
@@ -39,9 +44,14 @@ func physics_update(delta: float) -> void:
 		return
 
 	# Гравітація при сидінні
-	if not actor.is_on_floor():
-		actor.velocity.y -= 19.6 * delta
-		actor.move_and_slide()
+	apply_gravity(delta, true)
+
+	var is_in_room: bool = false
+	if ModularManager != null and actor != null:
+		var cell := Vector2i(int(floor(actor.global_position.x / 2.0)), int(floor(actor.global_position.z / 2.0)))
+		is_in_room = ModularManager.is_cell_indoors(cell)
+	var heal_amt: float = 4.0 if is_in_room else 1.5
+	actor.heal(heal_amt * delta)
 
 	# Якщо гравець дав наказ слідувати або розбудив — виходимо
 	if actor.is_following_player:

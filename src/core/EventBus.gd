@@ -59,10 +59,10 @@ signal inventory_changed(owner_node: Node)
 signal item_picked_up(collector: Node, item_id: StringName, amount: int)
 
 ## Предмет викинуто у світ на координати
-signal item_dropped(item_id: StringName, amount: int, world_position: Vector2)
+signal item_dropped(item_id: StringName, amount: int, world_position: Vector3)
 
 ## Ресурс успішно добуто в світі (рубання дерева, видобуток каменю тощо)
-signal resource_harvested(source_node: Node, item_id: StringName, amount: int, world_position: Vector2)
+signal resource_harvested(source_node: Node, item_id: StringName, amount: int, world_position: Vector3)
 
 
 # ------------------------------------------------------------------------------
@@ -94,7 +94,7 @@ signal block_destroyed(block_type: StringName, grid_coord: Vector3i)
 # 5. Події системи завдань колонії (Job System a-la Minecolonies)
 # ------------------------------------------------------------------------------
 ## Створено нове завдання для колонії
-signal job_created(job_id: StringName, job_type: int, target_position: Vector2)
+signal job_created(job_id: StringName, job_type: int, target_position: Vector3)
 
 ## Завдання призначено на конкретного колоніста
 signal job_assigned(job_id: StringName, colonist_node: Node)
@@ -155,7 +155,7 @@ signal technology_unlocked(tech_id: StringName)
 # 8. Події інтерфейсу та зворотного зв'язку (UI & Feedback)
 # ------------------------------------------------------------------------------
 ## Запит на відображення спливаючого тексту у світі (+1 Дерево, Помилка тощо)
-signal floating_text_requested(text: String, world_position: Vector2, color: Color)
+signal floating_text_requested(text: String, world_position: Vector3, color: Color)
 
 ## Запит на сповіщення гравця (Toast / System Notification)
 signal notification_posted(title: String, message: String, notification_type: int)

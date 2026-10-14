@@ -117,7 +117,7 @@ func create_job(
 
 	job_created.emit(job)
 	if EventBus != null and EventBus.has_signal("job_created"):
-		EventBus.job_created.emit(job.id, job.type, Vector2(target_pos.x, target_pos.z))
+		EventBus.job_created.emit(job.id, job.type, target_pos)
 
 	print("[JobManager] 📋 Створено нове завдання: %s [%s] на (%0.1f, %0.1f, %0.1f)" % [
 		job.get_type_name(),
@@ -130,6 +130,23 @@ func create_job(
 
 
 ## Перевіряє, чи існує вже активне або заплановане завдання для цільового вузла
+## Створює завдання крафту на верстаку (JobType.CRAFT)
+func create_craft_job(workbench_node: Node, recipe_id: StringName, amount: int = 1) -> Job:
+	var target_pos: Vector3 = workbench_node.global_position if workbench_node is Node3D else Vector3.ZERO
+	var craft_time: float = 2.5
+	if CraftingManager != null:
+		var recipe = CraftingManager.get_recipe(recipe_id)
+		if recipe != null and "craft_time" in recipe and recipe.craft_time > 0.0:
+			craft_time = recipe.craft_time
+	var data: Dictionary = {
+		"recipe_id": recipe_id,
+		"amount": amount,
+		"craft_time": craft_time,
+		"workbench": workbench_node
+	}
+	return create_job(Job.JobType.CRAFT, target_pos, workbench_node, 2, &"", data)
+
+
 func has_job_for_target(node: Node, j_type: int = -1) -> bool:
 	if node == null:
 		return false
@@ -446,13 +463,12 @@ func _on_construction_site_placed(site_node: Node, building_id: StringName, _map
 	)
 
 
-func _on_item_dropped(item_id: StringName, amount: int, world_pos_2d: Vector2) -> void:
+func _on_item_dropped(item_id: StringName, amount: int, world_pos: Vector3) -> void:
 	if not auto_create_haul_jobs:
 		return
-	var pos_3d := Vector3(world_pos_2d.x, 0.5, world_pos_2d.y)
 	create_job(
 		Job.JobType.HAUL,
-		pos_3d,
+		world_pos,
 		null,
 		1,
 		&"hauler",

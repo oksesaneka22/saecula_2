@@ -1626,3 +1626,253 @@ esource_nodes перевіряється, чи знаходиться він п�
 ### 32.6. Очищення предметів у руках колоніста та розширення адмін-панелі
 - У `Colonist3D.hide_hand_items()` виправлено витік нод інструментів і вантажів при зміні завдань — дочірні ноди тепер коректно і безпечно видаляються з `hand_tool_root` та `carried_cargo_root`.
 - В `AdminPanelUI.gd` до роздачі інструментів (`_give_all_tools()`) додано молот (`hammer`), смолоскип (`torch`) та мотузку (`rope`).
+
+---
+
+## 33. АРХІТЕКТУРА ТЕСТОВОГО РАННЕРА GAMETESTSUITE ТА РОЗВАНТАЖЕННЯ MAIN.GD (ІТЕРАЦІЯ 7.53)
+
+### 33.1. Передумови та мотивація рефакторингу
+- Початково у проекті `Main.gd` виконував дві непов'язані ролі:
+  1. Керування кореневою сценою гри `Main.tscn` (підписка на `EventBus`, обробка зміни станів гри та часу доби).
+  2. Запуск та реалізація 48 модульних тестових наборів для всіх ігрових систем (понад 3500 рядків коду, 17 важких preloads та десятки тестових функцій).
+- Це призводило до перевантаження файлу `Main.gd` (~200 КБ), ускладнення навігації та захаращення кореневого скрипту логікою, що потрібна виключно під час тестування.
+
+### 33.2. Структура GameTestSuite (`res://src/tests/GameTestSuite.gd`)
+- Створено виділений клас тестового комплексу:
+  ```gdscript
+  class_name GameTestSuite
+  extends Node
+  ```
+- **Локалізація залежностей:** Усі ресурси, компоненти, сцени та менеджери, необхідні виключно для юніт-тестів (`Job.gd`, `ItemSlotUI.gd`, `AdminPanelUI.gd`, `Colonist3DScene`, `StorageUIScene` тощо), тепер завантажуються виключно в `GameTestSuite.gd`.
+- **Доступ до вузлів дерева сцени (`_get_scene_node`):**
+  - Тести часто перевіряють стан існуючих системних вузлів (`World3D`, `HUD`, `HUD/EraTreeUI`).
+  - У `GameTestSuite` реалізовано допоміжний метод `_get_scene_node(path: String) -> Node`, який звертається до `main_node.get_node_or_null(path)`, `get_parent().get_node_or_null(path)` або кореня дерева `get_tree().root`.
+- **Життєвий цикл тестів:**
+  - Тестовий раннер додається як дочірній вузол до сцени гри під час запуску тестів, що гарантує наявність SceneTree (`is_inside_tree() == true`), доступність груп (`get_tree().get_nodes_in_group(...)`) та правильне спрацювання `_ready()` для будь-яких тимчасових тестових об'єктів.
+  - Після проходження всіх тестів викликається `test_suite.queue_free()`, що безпечно вивільняє об'єкт наприкінці кадру без витоків пам'яті.
+
+### 33.3. Новий Main.gd
+- Кореневий скрипт `res://src/core/Main.gd` скорочено до 41 рядка:
+  ```gdscript
+  extends Node
+
+  const GameTestSuiteScript = preload("res://src/tests/GameTestSuite.gd")
+
+  @export var run_unit_tests: bool = false
+
+  func _ready() -> void:
+      EventBus.game_state_changed.connect(_on_game_state_changed)
+      EventBus.day_time_updated.connect(_on_day_time_updated)
+
+      var cmd_args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
+      var force_tests := run_unit_tests or ("--run-tests" in cmd_args) or ("--test" in cmd_args)
+      var skip_tests := ("--skip-tests" in cmd_args) or ("--no-tests" in cmd_args)
+      var is_headless := DisplayServer.get_name() == "headless"
+
+      var should_run_tests: bool = (force_tests or (is_headless and not skip_tests)) and not skip_tests
+      if should_run_tests:
+          print("[Main] === ЗАПУСК АВТОМАТИЧНИХ ТЕСТІВ (Unit Tests) ===")
+          _run_all_unit_tests()
+          print("[Main] === УСІ ТЕСТИ УСПІШНО ПРОЙДЕНО ===")
+      else:
+          print("[Main] 🎮 Запуск гри у звичайному режимі (юніт-тести пропущено).")
+
+  func _run_all_unit_tests() -> void:
+      var test_suite: Node = GameTestSuiteScript.new(self)
+      add_child(test_suite)
+      test_suite.run_all_tests(self)
+      test_suite.queue_free()
+  ```
+- Повна зворотна сумісність: прапорці запуску `--test`, `--run-tests`, `run_unit_tests` та headless запуск продовжують бездоганно працювати як раніше.
+
+---
+
+## 34. ВИДАЛЕННЯ МЕРТВОГО КОДУ 2D ТА КОНСОЛІДАЦІЯ 3D АРХІТЕКТУРИ (ІТЕРАЦІЯ 7.54)
+
+### 34.1. Передумови та мотивація очищення
+- Проєкт розпочинався як гібридний 2D прототип (ітерації 1–3), після чого здійснив повний перехід у повноцінний 3D простір (Minecolonies + Going Medieval + Factorio):
+  - 3D воксельні блоки та процедурний ліс замінили 2D `TileMap`.
+  - `Player3D` та `RTSCamera3D` замінили 2D `Player` та `GameCamera2D`.
+  - `WorldResourceNode3D` та `DroppedItem3D` замінили старі 2D `Area2D` аналоги.
+  - `BuildingEntity3D` та `ConstructionSite3D` замінили `StockpileBuilding` та `ConstructionSite`.
+- Старі файли створювали шум у кодовій базі, дублювали назви та могли призводити до помилкового імпорту або використання застарілих 32-піксельних трансформацій замість метричних координат 3D світу.
+
+### 34.2. Видалені компоненти та структури
+1. **Камера:** `src/core/GameCamera2D.gd` (вилучено, активні камери — `RTSCamera3D` та камера всередині `Player3D`).
+2. **Гравець:** `src/entities/player/` (`Player.tscn`, `Player.gd`, `PlayerVisual.gd`).
+3. **Дропи:** `src/entities/items/` (`DroppedItem.tscn`, `DroppedItem.gd`).
+4. **Світ та тайли:** `src/world/` (`World.tscn`, `World.gd`, `GroundLayer.gd`).
+5. **Ресурси:** `src/world/` (`WorldResourceNode.tscn`, `WorldResourceNode.gd`).
+6. **Будівлі:** `src/world/ConstructionSite.gd`, `src/world/buildings/StockpileBuilding.gd`.
+7. **Спорожнілі папки:** `entities/player`, `entities/items`, `entities/colonist`, `world/buildings`.
+
+### 34.3. Очищення GridManager (`src/world/GridManager.gd`)
+- Повністю вилучено спадщину 32-піксельних тайлів:
+  - Видалено `const TILE_SIZE: int = 32`.
+  - Видалено методи `map_to_world(Vector2i) -> Vector2` та `get_world_path(Vector2, Vector2) -> PackedVector2Array`.
+  - `astar_grid.cell_size` та `offset` налаштовано виключно на `TILE_SIZE_3D = 1.0` (1 метр).
+  - Функцію `world_to_map(Vector2)` адаптовано для роботи з 3D проєкцією площини X-Z (ділення на `TILE_SIZE_3D`).
+- Збережено та уніфіковано роботу з FSM (`src/entities/fsm/State.gd` та `StateMachine.gd`), які використовують `CharacterBody3D` для штучного інтелекту колоністів.
+
+---
+
+## 35. КОМПЛЕКСНИЙ РЕФАКТОРИНГ КОДОВОЇ БАЗИ, ТИПІЗАЦІЯ СХЕМ ТА БАЗОВИЙ КЛАС ColonistState3D (Ітерація 7.55)
+
+### 35.1. Сувора типізація схем даних та ліквідація рефлексії
+- **Схеми даних (`src/data/schemas/`):**
+  - `ItemCost.gd`: властивість `item` тепер має суворий тип `ItemData` замість абстрактного `Resource`.
+  - `BuildingData.gd`: властивість `construction_cost` типізована як `Array[ItemCost]`.
+  - `RecipeData.gd`: властивість `ingredients` типізована як `Array[ItemCost]`, а `result_item` — як `ItemData`.
+- **ItemDatabase (`src/core/ItemDatabase.gd`):**
+  - Усунено всі динамічні виклики `res.get("id")`, `res.get("icon")` та `res.set("icon", tex)`.
+  - Завантажені ресурси безпечно приводяться через `var item := res as ItemData`, після чого доступ до полів здійснюється безпосередньо (`item.id`, `item.icon`), що унеможливлює помилки типів під час виконання та дозволяє компілятору GDScript перевіряти звернення статично.
+- **Машина станів (`src/entities/fsm/StateMachine.gd`):**
+  - Метод `_init_states()` відмовився від `has_method("enter") and has_method("exit")` та `child.set(...)`.
+  - Замість цього виконується сувора перевірка типу `if child is State:` із прямим доступом до полів `child.state_machine = self` та `child.actor = parent_actor`.
+- **Безпечне завантаження текстур (`src/core3d/TextureHelper.gd`):**
+  - Завантаження файлів текстур переведено з низькорівневого `FileAccess.file_exists` + `Image.load()` на штатний механізм Godot: `ResourceLoader.exists(path)` та `load(path) as Texture2D`.
+  - Це гарантує безпомилкове підвантаження графічних асетів у зібраних (експортованих) пакетах гри (PCK).
+
+### 35.2. Базовий клас ColonistState3D та дедуплікація станів FSM
+- **Базовий стан `src/entities3d/colonist/states/ColonistState3D.gd` (`class_name ColonistState3D extends State`):**
+  - Винесено спільні обов'язки всіх станів колоніста:
+    - Константа земного тяжіння `const GRAVITY: float = 19.6`.
+    - Метод `apply_gravity(delta: float, apply_slide: bool = false) -> void`: застосовує гравітаційне прискорення до `actor.velocity.y` та опціонально виконує `actor.move_and_slide()`.
+    - Метод `face_target(target_pos: Vector3, delta: float, turn_speed: float = 10.0) -> void`: плавно повертає меш колоніста обличчям до цілі в площині X-Z з нормалізацією кута через `lerp_angle`.
+    - Метод `try_unload_or_idle() -> void`: перевіряє завантаження інвентаря працівника через `actor.has_items_to_unload()`. Якщо в кишенях є видобуті ресурси, автоматично ініціює маршрут до складу через `actor.start_unloading_to_stockpile()`, інакше повертає персонажа у стан спокою `&"idle"`.
+- **Рефакторинг 6 конкретних станів колоніста (`Build`, `Harvest`, `Haul`, `Idle`, `MoveTo`, `Rest`):**
+  - Усі стани успадковують `ColonistState3D`.
+  - Прибрано дублювання коду обчислення гравітації та розвороту.
+  - Прибрано локальні перевизначення `const Job = preload(...)` на користь глобального `class_name Job`.
+
+### 35.3. Іменовані фізичні шари CollisionLayers та типи ресурсів
+- **Клас фізичних шарів `src/core3d/CollisionLayers.gd` (`class_name CollisionLayers`):**
+  - Введено бітові константи:
+    - `WORLD: int = 1 << 0` (1) — твердий світ (земля, готові споруди, скелі, дерева).
+    - `BLUEPRINT: int = 1 << 3` (8) — незавершені будівельні майданчики та креслення.
+    - `WORLD_AND_BLUEPRINT: int = WORLD | BLUEPRINT` (9) — маска променя взаємодії гравця `InteractRay`.
+  - Усі магічні числа `1`, `8`, `9` у `RTSCamera3D.gd`, `ConstructionSite3D.gd`, `ModularPiece3D.gd` та `Player3D.gd` замінено на константи `CollisionLayers`.
+- **Типи ресурсів `WorldResourceNode3D.ResourceType`:**
+  - Усі числові літерали `0..5` у `ColonistHarvestState3D.gd`, `RTSCamera3D.gd` та наборі тестів замінено на іменований перелік `WorldResourceNode3D.ResourceType.TREE`, `ROCK`, `BUSH`, `CLAY`, `FLINT`, `GRASS`.
+
+### 35.4. Очищення RTSCamera3D, векторні події та аналізатор GDScript
+- **Універсальний пошук предків у `RTSCamera3D.gd`:**
+  - Реалізовано метод `_find_ancestor_matching(collider: Node, predicate: Callable, max_depth: int = 6) -> Node`.
+  - Повністю ліквідовано хардкод імен батьківських вузлів (`"ChunkManager3D"`, `"ChunkStreamer"`, `"ModularContainer"`, `"World3D"`), цикл підйому по дереву тепер керується предикатами типу та груп (`is WorldResourceNode3D`, `is ConstructionSite3D`, `is_in_group("stockpiles")`).
+- **Чисті дії введення (`Input Actions`):**
+  - Усі прямі порівняння `physical_keycode` у `_unhandled_input` замінено на `event.is_action_pressed(...)`:
+    - `colonist_stop` (клавіша Z)
+    - `colonist_cycle` (клавіша C)
+    - `order_harvest` (клавіша H)
+    - `demolish_building` (клавіша X)
+    - `rotate_building` (клавіша R)
+  - Відповідні дії зареєстровано в `project.godot`.
+- **Vector3 сигнатури просторових подій EventBus:**
+  - Сигнали `item_dropped`, `resource_harvested`, `job_created`, `floating_text_requested` оновлено з застарілих 2D на 3D (`Vector3`).
+- **Суворі попередження аналізатора GDScript:**
+  - У `project.godot` увімкнено лінтер: `untyped_declaration=1`, `unsafe_property_access=1`, `unsafe_method_access=1`, `unsafe_cast=1`.
+
+---
+
+## 36. Детектор кімнат (Going Medieval style) та система крафту на верстаку (JobType.CRAFT)
+
+### 36.1. Алгоритм детекції кімнат у `ModularManager.gd`
+- **Метод `detect_enclosed_room(start_cell: Vector2i) -> Dictionary`:**
+  - Використовує алгоритм заливки **Flood Fill** (черга клітинок з обмеженням максимальної площі до 400 клітинок).
+  - Перевіряє герметичність периметра:
+    1. Наявність збудованої підлоги на кожній клітинці (`has_built_floor`).
+    2. Перекриття кожної клітинки зверху дахом (`modular_roof`).
+    3. Оточення периметра збудованими стінами (`modular_wall`) або дверима (`modular_door`).
+  - Якщо алгоритм досягає незакритого краю (немає стіни чи даху) або виходить за ліміт, приміщення вважається відкритим (`is_enclosed: false`, `is_room: false`).
+- **Метод `is_cell_indoors(cell: Vector2i) -> bool`:**
+  - Швидка перевірка, чи належить задана клітинка до закритого приміщення, шляхом виклику детектора кімнати.
+
+### 36.2. Вплив на комфорт та швидкість відновлення енергії
+- **Колоністи (`ColonistRestState3D.gd`):**
+  - Якщо колоніст відпочиває чи спить у клітинці, для якої `ModularManager.is_cell_indoors()` повертає `true`:
+    - Швидкість відновлення енергії зростає з 1.5 до **4.0 од./с** (+166% бонус).
+    - Встановлюється затишний візуальний статус: `🏠 У затишному приміщенні`.
+- **Гравець (`Player3D.gd`):**
+  - При засинанні на ліжку чи підлозі всередині кімнати тривалість фази сну скорочується на 40% (множник 0.6x), а на екрані з'являється плаваючий напис `🏠 У затишному приміщенні`.
+
+### 36.3. Фізичний верстак та система виготовлення предметів (`JobType.CRAFT`)
+- **Ресурс будівлі `res://data/buildings/workbench.tres`:**
+  - `id`: `&"workbench"`
+  - `building_name`: `Верстак`
+  - Габарити: `2x2` клітинки (2.0м x 2.0м)
+  - Вартість зведення: 4 Деревини (`ItemCost(wood, 4)`), 2 Камені (`ItemCost(stone, 2)`)
+  - Робота: `job_type_provided = &"craft"`
+- **3D Візуалізація:**
+  - `BlueprintVisualHelper._build_workbench_holo()` — напівпрозора голограма верстака з контурами стільниці, полиці та ковадла.
+  - `BuildingEntity3D._build_workbench_visual()` — твердотільна 3D модель верстака зі стільницею з дерев'яних дощок, чотирма масивними ніжками, нижньою полицею для інструментів та металевим ковадлом.
+- **Стан колоніста `ColonistCraftState3D.gd`:**
+  - Стан спадкує `ColonistState3D`.
+  - Колоніст автоматично:
+    1. Запитує інгредієнти зі складу через `LogisticsManager.withdraw_item_from_any_stockpile()`.
+    2. Прямує до верстака та займає робочу позицію.
+    3. Працює протягом `craft_time` (звуки удару молотка, анімація).
+    4. Зараховує готовий предмет в інвентар.
+    5. Доставляє готовий виріб на найближчий доступний склад або переходить у стан відпочинку.
+
+---
+
+## 37. Архітектура тестів (TestRunner), видалення 2D та Save/Load система (SaveManager)
+
+### 37.1. Архітектурне винесення тестів у `TestRunner.gd`
+- Клас `res://src/core/TestRunner.gd` (`class_name TestRunner extends Node`):
+  - Метод `TestRunner.run_all_tests(caller: Node)` інстанціює `GameTestSuite`, додає його до дерева сцени, виконує всі 51 тестові набори та безпечно звільняє ресурси.
+- `Main.gd` повністю звільнено від тестових методів та preloads (скорочено до ~40 рядків).
+
+### 37.2. Очищення застарілого 2D-коду
+- Видалено всі рудименти піксельного 2D-прототипу:
+  - `src/core/GameCamera2D.gd`
+  - `src/entities/player/`
+  - `src/entities/items/`
+  - `src/world/World.*`
+  - `src/world/GroundLayer.gd`
+  - `src/world/ConstructionSite.gd`
+  - `src/world/WorldResourceNode.*`
+  - `src/world/buildings/StockpileBuilding.gd`
+- Усі перевірки логістики та складів переведено на чисті 3D класи `BuildingEntity3D`.
+
+### 37.3. Повноцінна Save/Load система (`SaveManager.gd`)
+- Autoload-синглтон `SaveManager` (`res://src/core/SaveManager.gd`).
+- Шлях збереження за замовчуванням: `user://saves/slot_X.json`.
+- Гарячі клавіші:
+  - `F5` / дія `quick_save` — швидке збереження у слот 1.
+  - `F9` / дія `quick_load` — швидке завантаження зі слота 1.
+- Об'єкти повної серіалізації:
+  - `era`: поточна епоха, відкриті технологічні вузли (`EraManager`).
+  - `game_time`: поточний ігровий день, година, хвилина, загальний час (`GameManager`).
+  - `player`: позиція (x, y, z), поворот, здоров'я, енергія, всі слоти інвентаря (`Player3D`).
+  - `blocks`: підземні та надземні воксельні блоки (`BlockManager`).
+  - `modular`: збудовані та заплановані модульні елементи кімнат (підлоги, стіни, колони, двері, дахи) (`ModularManager`).
+  - `buildings`: розташування, поворот, типи споруд та весь інвентар складів (`BuildingEntity3D`).
+  - `colonists`: жителі колонії, їхні координати, професії, здоров'я, енергія, поточні стани та предмети (`Colonist3D`).
+
+---
+
+## 38. Game Feel: Візуальний і звуковий відгук (Visual & Audio Polish)
+
+### 38.1. Ударний Tween-відгук та частки руйнування у `WorldResourceNode3D.gd`
+- **Пружний Scale & Rotation Punch:**
+  - При виклику `harvest()` створюється пружна анімація через `create_tween()`: миттєве сплющування моделі (scale.y * 0.85, scale.xz * 1.1) та короткий кутовий нахил з поверненням за 0.18с за кривою `TRANS_ELASTIC` / `EASE_OUT`.
+- **Одноразові частки `CPUParticles3D` (`_spawn_harvest_particles`):**
+  - Спавняться в точці удару та налаштовуються під матеріал ресурсу:
+    - Дерево — дерев'яні тріски.
+    - Камінь/кремінь — сірий кам'яний пил та уламки.
+    - Кущ/трава — дрібні листочки та волокна.
+    - Глина — грудочки глини.
+
+### 38.2. Процедурне погойдування рослинності на вітрі
+- У `WorldResourceNode3D._process(delta)` верхня частина моделі (крони дерев, верхівки кущів та трава) злегка нахиляється за синусоїдою `sin(Time.get_ticks_msec() * 0.002 + _wind_phase_offset)` з індивідуальною фазою коливань, створюючи плавний ефект живого лісу.
+
+### 38.3. Покращений аудіо-рушій `AudioManager.gd`
+- **Завантаження файлів з fallback:**
+  - Метод `_load_sound_from_file(sound_name)` шукає файли в `res://assets/audio/` (.wav, .ogg, .mp3).
+  - Якщо файл існує, використовується він; якщо файл відсутній — працює процедурний синтезатор `_generate_wav()`.
+- **Процедурний фоновий ембієнт:**
+  - Два аудіоплеєри `AmbientPlayerDay` та `AmbientPlayerNight`.
+  - Вдень звучить процедурний білий/рожевий шум вітру в листі.
+  - Вночі звучать високочастотні цвіркуни та потріскування вугілля.
+  - Плавний кросфейд гучності за 2 секунди при зміні дня і ночі.

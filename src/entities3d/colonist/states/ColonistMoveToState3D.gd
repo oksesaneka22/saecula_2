@@ -1,5 +1,5 @@
 class_name ColonistMoveToState3D
-extends "res://src/entities/fsm/State.gd"
+extends "res://src/entities3d/colonist/states/ColonistState3D.gd"
 
 ## ColonistMoveToState3D: Стан навігації та інтелектуального переміщення колоніста у 3D світі.
 ## Розраховує глобальний маршрут через покращений GridManager (AStarGrid2D з діагоналями без зрізання),
@@ -79,8 +79,7 @@ func physics_update(delta: float) -> void:
 		return
 
 	# Гравітація
-	if not actor.is_on_floor():
-		actor.velocity.y -= 19.6 * delta
+	apply_gravity(delta, false)
 
 	# 1. Перевірка досягнення кінцевої цілі (горизонтальна XZ-дистанція з вертикальним допуском)
 	var horiz_dist_to_target: float = Vector2(actor.global_position.x - target_position.x, actor.global_position.z - target_position.z).length()

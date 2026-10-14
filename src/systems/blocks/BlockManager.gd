@@ -155,3 +155,24 @@ func clear_all_blocks() -> void:
 		if is_instance_valid(b):
 			b.queue_free()
 	_blocks.clear()
+
+
+func get_all_blocks_data() -> Array:
+	var result: Array = []
+	for coord in _blocks.keys():
+		var b = _blocks[coord]
+		if is_instance_valid(b) and "block_type" in b:
+			result.append({
+				"type": String(b.block_type),
+				"coord": {"x": coord.x, "y": coord.y, "z": coord.z}
+			})
+	return result
+
+
+func restore_blocks_data(data: Array) -> void:
+	clear_all_blocks()
+	for b_dict in data:
+		if b_dict is Dictionary and b_dict.has("type") and b_dict.has("coord"):
+			var c = b_dict["coord"]
+			var coord := Vector3i(int(c["x"]), int(c["y"]), int(c["z"]))
+			place_block(StringName(b_dict["type"]), coord)

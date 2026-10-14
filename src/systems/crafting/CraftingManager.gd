@@ -149,7 +149,7 @@ func craft_item(recipe: Resource, inventory: Node) -> bool:
 		var drop_pos: Vector3 = inv_parent.global_position if (inv_parent != null and inv_parent is Node3D) else Vector3.ZERO
 		var item_id_str: StringName = StringName(result_item.get("id"))
 		if EventBus != null and EventBus.has_signal("item_dropped"):
-			EventBus.item_dropped.emit(item_id_str, remainder, Vector2(drop_pos.x, drop_pos.z))
+			EventBus.item_dropped.emit(item_id_str, remainder, drop_pos)
 		var world_parent = inv_parent.get_parent() if inv_parent != null else null
 		if world_parent != null:
 			var drop_scene = load("res://src/entities3d/items/DroppedItem3D.tscn")

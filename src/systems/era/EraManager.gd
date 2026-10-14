@@ -427,6 +427,23 @@ func get_techs_for_sub_era(sub_era_id: StringName) -> Array[Resource]:
 	return result
 
 
+func get_unlocked_tech_ids() -> Array[StringName]:
+	var list: Array[StringName] = []
+	for k in _unlocked_techs.keys():
+		if _unlocked_techs[k]:
+			list.append(k)
+	return list
+
+
+func restore_era_data(era_val: int, techs: Array) -> void:
+	current_era = era_val
+	_unlocked_techs.clear()
+	for t in techs:
+		_unlocked_techs[StringName(t)] = true
+	_update_era_from_techs()
+	tech_tree_updated.emit()
+
+
 func is_tech_unlocked(tech_id: StringName) -> bool:
 	return _unlocked_techs.get(tech_id, false)
 
@@ -623,6 +640,10 @@ func research_tech(tech_id: StringName, inventory: Node = null) -> bool:
 
 	tech_tree_updated.emit()
 	return true
+
+
+func unlock_tech(tech_id: StringName) -> bool:
+	return unlock_tech_cheat(tech_id)
 
 
 func unlock_tech_cheat(tech_id: StringName) -> bool:

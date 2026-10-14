@@ -1,6 +1,5 @@
 class_name ColonistIdleState3D
-extends "res://src/entities/fsm/State.gd"
-const Job = preload("res://src/systems/jobs/Job.gd")
+extends "res://src/entities3d/colonist/states/ColonistState3D.gd"
 
 ## ColonistIdleState3D: Стан очікування та відпочинку колоніста.
 ## Колоніст оглядається, гріється біля вогнища за холоду/вночі

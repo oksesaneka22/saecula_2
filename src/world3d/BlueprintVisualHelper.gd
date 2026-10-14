@@ -2,7 +2,7 @@ class_name BlueprintVisualHelper
 extends RefCounted
 
 ## BlueprintVisualHelper: Генератор голографічних 3D моделей креслень (Factorio Blueprint Style).
-## Створює напівпрозорі моделі споруд (вогнище, склад, хатина) для прев'ю розміщення та будівельних майданчиків.
+## Створює напівпрозорі моделі споруд (вогнище, склад, хатина, верстак) для прев'ю розміщення та будівельних майданчиків.
 
 
 ## Створює голографічний матеріал для креслень
@@ -34,6 +34,8 @@ static func build_blueprint_hologram(building_id: StringName, size_m: Vector2, m
 			_build_stockpile_holo(root, size_m, material)
 		&"wooden_hut":
 			_build_wooden_hut_holo(root, size_m, material)
+		&"workbench":
+			_build_workbench_holo(root, size_m, material)
 		&"modular_floor":
 			_build_modular_floor_holo(root, material)
 		&"modular_pillar":
@@ -139,6 +141,52 @@ static func _build_stockpile_holo(parent: Node3D, size_m: Vector2, mat: Material
 		parent.add_child(cr_inst)
 
 
+static func _build_workbench_holo(parent: Node3D, size_m: Vector2, mat: Material) -> void:
+	var table_w: float = size_m.x - 0.4
+	var table_d: float = size_m.y - 0.4
+	var table_h: float = 1.1
+
+	# 1. Стільниця
+	var top_mesh := BoxMesh.new()
+	top_mesh.size = Vector3(table_w, 0.18, table_d)
+	var top_inst := MeshInstance3D.new()
+	top_inst.mesh = top_mesh
+	top_inst.material_override = mat
+	top_inst.position = Vector3(0, table_h, 0)
+	parent.add_child(top_inst)
+
+	# 2. Чотири ніжки
+	var leg_mesh := BoxMesh.new()
+	leg_mesh.size = Vector3(0.25, table_h, 0.25)
+	var hx: float = table_w * 0.5 - 0.2
+	var hz: float = table_d * 0.5 - 0.2
+	var legs := [Vector3(-hx, table_h * 0.5, -hz), Vector3(hx, table_h * 0.5, -hz), Vector3(-hx, table_h * 0.5, hz), Vector3(hx, table_h * 0.5, hz)]
+	for p in legs:
+		var leg_inst := MeshInstance3D.new()
+		leg_inst.mesh = leg_mesh
+		leg_inst.material_override = mat
+		leg_inst.position = p
+		parent.add_child(leg_inst)
+
+	# 3. Нижня полиця
+	var shelf_mesh := BoxMesh.new()
+	shelf_mesh.size = Vector3(table_w * 0.88, 0.08, table_d * 0.88)
+	var shelf_inst := MeshInstance3D.new()
+	shelf_inst.mesh = shelf_mesh
+	shelf_inst.material_override = mat
+	shelf_inst.position = Vector3(0, 0.32, 0)
+	parent.add_child(shelf_inst)
+
+	# 4. Ковадло / інструмент
+	var tool_mesh := BoxMesh.new()
+	tool_mesh.size = Vector3(0.6, 0.32, 0.45)
+	var tool_inst := MeshInstance3D.new()
+	tool_inst.mesh = tool_mesh
+	tool_inst.material_override = mat
+	tool_inst.position = Vector3(-hx * 0.4, table_h + 0.23, 0)
+	parent.add_child(tool_inst)
+
+
 static func _build_wooden_hut_holo(parent: Node3D, size_m: Vector2, mat: Material) -> void:
 	var wall_h: float = 3.2
 	var hx: float = size_m.x * 0.5
@@ -217,6 +265,7 @@ static func _build_generic_holo(parent: Node3D, size_m: Vector2, mat: Material) 
 	box_inst.material_override = mat
 	box_inst.position = Vector3(0, h * 0.5, 0)
 	parent.add_child(box_inst)
+
 
 static func _build_modular_floor_holo(parent: Node3D, mat: Material) -> void:
 	var inst := MeshInstance3D.new()

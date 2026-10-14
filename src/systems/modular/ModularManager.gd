@@ -29,7 +29,7 @@ func set_container(p_container: Node3D) -> void:
 
 
 func has_floor(cell: Vector2i) -> bool:
-	return _floors.has(cell) and is_instance_valid(_floors[cell])
+	return _floors.has(cell) and is_instance_valid(_floors[cell]) and not _floors[cell].is_queued_for_deletion()
 
 
 func has_built_floor(cell: Vector2i) -> bool:
@@ -37,7 +37,7 @@ func has_built_floor(cell: Vector2i) -> bool:
 
 
 func has_structure(cell: Vector2i) -> bool:
-	return _structures.has(cell) and is_instance_valid(_structures[cell])
+	return _structures.has(cell) and is_instance_valid(_structures[cell]) and not _structures[cell].is_queued_for_deletion()
 
 
 func has_wall_or_pillar(cell: Vector2i) -> bool:
@@ -52,7 +52,7 @@ func has_built_wall_or_pillar(cell: Vector2i) -> bool:
 
 
 func has_roof(cell: Vector2i) -> bool:
-	return _roofs.has(cell) and is_instance_valid(_roofs[cell])
+	return _roofs.has(cell) and is_instance_valid(_roofs[cell]) and not _roofs[cell].is_queued_for_deletion()
 
 
 func has_built_roof(cell: Vector2i) -> bool:
@@ -127,6 +127,23 @@ func can_place_modular_piece(piece_type: StringName, cell: Vector2i) -> bool:
 
 
 ## Розміщує синє креслення модульної частини у 3D світі
+func place_piece(piece_type: StringName, cell: Vector2i, is_built: bool = true, rot_deg: float = 0.0) -> Node3D:
+	var target_parent = _get_spawn_parent()
+	var piece = ModularPiece3DScript.new()
+	target_parent.add_child(piece)
+	piece.setup_piece(piece_type, cell, is_built, rot_deg)
+	match piece_type:
+		&"modular_floor":
+			_floors[cell] = piece
+		&"modular_pillar", &"modular_wall", &"modular_door":
+			_structures[cell] = piece
+		&"modular_roof":
+			_roofs[cell] = piece
+	_all_pieces.append(piece)
+	piece.tree_exited.connect(_on_piece_tree_exited.bind(piece))
+	return piece
+
+
 func place_blueprint(piece_type: StringName, cell: Vector2i, rot_deg: float = 0.0) -> Node3D:
 	if not can_place_modular_piece(piece_type, cell):
 		return null
@@ -279,7 +296,23 @@ func _on_piece_tree_exited(piece: Node3D) -> void:
 
 func remove_piece(piece: Node3D) -> void:
 	if piece != null and is_instance_valid(piece):
+		var cell: Vector2i = piece.get("cell_coord")
+		if _floors.get(cell) == piece:
+			_floors.erase(cell)
+		if _structures.get(cell) == piece:
+			_structures.erase(cell)
+		if _roofs.get(cell) == piece:
+			_roofs.erase(cell)
+		_all_pieces.erase(piece)
 		piece.queue_free()
+
+
+func remove_piece_at(cell: Vector2i, category: String) -> bool:
+	var piece = get_piece_at(cell, category)
+	if piece != null:
+		remove_piece(piece)
+		return true
+	return false
 
 
 func get_all_blueprints() -> Array[Node3D]:
@@ -323,3 +356,123 @@ func _get_spawn_parent() -> Node:
 			return container
 		return scene
 	return self
+
+
+## ==============================================================================
+## Room Detection System (Going Medieval style)
+## ==============================================================================
+
+## Перевіряє, чи утворює замкнений контур приміщення навколо заданої клітинки.
+## Повертає словник зі статусом, переліком внутрішніх клітинок, стін та площею.
+func detect_enclosed_room(start_cell: Vector2i) -> Dictionary:
+	var empty_result: Dictionary = {
+		"is_room": false,
+		"is_enclosed": false,
+		"cells": [] as Array[Vector2i],
+		"walls": [] as Array[Vector2i],
+		"roofed": false,
+		"floored": false,
+		"area": 0
+	}
+
+	if not GridManager.is_within_bounds(start_cell):
+		return empty_result
+
+	if has_built_wall_or_pillar(start_cell) or not has_built_floor(start_cell):
+		return empty_result
+
+	var queue: Array[Vector2i] = [start_cell]
+	var visited: Dictionary = {start_cell: true}
+	var interior_cells: Array[Vector2i] = []
+	var wall_dict: Dictionary = {}
+	var is_enclosed: bool = true
+	var all_roofed: bool = true
+	var all_floored: bool = true
+	const MAX_ROOM_CELLS: int = 400
+
+	while not queue.is_empty():
+		var curr: Vector2i = queue.pop_front()
+		interior_cells.append(curr)
+
+		if not has_built_floor(curr):
+			all_floored = false
+		if not has_built_roof(curr):
+			all_roofed = false
+
+		if interior_cells.size() > MAX_ROOM_CELLS:
+			is_enclosed = false
+			break
+
+		var neighbors = [
+			Vector2i(curr.x + 1, curr.y),
+			Vector2i(curr.x - 1, curr.y),
+			Vector2i(curr.x, curr.y + 1),
+			Vector2i(curr.x, curr.y - 1)
+		]
+
+		for n in neighbors:
+			if not GridManager.is_within_bounds(n):
+				is_enclosed = false
+				break
+
+			if has_built_wall_or_pillar(n):
+				wall_dict[n] = true
+			else:
+				if not has_built_floor(n):
+					is_enclosed = false
+					break
+				if not visited.has(n):
+					visited[n] = true
+					queue.append(n)
+
+		if not is_enclosed:
+			break
+
+	var walls_array: Array[Vector2i] = []
+	for w in wall_dict.keys():
+		walls_array.append(w)
+
+	var valid_room: bool = is_enclosed and all_floored and all_roofed and (interior_cells.size() > 0)
+	return {
+		"is_room": valid_room,
+		"is_enclosed": valid_room,
+		"cells": interior_cells,
+		"walls": walls_array,
+		"roofed": all_roofed,
+		"floored": all_floored,
+		"area": interior_cells.size() if valid_room else 0
+	}
+
+
+## Перевіряє, чи знаходиться клітинка всередині завершеного приміщення (підлога + стіни/двері + дах)
+func is_cell_indoors(cell: Vector2i) -> bool:
+	var room_data := detect_enclosed_room(cell)
+	return room_data.get("is_room", false)
+
+
+## Повертає дані всіх модульних деталей для збереження
+func get_all_modular_data() -> Array[Dictionary]:
+	var data: Array[Dictionary] = []
+	for p in _all_pieces:
+		if is_instance_valid(p) and not p.is_queued_for_deletion():
+			data.append({
+				"piece_type": p.piece_type,
+				"cell": {"x": p.cell_coord.x, "y": p.cell_coord.y},
+				"is_built": p.is_built,
+				"rotation_y": p.rotation_degrees.y
+			})
+	return data
+
+
+## Відновлює модульні частини зі збережених даних
+func restore_modular_data(data: Array) -> void:
+	clear_all()
+	for item in data:
+		if not (item is Dictionary):
+			continue
+		var p_type: StringName = StringName(item.get("piece_type", &"modular_floor"))
+		var c_dict: Dictionary = item.get("cell", {})
+		var cell := Vector2i(int(c_dict.get("x", 0)), int(c_dict.get("y", 0)))
+		var rot: float = float(item.get("rotation_y", 0.0))
+		var is_b: bool = bool(item.get("is_built", false))
+		place_piece(p_type, cell, is_b, rot)

@@ -1,5 +1,8 @@
 class_name ColonistHarvestState3D
-extends "res://src/entities/fsm/State.gd"
+extends "res://src/entities3d/colonist/states/ColonistState3D.gd"
+
+const WorldResourceNode3D = preload("res://src/world3d/WorldResourceNode3D.gd")
+
 
 ## ColonistHarvestState3D: Стан видобутку та рубки природних ресурсів.
 ## Колоніст підходить до ресурсу, бере у руки сокиру/кайло/косу, завдає ударів
@@ -24,22 +27,22 @@ func enter(msg: Dictionary = {}) -> void:
 		actor.velocity = Vector3.ZERO
 		var res_type = target_node.get("resource_type")
 		match res_type:
-			0: # TREE
+			WorldResourceNode3D.ResourceType.TREE:
 				actor.set_status_display("🪓 Рубає дерево")
 				actor.show_hand_tool(&"stone_axe")
-			1: # ROCK
+			WorldResourceNode3D.ResourceType.ROCK:
 				actor.set_status_display("⛏️ Довбає камінь")
 				actor.show_hand_tool(&"stone_pickaxe")
-			2: # BUSH
+			WorldResourceNode3D.ResourceType.BUSH:
 				actor.set_status_display("🍓 Збирає ягоди")
 				actor.hide_hand_items()
-			3: # CLAY
+			WorldResourceNode3D.ResourceType.CLAY:
 				actor.set_status_display("🏺 Видобуває глину")
 				actor.show_hand_tool(&"stone_pickaxe")
-			4: # FLINT
+			WorldResourceNode3D.ResourceType.FLINT:
 				actor.set_status_display("🪨 Довбає кремінь")
 				actor.show_hand_tool(&"stone_pickaxe")
-			5: # GRASS
+			WorldResourceNode3D.ResourceType.GRASS:
 				_setup_grass_harvest()
 			_:
 				actor.set_status_display("⛏️ Довбає ресурс")
@@ -59,9 +62,7 @@ func physics_update(delta: float) -> void:
 		return
 
 	# Гравітація
-	if not actor.is_on_floor():
-		actor.velocity.y -= 19.6 * delta
-		actor.move_and_slide()
+	apply_gravity(delta, true)
 
 	# Перевірка чи ціль досі існує
 	if target_node == null or not is_instance_valid(target_node) or target_node.is_queued_for_deletion():
@@ -71,11 +72,7 @@ func physics_update(delta: float) -> void:
 	# Поворот обличчям до ресурсу
 	var node3d := target_node as Node3D
 	if node3d != null:
-		var dir := (node3d.global_position - actor.global_position)
-		dir.y = 0.0
-		if dir.length_squared() > 0.001:
-			var target_angle := atan2(dir.x, dir.z)
-			actor.rotation.y = lerp_angle(actor.rotation.y, target_angle, 10.0 * delta)
+		face_target(node3d.global_position, delta, 10.0)
 
 	swing_timer -= delta
 	if swing_timer <= 0.0:
@@ -93,16 +90,16 @@ func _perform_swing() -> void:
 	var tool_type: int = 1 # Axe default
 	var swing_damage: float = 1.0
 	var res_type = target_node.get("resource_type")
-	if res_type == 1 or res_type == 3 or res_type == 4: # Rock, Clay or Flint
+	if res_type == WorldResourceNode3D.ResourceType.ROCK or res_type == WorldResourceNode3D.ResourceType.CLAY or res_type == WorldResourceNode3D.ResourceType.FLINT:
 		tool_type = 2 # Pickaxe
-	elif res_type == 5: # Grass
+	elif res_type == WorldResourceNode3D.ResourceType.GRASS:
 		if _has_scythe:
 			tool_type = 5 # Scythe
 			swing_damage = 1.0
 		else:
 			tool_type = 0 # Bare hands
 			swing_damage = 1.0
-	elif res_type == 2: # Bush
+	elif res_type == WorldResourceNode3D.ResourceType.BUSH:
 		tool_type = 0 # Bare hands
 
 	if target_node.has_method("harvest"):
@@ -154,11 +151,7 @@ func _finish_job() -> void:
 
 		_collect_nearby_drops()
 
-		if actor.has_method("has_items_to_unload") and actor.has_items_to_unload():
-			if actor.start_unloading_to_stockpile():
-				return
-
-	state_machine.transition_to(&"idle")
+		try_unload_or_idle()
 
 
 func _abort_job(reason: String = "Ціль недоступна") -> void:
@@ -171,11 +164,7 @@ func _abort_job(reason: String = "Ціль недоступна") -> void:
 
 		_collect_nearby_drops()
 
-		if actor.has_method("has_items_to_unload") and actor.has_items_to_unload():
-			if actor.start_unloading_to_stockpile():
-				return
-
-	state_machine.transition_to(&"idle")
+		try_unload_or_idle()
 
 
 func _collect_nearby_drops() -> void:

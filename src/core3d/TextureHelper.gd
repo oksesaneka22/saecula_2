@@ -61,12 +61,9 @@ static func get_texture(path: String) -> Texture2D:
 	if _cache.has(path):
 		return _cache[path] as Texture2D
 
-	if FileAccess.file_exists(path):
-		var global_p: String = ProjectSettings.globalize_path(path)
-		var img := Image.new()
-		var err := img.load(global_p)
-		if err == OK:
-			var tex := ImageTexture.create_from_image(img)
+	if ResourceLoader.exists(path):
+		var tex: Texture2D = load(path) as Texture2D
+		if tex != null:
 			_cache[path] = tex
 			return tex
 

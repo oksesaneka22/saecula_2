@@ -1,6 +1,9 @@
 class_name ModularPiece3D
 extends StaticBody3D
 
+const CollisionLayers = preload("res://src/core3d/CollisionLayers.gd")
+
+
 ## ModularPiece3D: Модульний будівельний блок у стилі Going Medieval.
 ## Підтримує типи: modular_floor, modular_pillar, modular_wall, modular_door, modular_roof.
 ## Стан креслення (blueprint): світиться напівпрозорим синім, пульсує емісією, приймає матеріали на E/клік.
@@ -37,7 +40,7 @@ const TextureHelper = preload("res://src/core3d/TextureHelper.gd")
 func _ready() -> void:
 	add_to_group("modular_pieces")
 	add_to_group("interactable")
-	collision_layer = 1 if is_built else 8
+	collision_layer = CollisionLayers.WORLD if is_built else CollisionLayers.BLUEPRINT
 	collision_mask = 0
 	set_process(not is_built)
 
@@ -52,7 +55,7 @@ func setup_piece(p_type: StringName, p_cell: Vector2i, p_built: bool = false, p_
 	piece_type = p_type
 	cell_coord = p_cell
 	is_built = p_built
-	collision_layer = 1 if is_built else 8
+	collision_layer = CollisionLayers.WORLD if is_built else CollisionLayers.BLUEPRINT
 	collision_mask = 0
 	rotation_degrees.y = p_rot_deg
 	rotation_index = int(round(p_rot_deg / 90.0)) % 4
@@ -340,7 +343,7 @@ func _update_label_text() -> void:
 
 func apply_blueprint_state() -> void:
 	is_built = false
-	collision_layer = 8
+	collision_layer = CollisionLayers.BLUEPRINT
 	collision_mask = 0
 	set_process(true)
 	if _visual_root != null:
@@ -349,9 +352,13 @@ func apply_blueprint_state() -> void:
 	_update_outline_materials()
 
 
+func complete_construction() -> void:
+	apply_built_state(false)
+
+
 func apply_built_state(animate: bool = true) -> void:
 	is_built = true
-	collision_layer = 1
+	collision_layer = CollisionLayers.WORLD
 	collision_mask = 0
 	set_process(false)
 	var built_mat = _get_built_material()

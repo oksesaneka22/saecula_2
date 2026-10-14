@@ -12,7 +12,7 @@ extends Resource
 
 @export_group("Crafting Requirements")
 ## Список необхідних інгредієнтів (ItemCost)
-@export var ingredients: Array[Resource] = [] # Array[ItemCost]
+@export var ingredients: Array[ItemCost] = []
 ## Мінімальна епоха для доступу до рецепту (0 = Stone Age, 1 = Bronze Age, тощо)
 @export var required_era: int = 0
 ## Час виготовлення в секундах (0.0 = миттєвий крафт у руках)
@@ -20,6 +20,6 @@ extends Resource
 
 @export_group("Result")
 ## Ресурс результуючого предмета (ItemData)
-@export var result_item: Resource
+@export var result_item: ItemData
 ## Кількість отриманих предметів
 @export var result_amount: int = 1

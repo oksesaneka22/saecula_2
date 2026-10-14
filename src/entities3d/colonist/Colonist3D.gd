@@ -17,6 +17,7 @@ const ColonistHarvestState3D = preload("res://src/entities3d/colonist/states/Col
 const ColonistHaulState3D = preload("res://src/entities3d/colonist/states/ColonistHaulState3D.gd")
 const ColonistBuildState3D = preload("res://src/entities3d/colonist/states/ColonistBuildState3D.gd")
 const ColonistRestState3D = preload("res://src/entities3d/colonist/states/ColonistRestState3D.gd")
+const ColonistCraftState3D = preload("res://src/entities3d/colonist/states/ColonistCraftState3D.gd")
 
 @export var colonist_name: String = "Добриня"
 @export var profession: StringName = &"settler" ## builder, lumberjack, hauler, settler
@@ -435,6 +436,13 @@ func assign_job(job: Job) -> void:
 				"arrival_distance": 1.8,
 				"next_msg": { "stage": 1 }
 			})
+		Job.JobType.CRAFT:
+			state_machine.transition_to(&"moveto", {
+				"target_pos": job.target_world_pos,
+				"next_state": &"craft",
+				"arrival_distance": 2.0,
+				"next_msg": { "workbench": job.target_node, "job": job }
+			})
 		_:
 			state_machine.transition_to(&"moveto", {
 				"target_pos": job.target_world_pos,
@@ -711,6 +719,10 @@ func _setup_fsm() -> void:
 	var rest := ColonistRestState3D.new()
 	rest.name = "Rest"
 	state_machine.add_child(rest)
+
+	var craft := ColonistCraftState3D.new()
+	craft.name = "Craft"
+	state_machine.add_child(craft)
 
 	state_machine.initial_state = idle
 	state_machine._init_states()

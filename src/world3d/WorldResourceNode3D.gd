@@ -27,6 +27,8 @@ const DroppedItem3DScene = preload("res://src/entities3d/items/DroppedItem3D.tsc
 var _cell: Vector2i = Vector2i.ZERO
 var _shake_tween: Tween = null
 var _original_scale: Vector3 = Vector3.ONE
+var _sway_phase: float = 0.0
+var _sway_timer: float = 0.0
 
 func get_cell() -> Vector2i:
 	if _cell == Vector2i.ZERO and GridManager != null:
@@ -95,6 +97,21 @@ func _ready() -> void:
 			GridManager.register_occupant(_cell, self, is_solid)
 
 	_setup_visual()
+	_sway_phase = randf_range(0.0, TAU)
+	set_process(resource_type in [ResourceType.TREE, ResourceType.BUSH, ResourceType.GRASS])
+
+
+func _process(delta: float) -> void:
+	if visual_root == null:
+		return
+	if resource_type in [ResourceType.TREE, ResourceType.BUSH, ResourceType.GRASS]:
+		_sway_timer += delta * (2.2 if resource_type == ResourceType.GRASS else 1.2)
+		var sway_amount: float = 0.035 if resource_type == ResourceType.GRASS else (0.02 if resource_type == ResourceType.BUSH else 0.015)
+		var sway_z: float = sin(_sway_timer + _sway_phase) * sway_amount
+		var sway_x: float = cos(_sway_timer * 0.7 + _sway_phase) * (sway_amount * 0.6)
+		if _shake_tween == null or not _shake_tween.is_valid():
+			visual_root.rotation.z = sway_z
+			visual_root.rotation.x = sway_x
 
 
 func _setup_visual() -> void:
@@ -372,10 +389,16 @@ func _play_hit_effect() -> void:
 	if _shake_tween != null and _shake_tween.is_valid():
 		_shake_tween.kill()
 
+	var punch_rot := Vector3(randf_range(-0.12, 0.12), randf_range(-0.08, 0.08), randf_range(-0.12, 0.12))
 	_shake_tween = create_tween()
-	_shake_tween.tween_property(visual_root, "scale", _original_scale * Vector3(1.1, 0.9, 1.1), 0.05)
-	_shake_tween.tween_property(visual_root, "scale", _original_scale * Vector3(0.95, 1.05, 0.95), 0.05)
-	_shake_tween.tween_property(visual_root, "scale", _original_scale, 0.06)
+	_shake_tween.tween_property(visual_root, "scale", _original_scale * Vector3(1.22, 0.78, 1.22), 0.06).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_shake_tween.parallel().tween_property(visual_root, "rotation", punch_rot, 0.06)
+	_shake_tween.tween_property(visual_root, "scale", _original_scale * Vector3(0.92, 1.12, 0.92), 0.07).set_trans(Tween.TRANS_QUAD)
+	_shake_tween.parallel().tween_property(visual_root, "rotation", -punch_rot * 0.4, 0.07)
+	_shake_tween.tween_property(visual_root, "scale", _original_scale, 0.08).set_trans(Tween.TRANS_QUAD)
+	_shake_tween.parallel().tween_property(visual_root, "rotation", Vector3.ZERO, 0.08)
+
+	_spawn_debris_particles()
 
 	if AudioManager != null:
 		var snd: StringName = &"hit_wood"
@@ -386,6 +409,63 @@ func _play_hit_effect() -> void:
 			ResourceType.CLAY: snd = &"hit_clay"
 			ResourceType.BUSH: snd = &"hit_grass"
 		AudioManager.play_sound_3d(snd, global_position, 0.0, randf_range(0.92, 1.08))
+
+
+func _spawn_debris_particles() -> void:
+	var parts := CPUParticles3D.new()
+	parts.name = "HitDebris"
+	parts.emitting = true
+	parts.one_shot = true
+	parts.explosiveness = 0.95
+	parts.amount = 14
+	parts.lifetime = 0.55
+
+	var p_mesh := BoxMesh.new()
+	var p_mat := StandardMaterial3D.new()
+	p_mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+	p_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+
+	var emit_h: float = 0.8
+	match resource_type:
+		ResourceType.TREE:
+			p_mesh.size = Vector3(0.08, 0.16, 0.04)
+			p_mat.albedo_color = Color(0.72, 0.55, 0.32)
+			emit_h = 1.2
+		ResourceType.ROCK:
+			p_mesh.size = Vector3(0.10, 0.10, 0.10)
+			p_mat.albedo_color = Color(0.65, 0.68, 0.70)
+			emit_h = 0.6
+		ResourceType.FLINT:
+			p_mesh.size = Vector3(0.07, 0.07, 0.07)
+			p_mat.albedo_color = Color(0.28, 0.30, 0.32)
+			emit_h = 0.5
+		ResourceType.CLAY:
+			p_mesh.size = Vector3(0.12, 0.10, 0.12)
+			p_mat.albedo_color = Color(0.78, 0.45, 0.28, 0.85)
+			emit_h = 0.4
+		ResourceType.BUSH, ResourceType.GRASS:
+			p_mesh.size = Vector3(0.09, 0.04, 0.12)
+			p_mat.albedo_color = Color(0.25, 0.72, 0.32)
+			emit_h = 0.4
+
+	p_mesh.material = p_mat
+	parts.mesh = p_mesh
+	parts.direction = Vector3(0, 1, 0)
+	parts.spread = 75.0
+	parts.initial_velocity_min = 2.0
+	parts.initial_velocity_max = 4.2
+	parts.gravity = Vector3(0, -9.8, 0)
+	parts.scale_amount_min = 0.6
+	parts.scale_amount_max = 1.3
+
+	add_child(parts)
+	parts.position = Vector3(0, emit_h, 0)
+
+	var timer := get_tree().create_timer(0.9)
+	timer.timeout.connect(func():
+		if is_instance_valid(parts):
+			parts.queue_free()
+	)
 
 
 func _destroy_and_drop() -> void:
@@ -400,7 +480,7 @@ func _destroy_and_drop() -> void:
 		drop.set_item(drop_item_id, drop_count)
 
 	var world_pos_2d := Vector2(global_position.x, global_position.z)
-	EventBus.item_dropped.emit(drop_item_id, drop_count, world_pos_2d)
-	EventBus.resource_harvested.emit(self, drop_item_id, drop_count, world_pos_2d)
+	EventBus.item_dropped.emit(drop_item_id, drop_count, spawn_pos)
+	EventBus.resource_harvested.emit(self, drop_item_id, drop_count, global_position)
 
 	queue_free()

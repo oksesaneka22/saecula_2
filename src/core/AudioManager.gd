@@ -6,7 +6,9 @@ extends Node
 
 const MIX_RATE: int = 22050
 
-var _sounds: Dictionary = {} # StringName -> AudioStreamWAV
+const AUDIO_ASSETS_PATH: String = "res://assets/audio/"
+
+var _sounds: Dictionary = {} # StringName -> AudioStream
 
 # Пули програвачів
 var _players_2d: Array[AudioStreamPlayer] = []
@@ -14,11 +16,16 @@ var _players_3d: Array[AudioStreamPlayer3D] = []
 const MAX_2D_PLAYERS: int = 8
 const MAX_3D_PLAYERS: int = 16
 
+# Процедурний фоновий ембієнт (день/ніч)
+var _ambient_day_player: AudioStreamPlayer = null
+var _ambient_night_player: AudioStreamPlayer = null
+
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_init_players_pool()
 	_pregenerate_sounds()
+	_init_ambient()
 	_connect_event_bus()
 	print("[AudioManager] 🔊 Аудіо-систему успішно ініціалізовано. Згенеровано %d звукових ефектів." % _sounds.size())
 
@@ -67,7 +74,91 @@ func _pregenerate_sounds() -> void:
 		&"build_complete"
 	]
 	for s_id in sound_names:
-		_sounds[s_id] = _generate_wav(s_id)
+		_sounds[s_id] = _load_or_generate_sound(s_id)
+
+
+func _load_or_generate_sound(s_id: StringName) -> AudioStream:
+	var extensions: Array[String] = [".wav", ".ogg", ".mp3"]
+	for ext in extensions:
+		var file_path := AUDIO_ASSETS_PATH + str(s_id) + ext
+		if ResourceLoader.exists(file_path):
+			var loaded = ResourceLoader.load(file_path) as AudioStream
+			if loaded != null:
+				return loaded
+	return _generate_wav(s_id)
+
+
+func _init_ambient() -> void:
+	_ambient_day_player = AudioStreamPlayer.new()
+	_ambient_day_player.name = "AmbientDayPlayer"
+	_ambient_day_player.bus = "Master"
+	_ambient_day_player.stream = _generate_ambient_loop(false)
+	_ambient_day_player.volume_db = -14.0
+	add_child(_ambient_day_player)
+	_ambient_day_player.play()
+
+	_ambient_night_player = AudioStreamPlayer.new()
+	_ambient_night_player.name = "AmbientNightPlayer"
+	_ambient_night_player.bus = "Master"
+	_ambient_night_player.stream = _generate_ambient_loop(true)
+	_ambient_night_player.volume_db = -80.0
+	add_child(_ambient_night_player)
+	_ambient_night_player.play()
+
+
+func _process(delta: float) -> void:
+	if _ambient_day_player == null or _ambient_night_player == null:
+		return
+	var is_night: bool = false
+	if GameManager != null and GameManager.has_method("is_night"):
+		is_night = GameManager.is_night()
+
+	var target_day: float = -80.0 if is_night else -14.0
+	var target_night: float = -14.0 if is_night else -80.0
+
+	_ambient_day_player.volume_db = move_toward(_ambient_day_player.volume_db, target_day, delta * 12.0)
+	_ambient_night_player.volume_db = move_toward(_ambient_night_player.volume_db, target_night, delta * 12.0)
+
+
+func _generate_ambient_loop(is_night: bool) -> AudioStreamWAV:
+	var wav := AudioStreamWAV.new()
+	wav.format = AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate = MIX_RATE
+	wav.stereo = false
+	wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+
+	var duration: float = 3.0
+	var sample_count: int = int(float(MIX_RATE) * duration)
+	wav.loop_begin = 0
+	wav.loop_end = sample_count
+
+	var bytes := PackedByteArray()
+	bytes.resize(sample_count * 2)
+
+	for i in range(sample_count):
+		var t: float = float(i) / float(MIX_RATE)
+		var val: float = 0.0
+		if not is_night:
+			var breeze: float = sin(t * 1.5 * TAU) * 0.25 + sin(t * 0.4 * TAU) * 0.35
+			var rustle: float = (randf() * 2.0 - 1.0) * 0.18 * (0.6 + breeze * 0.4)
+			var low_hum: float = sin(t * 75.0 * TAU) * 0.12
+			val = rustle + low_hum
+		else:
+			var cricket_pulse: float = fmod(t * 4.0, 1.0)
+			var cricket: float = 0.0
+			if cricket_pulse < 0.2:
+				cricket = sin(t * 4400.0 * TAU) * 0.35 * exp(-cricket_pulse * 15.0)
+			var breeze: float = (randf() * 2.0 - 1.0) * 0.08
+			var crackle: float = 0.0
+			if randf() < 0.015:
+				crackle = (randf() * 2.0 - 1.0) * 0.4
+			val = cricket + breeze + crackle
+
+		val = clampf(val, -0.9, 0.9)
+		bytes.encode_s16(i * 2, int(val * 16000.0))
+
+	wav.data = bytes
+	return wav
 
 
 func _generate_wav(sound_id: StringName) -> AudioStreamWAV:
@@ -193,7 +284,7 @@ func _generate_wav(sound_id: StringName) -> AudioStreamWAV:
 # ------------------------------------------------------------------------------
 ## Відтворює 2D звук інтерфейсу чи глобальної події
 func play_sound(sound_name: StringName, volume_db: float = 0.0, pitch_scale: float = 1.0) -> AudioStreamPlayer:
-	var stream: AudioStreamWAV = _sounds.get(sound_name, null)
+	var stream: AudioStream = _sounds.get(sound_name, null)
 	if stream == null:
 		return null
 
@@ -215,7 +306,7 @@ func play_sound(sound_name: StringName, volume_db: float = 0.0, pitch_scale: flo
 
 ## Відтворює 3D звук у координатах світу з урахуванням дистанції до слухача
 func play_sound_3d(sound_name: StringName, position: Vector3, volume_db: float = 0.0, pitch_scale: float = 1.0, max_distance: float = 35.0) -> AudioStreamPlayer3D:
-	var stream: AudioStreamWAV = _sounds.get(sound_name, null)
+	var stream: AudioStream = _sounds.get(sound_name, null)
 	if stream == null:
 		return null
 

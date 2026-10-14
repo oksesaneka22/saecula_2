@@ -503,9 +503,9 @@ func _on_resource_harvested(
 	_node: Node,
 	_item_id: StringName,
 	_count: int,
-	world_pos2d: Vector2
+	world_pos: Vector3
 ) -> void:
-	var cell := GridManager.world_to_map(world_pos2d)
+	var cell := GridManager.world_to_map_3d(world_pos)
 	_harvested_cells[cell] = true
 
 

@@ -30,16 +30,14 @@ func load_items_from_directory(path: String) -> void:
 		if not dir.current_is_dir() and (file_name.ends_with(".tres") or file_name.ends_with(".res")):
 			var file_path: String = path.path_join(file_name)
 			var res: Resource = load(file_path)
-			if res != null and res.is_class("Resource"):
-				var res_id: Variant = res.get("id")
-				var sid: StringName = StringName(res_id) if res_id != null else &""
-				if sid != &"":
-					if res.get("icon") == null:
-						var tex: Texture2D = TextureHelper.get_texture(TextureHelper.get_item_texture_path(sid))
-						if tex != null:
-							res.set("icon", tex)
-					_items[sid] = res
-					loaded_count += 1
+			var item := res as ItemData
+			if item != null and item.id != &"":
+				if item.icon == null:
+					var tex: Texture2D = TextureHelper.get_texture(TextureHelper.get_item_texture_path(item.id))
+					if tex != null:
+						item.icon = tex
+				_items[item.id] = item
+				loaded_count += 1
 		file_name = dir.get_next()
 
 	dir.list_dir_end()
@@ -47,7 +45,7 @@ func load_items_from_directory(path: String) -> void:
 
 
 ## Отримує об'єкт ItemData за його ідентифікатором (StringName)
-func get_item(item_id: StringName) -> Resource:
+func get_item(item_id: StringName) -> ItemData:
 	return _items.get(item_id, null)
 
 

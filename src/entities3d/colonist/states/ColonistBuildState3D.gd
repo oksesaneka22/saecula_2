@@ -1,6 +1,5 @@
 class_name ColonistBuildState3D
-extends "res://src/entities/fsm/State.gd"
-const Job = preload("res://src/systems/jobs/Job.gd")
+extends "res://src/entities3d/colonist/states/ColonistState3D.gd"
 const ConstructionSite3D = preload("res://src/world3d/ConstructionSite3D.gd")
 
 ## ColonistBuildState3D: Стан зведення 3D споруд (ConstructionSite3D) та модульних блоків (ModularPiece3D).

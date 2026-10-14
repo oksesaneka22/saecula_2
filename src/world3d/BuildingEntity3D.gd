@@ -122,6 +122,8 @@ func _setup_visual() -> void:
 			_build_stockpile_visual(size_m)
 		&"wooden_hut":
 			_build_wooden_hut_visual(size_m)
+		&"workbench":
+			_build_workbench_visual(size_m)
 		_:
 			_build_generic_visual(size_m)
 
@@ -337,6 +339,68 @@ func _build_wooden_hut_visual(size_m: Vector2) -> void:
 	_visual_root.add_child(lantern_light)
 
 
+func _build_workbench_visual(size_m: Vector2) -> void:
+	var wood_mat: StandardMaterial3D = TextureHelper.create_material(
+		TextureHelper.PATH_BLD_LOG_WOOD,
+		Color(0.42, 0.28, 0.16),
+		0.85
+	)
+	var plank_mat: StandardMaterial3D = TextureHelper.create_material(
+		TextureHelper.PATH_BLD_WOOD_PLANKS,
+		Color(0.55, 0.38, 0.22),
+		0.8
+	)
+	var stone_mat: StandardMaterial3D = TextureHelper.create_material(
+		TextureHelper.PATH_BLD_CAMPFIRE_STONE,
+		Color(0.4, 0.42, 0.45),
+		0.9
+	)
+
+	var table_w: float = size_m.x - 0.4
+	var table_d: float = size_m.y - 0.4
+	var table_h: float = 1.1
+
+	# 1. Стільниця
+	var top_mesh := BoxMesh.new()
+	top_mesh.size = Vector3(table_w, 0.18, table_d)
+	var top_inst := MeshInstance3D.new()
+	top_inst.mesh = top_mesh
+	top_inst.material_override = plank_mat
+	top_inst.position = Vector3(0, table_h, 0)
+	_visual_root.add_child(top_inst)
+
+	# 2. Чотири ніжки
+	var leg_mesh := BoxMesh.new()
+	leg_mesh.size = Vector3(0.25, table_h, 0.25)
+	var hx: float = table_w * 0.5 - 0.2
+	var hz: float = table_d * 0.5 - 0.2
+	var legs := [Vector3(-hx, table_h * 0.5, -hz), Vector3(hx, table_h * 0.5, -hz), Vector3(-hx, table_h * 0.5, hz), Vector3(hx, table_h * 0.5, hz)]
+	for p in legs:
+		var leg_inst := MeshInstance3D.new()
+		leg_inst.mesh = leg_mesh
+		leg_inst.material_override = wood_mat
+		leg_inst.position = p
+		_visual_root.add_child(leg_inst)
+
+	# 3. Нижня поличка
+	var shelf_mesh := BoxMesh.new()
+	shelf_mesh.size = Vector3(table_w * 0.88, 0.08, table_d * 0.88)
+	var shelf_inst := MeshInstance3D.new()
+	shelf_inst.mesh = shelf_mesh
+	shelf_inst.material_override = plank_mat
+	shelf_inst.position = Vector3(0, 0.32, 0)
+	_visual_root.add_child(shelf_inst)
+
+	# 4. Ковадло / інструмент
+	var anvil_mesh := BoxMesh.new()
+	anvil_mesh.size = Vector3(0.6, 0.32, 0.45)
+	var anvil_inst := MeshInstance3D.new()
+	anvil_inst.mesh = anvil_mesh
+	anvil_inst.material_override = stone_mat
+	anvil_inst.position = Vector3(-hx * 0.4, table_h + 0.23, 0)
+	_visual_root.add_child(anvil_inst)
+
+
 func _build_generic_visual(size_m: Vector2) -> void:
 	var gen_mat: StandardMaterial3D = TextureHelper.create_material(
 		TextureHelper.PATH_BLD_GENERIC,
@@ -452,11 +516,43 @@ func interact_storage(player: Node = null) -> void:
 		EventBus.storage_ui_requested.emit(self)
 
 
+func interact_workbench(player: Node = null) -> void:
+	if EventBus != null and EventBus.has_signal("workbench_ui_requested"):
+		EventBus.workbench_ui_requested.emit(self)
+	elif EventBus != null and EventBus.has_signal("crafting_ui_requested"):
+		EventBus.crafting_ui_requested.emit()
+
+
+func order_craft(recipe_id: StringName, amount: int = 1) -> Job:
+	if JobManager != null and JobManager.has_method("create_craft_job"):
+		return JobManager.create_craft_job(self, recipe_id, amount)
+	return null
+
+
 func interact(player: Node = null) -> void:
 	if building_data != null and building_data.id == &"campfire":
 		interact_campfire(player)
+	elif building_data != null and building_data.id == &"workbench":
+		interact_workbench(player)
 	elif inventory != null:
 		interact_storage(player)
+
+
+func serialize() -> Dictionary:
+	var inv_data: Array = []
+	if inventory != null and inventory.has_method("get_all_items"):
+		for slot in inventory.get_all_items():
+			if slot != null and slot.item != null and slot.count > 0:
+				inv_data.append({
+					"item_id": slot.item.id,
+					"count": slot.count
+				})
+	return {
+		"building_id": building_data.id if building_data != null else &"",
+		"origin_cell": [origin_cell.x, origin_cell.y],
+		"rotation_index": rotation_index,
+		"inventory": inv_data
+	}
 
 
 ## Демонтує будівлю, звільняє клітинки сітки, повертає ресурси та вміст складу, надсилає сигнал

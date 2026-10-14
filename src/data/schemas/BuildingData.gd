@@ -23,7 +23,7 @@ extends Resource
 ## Час роботи будівельника над спорудою (в ігрових секундах)
 @export var build_time: float = 5.0
 ## Необхідні ресурси для побудови (масив ItemCost)
-@export var construction_cost: Array[Resource] = [] # Array[ItemCost]
+@export var construction_cost: Array[ItemCost] = []
 
 @export_group("Functionality")
 ## Професія або роль, яку забезпечує будівля (наприклад, "builder", "miner", "farmer")

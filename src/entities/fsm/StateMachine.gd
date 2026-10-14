@@ -19,11 +19,11 @@ func _init_states() -> void:
 	var parent_actor = get_parent() as CharacterBody3D
 	states.clear()
 	for child in get_children():
-		if child.has_method("enter") and child.has_method("exit"):
+		if child is State:
 			var s_name := StringName(child.name.to_lower())
 			states[s_name] = child
-			child.set("state_machine", self)
-			child.set("actor", parent_actor)
+			child.state_machine = self
+			child.actor = parent_actor
 
 	if initial_state != null:
 		var init_name := StringName(initial_state.name.to_lower())
