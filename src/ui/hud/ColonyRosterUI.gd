@@ -190,7 +190,8 @@ func _refresh_roster() -> void:
 	else:
 		colonists = get_tree().get_nodes_in_group("colonists")
 
-	_title_label.text = "Поселенці (%d)" % colonists.size()
+	var max_cap: int = JobManager.get_max_population_capacity() if JobManager != null else 4
+	_title_label.text = "Поселенці (%d/%d)" % [colonists.size(), max_cap]
 
 	if colonists.is_empty():
 		var empty_lbl := Label.new()

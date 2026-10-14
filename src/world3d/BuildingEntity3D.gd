@@ -19,6 +19,7 @@ var inventory: Node = null
 var _visual_root: Node3D = null
 var _collision_shape: CollisionShape3D = null
 var _label_3d: Label3D = null
+var _fortified_slots_applied: bool = false
 var _fire_light: OmniLight3D = null
 var _flicker_time: float = 0.0
 
@@ -35,11 +36,16 @@ func _ready() -> void:
 	add_to_group("buildings")
 	add_to_group("interactable")
 	set_process(_fire_light != null)
+	if EventBus != null and not EventBus.technology_unlocked.is_connected(_on_technology_unlocked):
+		EventBus.technology_unlocked.connect(_on_technology_unlocked)
+	_check_and_apply_fortified_bonus()
 
 
 func _exit_tree() -> void:
 	if LogisticsManager != null and inventory != null:
 		LogisticsManager.unregister_stockpile(self)
+	if EventBus != null and EventBus.technology_unlocked.is_connected(_on_technology_unlocked):
+		EventBus.technology_unlocked.disconnect(_on_technology_unlocked)
 
 
 ## Налаштовує щойно зведену будівлю за схемою та початковою клітинкою
@@ -88,9 +94,26 @@ func _setup_inventory(slots: int) -> void:
 		inventory.set("slot_count", slots)
 		add_child(inventory)
 		inventory.inventory_updated.connect(_on_inventory_updated)
+		_check_and_apply_fortified_bonus()
 
 	if LogisticsManager != null:
 		LogisticsManager.register_stockpile(self)
+
+
+func _on_technology_unlocked(tech_id: StringName) -> void:
+	if tech_id == &"fortified_settlement":
+		_check_and_apply_fortified_bonus()
+
+
+func _check_and_apply_fortified_bonus() -> void:
+	if _fortified_slots_applied:
+		return
+	if building_data == null or building_data.id != &"stockpile" or inventory == null:
+		return
+	if EraManager != null and EraManager.is_tech_unlocked(&"fortified_settlement"):
+		_fortified_slots_applied = true
+		var current_slots: int = int(inventory.get("slot_count"))
+		inventory.set("slot_count", current_slots + 12)
 
 
 func _setup_collision() -> void:

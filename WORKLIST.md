@@ -1294,3 +1294,16 @@
   - `GameTestSuite.gd`: юніт-тест #55 `_test_copper_ore_and_copper_axe()`.
 * **Результат:** 55 з 55 тестів пройдено успішно (Exit code 0).
 
+### 7.61. Денний відпочинок при виснаженні, покращення вантажів та бонуси Fortified Settlement
+* **Статус:** [x] Завершено
+* **Опис:** Споживання їжі колоністом із власного інвентаря, нові кольори перенесення ресурсів, денний сон при енергії < 15.0 з пробудженням при >= 60.0, знижка 50% енергії будівництва та +12 слотів складу від fortified_settlement, ліміт житла у ColonyRosterUI.
+* **Задачі:**
+  - `Colonist3D.gd`: у `consume_food()` додано пріоритетне поїдання ягід із власного `inventory`, у `show_carried_cargo()` додано палітру для `clay`, `flint`, `berries`, `copper_ore`, `copper_ingot`, `clay_pot`.
+  - `ColonistIdleState3D.gd`: автоматичний перехід виснаженого колоніста (`current_energy < 15.0`) у стан відпочинку біля вогнища.
+  - `ColonistRestState3D.gd`: вдень робітник прокидається лише після відновлення сил до `current_energy >= 60.0`.
+  - `Player3D.gd`: метод `get_effective_construct_energy_cost()` зі знижкою 50% енергії при дослідженій технології `fortified_settlement`.
+  - `BuildingEntity3D.gd`: додавання +12 додаткових слотів для складу `stockpile` при розблокуванні `fortified_settlement` (та динамічно за сигналом `EventBus.technology_unlocked`).
+  - `ColonyRosterUI.gd`: показ місткості житла у заголовку `"Поселенці (%d/%d)" % [count, max_cap]` через `JobManager.get_max_population_capacity()`.
+  - `GameTestSuite.gd`: юніт-тест #56 `_test_colonist_exhaustion_and_fortified_tech()`.
+* **Результат:** 56 з 56 тестів пройдено успішно (Exit code 0).
+

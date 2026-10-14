@@ -222,6 +222,9 @@ func run_all_tests(p_main: Node = null) -> void:
 	# 55. Валідація жил мідної руди (COPPER_ORE), видобутку кайлом та авто-екіпірування copper_axe лісорубом
 	_test_copper_ore_and_copper_axe()
 
+	# 56. Валідація денного відпочинку колоніста при виснаженні та бонусів технології fortified_settlement
+	_test_colonist_exhaustion_and_fortified_tech()
+
 
 
 
@@ -4019,4 +4022,91 @@ func _test_copper_ore_and_copper_axe() -> void:
 
 	col.queue_free()
 	print("[Main] Copper Ore & Copper Axe unit tests passed successfully!")
+
+
+func _test_colonist_exhaustion_and_fortified_tech() -> void:
+	print("[Main] Testing Colonist Exhaustion Daytime Rest & Fortified Settlement Tech...")
+	# 1. Поїдання ягід колоністом із власного inventory у consume_food()
+	var col = Colonist3DScene.instantiate()
+	add_child(col)
+	col.global_position = Vector3(200, 0, 200)
+	col.setup_colonist("Тестовий Їдець", &"settler")
+	col.current_hunger = 20.0
+	col.current_energy = 30.0
+
+	# Додаємо ягоди у власний інвентар колоніста
+	col.inventory.add_item_by_id(&"berries", 2)
+	assert(col.inventory.get_item_count(&"berries") == 2, "Colonist must have 2 berries in personal inventory")
+
+	var ate: bool = col.consume_food()
+	assert(ate == true, "consume_food must succeed when berries are in personal inventory")
+	assert(col.inventory.get_item_count(&"berries") == 1, "One berry must be consumed from personal inventory")
+	assert(col.current_hunger == 55.0, "Hunger must increase from 20 to 55 (+35)")
+	assert(col.current_energy == 45.0, "Energy must increase from 30 to 45 (+15)")
+
+	# 2. Перехід виснаженого колоніста (current_energy = 10.0) у стан Rest вдень та відновлення енергії
+	# Очищаємо залишок ягід, щоб колоніст не витрачав час на розвантаження
+	col.inventory.clear()
+
+	if GameManager != null:
+		GameManager.in_game_time_seconds = 12.0 * 3600.0
+		assert(not GameManager.is_night(), "Must be daytime for test")
+
+	col.is_following_player = false
+	col.current_job = null
+	col.current_energy = 10.0
+	col.state_machine.transition_to(&"idle")
+
+	col.state_machine.current_state.physics_update(0.1)
+
+	if col.state_machine.current_state.name == "MoveTo":
+		col.state_machine.current_state._reach_destination()
+
+	assert(col.state_machine.current_state.name == "Rest", "Exhausted colonist must transition to Rest state during daytime")
+
+	col.state_machine.current_state.physics_update(2.0)
+	assert(col.current_energy > 10.0, "Colonist must recover energy while resting")
+
+	# Колоніст не повинен прокидатися вдень, поки current_energy < 60.0
+	col.current_energy = 50.0
+	col.state_machine.current_state.physics_update(0.1)
+	assert(col.state_machine.current_state.name == "Rest", "Colonist must stay resting while energy < 60.0")
+
+	# Коли current_energy >= 60.0, колоніст прокидається вдень і переходить у idle
+	col.current_energy = 65.0
+	col.state_machine.current_state.physics_update(0.1)
+	assert(col.state_machine.current_state.name == "Idle", "Colonist must wake up and transition to Idle when energy >= 60.0 during daytime")
+
+	col.queue_free()
+
+	# 3. Зменшення get_effective_construct_energy_cost() у Player3D після розблокування &"fortified_settlement"
+	var player = _get_scene_node("Player3D")
+	var own_player: Node = null
+	if player == null:
+		own_player = Player3DScene.instantiate()
+		add_child(own_player)
+		player = own_player
+
+	assert(player.has_method("get_effective_construct_energy_cost"), "Player3D must have get_effective_construct_energy_cost()")
+
+	var base_cost: float = player.construct_energy_cost
+	EraManager.unlock_tech_cheat(&"fortified_settlement")
+	assert(EraManager.is_tech_unlocked(&"fortified_settlement") == true, "fortified_settlement must be unlocked")
+
+	var discounted_cost: float = player.get_effective_construct_energy_cost()
+	assert(is_equal_approx(discounted_cost, base_cost * 0.5), "After fortified_settlement, construct energy cost must be halved (50%)")
+
+	# Перевірка бонусу до сховища (+12 слотів)
+	var sp_data = BuildingPlacementController.get_building(&"stockpile")
+	if sp_data != null:
+		var sp_bld = BuildingEntity3DScript.new()
+		add_child(sp_bld)
+		sp_bld.setup_building(sp_data, Vector2i(210, 210), 0)
+		assert(sp_bld.inventory.get("slot_count") == sp_data.storage_slots + 12, "Stockpile must have 12 extra slots with fortified_settlement")
+		sp_bld.demolish()
+
+	if own_player != null:
+		own_player.queue_free()
+
+	print("[Main] Colonist Exhaustion Daytime Rest & Fortified Settlement Tech unit tests passed successfully!")
 

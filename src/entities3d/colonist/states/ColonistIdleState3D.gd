@@ -66,8 +66,10 @@ func physics_update(delta: float) -> void:
 			actor.set_status_display("👀 Слідує за гравцем")
 		return
 
-	# Нічний відпочинок біля табірного вогнища
-	if GameManager != null and GameManager.is_night() and not actor.is_following_player and actor.current_job == null:
+	# Нічний відпочинок біля табірного вогнища або денний відпочинок при виснаженні (< 15.0)
+	var is_exhausted: bool = ("current_energy" in actor and actor.current_energy < 15.0)
+	var is_night: bool = (GameManager != null and GameManager.is_night())
+	if (is_night or is_exhausted) and not actor.is_following_player and actor.current_job == null:
 		var campfires = get_tree().get_nodes_in_group("campfires")
 		if not campfires.is_empty():
 			var campfire: Node3D = campfires[0] as Node3D

@@ -68,10 +68,12 @@ func physics_update(delta: float) -> void:
 		state_machine.transition_to(&"idle")
 		return
 
-	# Перевірка наступу ранку (сон завершується після 06:00)
+	# Перевірка наступу ранку або завершення денного відпочинку (прокидається тільки коли сил >= 60.0)
 	if GameManager != null and not GameManager.is_night():
-		state_machine.transition_to(&"idle")
-		return
+		var energy: float = actor.current_energy if "current_energy" in actor else 100.0
+		if energy >= 60.0:
+			state_machine.transition_to(&"idle")
+			return
 
 	# Плавний поворот обличчям до вогнища
 	if target_campfire != null and is_instance_valid(target_campfire):

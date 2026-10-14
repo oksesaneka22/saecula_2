@@ -523,7 +523,8 @@ func _try_interact_or_harvest(is_interact_key: bool = false) -> void:
 			if collider.has_method("interact"):
 				collider.interact(self)
 				return
-		if current_energy < construct_energy_cost:
+		var eff_cost: float = get_effective_construct_energy_cost()
+		if current_energy < eff_cost:
 			_show_energy_warning()
 			if collider.has_method("show_temporary_message"):
 				collider.show_temporary_message("Недостатньо енергії!", Color(1.0, 0.3, 0.3))
@@ -533,7 +534,7 @@ func _try_interact_or_harvest(is_interact_key: bool = false) -> void:
 			var target_pos: Vector3 = collider.global_position if collider is Node3D else global_position
 			AudioManager.play_sound_3d(&"build", target_pos, 0.0, randf_range(0.95, 1.05))
 		if collider.interact_construct(inventory, has_hammer):
-			consume_energy(construct_energy_cost)
+			consume_energy(eff_cost)
 		else:
 			consume_energy(2.0)
 		return
@@ -805,6 +806,12 @@ func is_holding_torch() -> bool:
 		var item_id: StringName = StringName(item.get("id"))
 		return item_id == &"torch"
 	return false
+
+
+func get_effective_construct_energy_cost() -> float:
+	if EraManager != null and EraManager.is_tech_unlocked(&"fortified_settlement"):
+		return construct_energy_cost * 0.5
+	return construct_energy_cost
 
 
 func has_hammer_equipped() -> bool:

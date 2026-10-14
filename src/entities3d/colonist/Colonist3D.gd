@@ -515,7 +515,13 @@ func _update_needs(delta: float) -> void:
 
 ## Вільний колоніст бере ягоди зі складу та відновлює ситість (+35) і енергію (+15)
 func consume_food() -> bool:
-	if LogisticsManager != null and LogisticsManager.withdraw_item(&"berries", 1) > 0:
+	var ate: bool = false
+	if inventory != null and inventory.remove_item(&"berries", 1):
+		ate = true
+	elif LogisticsManager != null and LogisticsManager.withdraw_item(&"berries", 1) > 0:
+		ate = true
+
+	if ate:
 		current_hunger = minf(max_hunger, current_hunger + 35.0)
 		current_energy = minf(max_energy, current_energy + 15.0)
 		if AudioManager != null:
@@ -908,6 +914,18 @@ func show_carried_cargo(item_id: StringName) -> void:
 			mat.albedo_color = Color("7F8C8D")
 		&"straw":
 			mat.albedo_color = Color("E1B12C")
+		&"clay":
+			mat.albedo_color = Color("B35427")
+		&"flint":
+			mat.albedo_color = Color("2C3E50")
+		&"berries":
+			mat.albedo_color = Color("E74C3C")
+		&"copper_ore":
+			mat.albedo_color = Color("B87333")
+		&"copper_ingot":
+			mat.albedo_color = Color("E67E22")
+		&"clay_pot":
+			mat.albedo_color = Color("C05621")
 		_:
 			mat.albedo_color = Color("C0392B")
 
