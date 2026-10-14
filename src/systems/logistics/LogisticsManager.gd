@@ -90,6 +90,10 @@ func get_stockpiles_count() -> int:
 
 
 ## Повертає загальну кількість вказаного предмета на всіх складах колонії
+func get_item_count_in_all_stockpiles(item_id: StringName) -> int:
+	return get_available_item_count(item_id)
+
+
 func get_available_item_count(item_id: StringName) -> int:
 	var total: int = 0
 	for s in get_all_stockpiles():

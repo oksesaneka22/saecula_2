@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="RecipeData" load_steps=5 format=3 uid="uid://saecula_recipe_clay_pot"]
+
+[ext_resource type="Script" path="res://src/data/schemas/RecipeData.gd" id="1_recipe"]
+[ext_resource type="Script" path="res://src/data/schemas/ItemCost.gd" id="2_cost"]
+[ext_resource type="Resource" path="res://data/items/clay.tres" id="3_clay"]
+[ext_resource type="Resource" path="res://data/items/clay_pot.tres" id="4_pot"]
+
+[sub_resource type="Resource" id="Cost_clay"]
+script = ExtResource("2_cost")
+item = ExtResource("3_clay")
+amount = 2
+
+[resource]
+script = ExtResource("1_recipe")
+id = &"craft_clay_pot"
+display_name = "Глиняний глечик"
+description = "Виліплювання та випалювання глиняного глечика з 2 шматків глини."
+ingredients = [SubResource("Cost_clay")]
+required_era = 2
+craft_time = 3.0
+result_item = ExtResource("4_pot")
+result_amount = 1

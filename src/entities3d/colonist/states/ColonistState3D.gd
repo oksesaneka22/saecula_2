@@ -18,14 +18,14 @@ func apply_gravity(delta: float, apply_slide: bool = false) -> void:
 		actor.move_and_slide()
 
 
-## Плавно повертає актора обличчям до цільової 3D точки у горизонтальній площині X-Z
+## Плавно повертає актора обличчям (+Z) до цільової 3D точки у горизонтальній площині X-Z
 func face_target(target_pos: Vector3, delta: float, turn_speed: float = 10.0) -> void:
 	if actor == null:
 		return
 	var look_dir := target_pos - actor.global_position
 	look_dir.y = 0.0
 	if look_dir.length_squared() > 0.001:
-		var target_angle := atan2(-look_dir.x, -look_dir.z)
+		var target_angle := atan2(look_dir.x, look_dir.z)
 		actor.rotation.y = lerp_angle(actor.rotation.y, target_angle, turn_speed * delta)
 
 

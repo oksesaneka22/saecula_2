@@ -71,6 +71,8 @@ func setup_building(data: BuildingData, cell: Vector2i, p_rotation_index: int = 
 	_setup_collision()
 	if building_data.id == &"campfire":
 		add_to_group("campfires")
+	elif building_data.id == &"workbench":
+		add_to_group("workbenches")
 
 	# 6. Побудова процедурної 3D візуалізації будівлі
 	_setup_visual()
@@ -399,6 +401,29 @@ func _build_workbench_visual(size_m: Vector2) -> void:
 	anvil_inst.material_override = stone_mat
 	anvil_inst.position = Vector3(-hx * 0.4, table_h + 0.23, 0)
 	_visual_root.add_child(anvil_inst)
+
+	# 5. Металеві лещата (vise) на краю верстака
+	var vise_mesh := BoxMesh.new()
+	vise_mesh.size = Vector3(0.24, 0.22, 0.3)
+	var vise_mat := StandardMaterial3D.new()
+	vise_mat.albedo_color = Color(0.28, 0.3, 0.35)
+	vise_mat.metallic = 0.85
+	vise_mat.roughness = 0.3
+	var vise_inst := MeshInstance3D.new()
+	vise_inst.mesh = vise_mesh
+	vise_inst.material_override = vise_mat
+	vise_inst.position = Vector3(hx * 0.75, table_h + 0.18, hz * 0.75)
+	_visual_root.add_child(vise_inst)
+
+	# 6. Столярні інструменти на стільниці
+	var tool_mesh := BoxMesh.new()
+	tool_mesh.size = Vector3(0.12, 0.08, 0.38)
+	var tool_inst := MeshInstance3D.new()
+	tool_inst.mesh = tool_mesh
+	tool_inst.material_override = wood_mat
+	tool_inst.position = Vector3(hx * 0.2, table_h + 0.12, -hz * 0.3)
+	tool_inst.rotation.y = deg_to_rad(35.0)
+	_visual_root.add_child(tool_inst)
 
 
 func _build_generic_visual(size_m: Vector2) -> void:

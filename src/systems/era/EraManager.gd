@@ -288,7 +288,7 @@ func _init_technology_tree() -> void:
 		"🏺",
 		[&"wooden_architecture"],
 		{ &"clay": 15, &"flint": 6, &"wood": 15 },
-		[],
+		[&"craft_clay_pot"],
 		[],
 		["Обробка прибережної глини", "Місткості для чистих запасів води", "Перехід у Мідну добу"],
 		Vector2(0.5, 6.0)
@@ -304,7 +304,7 @@ func _init_technology_tree() -> void:
 		"🔥",
 		[&"clay_pottery"],
 		{ &"clay": 25, &"stone": 20, &"wood": 30 },
-		[],
+		[&"craft_copper_ingot", &"craft_copper_axe"],
 		[],
 		["Мідні зливки", "Мідні сокири з підвищеною міцністю (+50% ресурсомісткість)"],
 		Vector2(0.0, 7.0)
@@ -409,6 +409,10 @@ func get_all_techs() -> Array[Resource]:
 
 func get_tech(tech_id: StringName) -> Resource:
 	return _technologies.get(tech_id, null)
+
+
+func get_tech_data(tech_id: StringName) -> Resource:
+	return get_tech(tech_id)
 
 
 func get_techs_for_era(era_index: int) -> Array[Resource]:

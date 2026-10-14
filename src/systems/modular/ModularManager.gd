@@ -450,6 +450,23 @@ func is_cell_indoors(cell: Vector2i) -> bool:
 	return room_data.get("is_room", false)
 
 
+## Повертає кількість унікальних завершених закритих кімнат
+func get_enclosed_rooms_count() -> int:
+	var counted_cells: Dictionary = {}
+	var room_count: int = 0
+	for cell in _floors.keys():
+		if counted_cells.has(cell):
+			continue
+		if has_built_floor(cell):
+			var r: Dictionary = detect_enclosed_room(cell)
+			if r.get("is_room", false):
+				room_count += 1
+				var cells_arr: Array = r.get("cells", [])
+				for rc in cells_arr:
+					counted_cells[rc] = true
+	return room_count
+
+
 ## Повертає дані всіх модульних деталей для збереження
 func get_all_modular_data() -> Array[Dictionary]:
 	var data: Array[Dictionary] = []

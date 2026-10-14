@@ -181,3 +181,9 @@ signal storage_ui_requested(storage_node: Node)
 
 ## Інтерфейс сховища закрито
 signal storage_ui_closed
+
+## Запит на відкриття вікна крафту
+signal crafting_ui_requested
+
+## Запит на взаємодію з верстаком
+signal workbench_ui_requested(workbench_node: Node)

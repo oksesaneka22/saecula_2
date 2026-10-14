@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ItemData" load_steps=2 format=3 uid="uid://saecula_item_copper_axe"]
+
+[ext_resource type="Script" path="res://src/data/schemas/ItemData.gd" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+id = &"copper_axe"
+display_name = "Мідна сокира"
+description = "Міцна металева сокира епохи Енеоліту та Бронзи. Істотно прискорює рубку лісу."
+category = 2
+max_stack = 1
+tool_type = 1
+tier = 2
+tool_efficiency = 3.5

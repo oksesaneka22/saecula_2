@@ -707,8 +707,8 @@ func start_sleep(duration: float = 2.8) -> void:
 	velocity = Vector3.ZERO
 
 	var is_indoors: bool = false
-	if ModularManager != null:
-		var cell := Vector2i(int(floor(global_position.x / 2.0)), int(floor(global_position.z / 2.0)))
+	if ModularManager != null and GridManager != null:
+		var cell: Vector2i = GridManager.world_to_map_3d(global_position)
 		is_indoors = ModularManager.is_cell_indoors(cell)
 
 	var eff_duration: float = duration * 0.6 if is_indoors else duration
@@ -944,6 +944,9 @@ func _try_order_harvest_targeted_resource() -> bool:
 			5:
 				prof = &""
 				res_name = "Траву"
+			6:
+				prof = &""
+				res_name = "Мідну руду"
 	elif "display_name" in target:
 		res_name = str(target.display_name)
 

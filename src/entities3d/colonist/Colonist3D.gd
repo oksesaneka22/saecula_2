@@ -24,6 +24,12 @@ const ColonistCraftState3D = preload("res://src/entities3d/colonist/states/Colon
 @export var walk_speed: float = 3.5
 @export var max_health: float = 100.0
 @export var current_health: float = 100.0
+@export var max_energy: float = 100.0
+@export var current_energy: float = 100.0
+@export var max_hunger: float = 100.0
+@export var current_hunger: float = 100.0
+@export var max_thirst: float = 100.0
+@export var current_thirst: float = 100.0
 
 var current_job: Job = null
 var inventory: InventoryComponent = null
@@ -408,6 +414,14 @@ func assign_job(job: Job) -> void:
 	if job == null or state_machine == null:
 		return
 
+	if job.target_node != null:
+		var raw_node: Variant = job.target_node
+		if not is_instance_valid(raw_node) or (raw_node is Node and raw_node.is_queued_for_deletion()):
+			if JobManager != null:
+				JobManager.release_job(job, "Ціль видалено")
+			current_job = null
+			return
+
 	current_job = job
 	if FloatingTextManager != null:
 		FloatingTextManager.spawn_info(global_position + Vector3(0, 1.9, 0), "🔨 До роботи!", Color(0.4, 0.85, 1.0))
@@ -474,6 +488,63 @@ func take_damage(amount: float) -> void:
 
 func heal(amount: float) -> void:
 	current_health = clampf(current_health + amount, 0.0, max_health)
+
+
+func _physics_process(delta: float) -> void:
+	_update_needs(delta)
+
+
+func _update_needs(delta: float) -> void:
+	var state_name: String = ""
+	if state_machine != null and state_machine.current_state != null:
+		state_name = state_machine.current_state.name
+
+	match state_name:
+		"Build", "Harvest", "Haul", "Craft":
+			current_energy = maxf(0.0, current_energy - 1.5 * delta)
+			current_hunger = maxf(0.0, current_hunger - 0.6 * delta)
+			current_thirst = maxf(0.0, current_thirst - 0.8 * delta)
+		"Rest":
+			current_hunger = maxf(0.0, current_hunger - 0.05 * delta)
+			current_thirst = maxf(0.0, current_thirst - 0.05 * delta)
+		_:
+			current_energy = maxf(0.0, current_energy - 0.1 * delta)
+			current_hunger = maxf(0.0, current_hunger - 0.15 * delta)
+			current_thirst = maxf(0.0, current_thirst - 0.2 * delta)
+
+
+## Вільний колоніст бере ягоди зі складу та відновлює ситість (+35) і енергію (+15)
+func consume_food() -> bool:
+	if LogisticsManager != null and LogisticsManager.withdraw_item(&"berries", 1) > 0:
+		current_hunger = minf(max_hunger, current_hunger + 35.0)
+		current_energy = minf(max_energy, current_energy + 15.0)
+		if AudioManager != null:
+			AudioManager.play_sound_3d(&"eat", global_position, 0.0, 1.0)
+		if FloatingTextManager != null:
+			FloatingTextManager.spawn_info(global_position + Vector3(0, 1.8, 0), "🍓 Попоїв (+35)", Color(0.9, 0.4, 0.4))
+		return true
+	return false
+
+
+## Колоніст п'є воду біля водойми або з припасів (+40)
+func consume_water() -> bool:
+	var drank: bool = false
+	var shore_cells: Array[Vector2i] = GridManager.get_shore_cells() if GridManager != null else []
+	if not shore_cells.is_empty():
+		drank = true
+	elif LogisticsManager != null and (LogisticsManager.withdraw_item(&"clay_pot", 1) > 0 or LogisticsManager.get_available_item_count(&"berries") > 0):
+		drank = true
+	else:
+		drank = true
+
+	if drank:
+		current_thirst = minf(max_thirst, current_thirst + 40.0)
+		if AudioManager != null:
+			AudioManager.play_sound_3d(&"drink", global_position, 0.0, 1.0)
+		if FloatingTextManager != null:
+			FloatingTextManager.spawn_info(global_position + Vector3(0, 1.8, 0), "💧 Попив (+40)", Color(0.3, 0.7, 1.0))
+		return true
+	return false
 
 
 func _update_label() -> void:
@@ -800,6 +871,9 @@ func show_hand_tool(tool_id: StringName) -> void:
 		&"stone_axe":
 			box.size = Vector3(0.12, 0.45, 0.2)
 			mat.albedo_color = Color("7F8C8D")
+		&"copper_axe":
+			box.size = Vector3(0.14, 0.48, 0.24)
+			mat.albedo_color = Color("D35400")
 		&"stone_pickaxe":
 			box.size = Vector3(0.12, 0.45, 0.3)
 			mat.albedo_color = Color("95A5A6")

@@ -34,6 +34,8 @@ func _ready() -> void:
 			EventBus.building_demolished.connect(_on_building_demolished)
 		if EventBus.has_signal("building_completed"):
 			EventBus.building_completed.connect(_on_building_completed)
+		if EventBus.has_signal("day_time_updated"):
+			EventBus.day_time_updated.connect(_on_day_time_updated)
 
 
 func _process(delta: float) -> void:
@@ -89,6 +91,68 @@ func get_all_colonists() -> Array[Node]:
 
 func get_colonists_count() -> int:
 	return get_all_colonists().size()
+
+
+## Розраховує максимальну місткість поселення (житловий ліміт)
+## Базове табірне вогнище дає 4 місця, кожна закрита кімната або wooden_hut додає +2 місця
+func get_max_population_capacity() -> int:
+	var capacity: int = 0
+	if get_tree() != null:
+		var campfires = get_tree().get_nodes_in_group("campfires")
+		for cf in campfires:
+			if is_instance_valid(cf) and not cf.is_queued_for_deletion():
+				capacity += 4
+
+	if ModularManager != null and ModularManager.has_method("get_enclosed_rooms_count"):
+		capacity += ModularManager.get_enclosed_rooms_count() * 2
+
+	if get_tree() != null:
+		var buildings = get_tree().get_nodes_in_group("buildings")
+		for b in buildings:
+			if is_instance_valid(b) and not b.is_queued_for_deletion():
+				var b_data = b.get("building_data")
+				var b_id = b_data.id if b_data != null else b.get("building_id")
+				if b_id == &"wooden_hut":
+					capacity += 2
+	return capacity
+
+
+## Перевіряє наявність вільних місць та спавнить нового колоніста
+func check_and_spawn_settler() -> Node:
+	var capacity: int = get_max_population_capacity()
+	if get_colonists_count() >= capacity:
+		return null
+
+	var spawn_pos := Vector3(50, 0, 50)
+	if get_tree() != null:
+		var campfires = get_tree().get_nodes_in_group("campfires")
+		for cf in campfires:
+			if is_instance_valid(cf) and not cf.is_queued_for_deletion() and cf is Node3D:
+				spawn_pos = (cf as Node3D).global_position + Vector3(randf_range(-1.5, 1.5), 0.1, randf_range(-1.5, 1.5))
+				break
+
+	var world_3d = get_tree().get_first_node_in_group("world_3d") if get_tree() != null else null
+	var new_colonist: Node = null
+	if world_3d != null and world_3d.has_method("spawn_colonist"):
+		new_colonist = world_3d.spawn_colonist(spawn_pos, "", &"settler")
+	else:
+		var col_scene = preload("res://src/entities3d/colonist/Colonist3D.tscn")
+		new_colonist = col_scene.instantiate()
+		if new_colonist is Node3D:
+			(new_colonist as Node3D).position = spawn_pos
+		var root = get_tree().current_scene if get_tree() != null else self
+		root.add_child(new_colonist)
+
+	var col_name: String = str(new_colonist.get("colonist_name")) if new_colonist != null and new_colonist.get("colonist_name") != null else "Новий мешканець"
+	if EventBus != null and EventBus.has_signal("notification_posted"):
+		EventBus.notification_posted.emit("Новий поселенець", "До вашого поселення приєднався %s!" % col_name, 1)
+
+	return new_colonist
+
+
+func _on_day_time_updated(hour: int, minute: int) -> void:
+	if hour == 6 and minute == 0:
+		check_and_spawn_settler()
 
 
 # ------------------------------------------------------------------------------
@@ -181,8 +245,11 @@ func request_job(colonist: Node) -> Job:
 			continue
 
 		# Перевірка валідності цільового вузла (якщо є)
-		if job.target_node != null and (not is_instance_valid(job.target_node) or job.target_node.is_queued_for_deletion()):
-			continue
+		if job.target_node != null:
+			var raw_node: Variant = job.target_node
+			if not is_instance_valid(raw_node) or (raw_node is Node and raw_node.is_queued_for_deletion()):
+				cancel_job(job, "Ціль видалено")
+				continue
 
 		# Перевірка професії (поселенець 'settler' є універсалом і може виконувати доставку 'hauler')
 		if not job.required_profession.is_empty():
@@ -256,6 +323,12 @@ func request_job(colonist: Node) -> Job:
 func assign_job_to_colonist(job: Job, colonist: Node) -> bool:
 	if job == null or colonist == null:
 		return false
+
+	if job.target_node != null:
+		var raw_node: Variant = job.target_node
+		if not is_instance_valid(raw_node) or (raw_node is Node and raw_node.is_queued_for_deletion()):
+			cancel_job(job, "Ціль видалено")
+			return false
 	# Якщо колоніст вже мав завдання — вивільняємо старе
 	for active in _active_jobs:
 		if active != job and active.assigned_colonist == colonist:

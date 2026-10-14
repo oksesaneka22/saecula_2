@@ -408,7 +408,10 @@ func _load_chunk(ch: Vector2i) -> void:
 				# 2. Суходіл: Скелі, дерева, кущі ягід (оптимізована щільність для 60-144+ FPS)
 				var rn: float = _rock_noise.get_noise_2d(gx, gy)
 				if rn > 0.70 and (gx * 37 + gy * 71) % 6 == 0:
-					_spawn_chunk_node(chunk_node, cell, WorldResourceNode3D.ResourceType.ROCK, &"stone")
+					if (gx * 19 + gy * 53) % 4 == 0:
+						_spawn_chunk_node(chunk_node, cell, WorldResourceNode3D.ResourceType.COPPER_ORE, &"copper_ore")
+					else:
+						_spawn_chunk_node(chunk_node, cell, WorldResourceNode3D.ResourceType.ROCK, &"stone")
 				else:
 					var fn: float = _forest_noise.get_noise_2d(gx, gy)
 					if fn > 0.08:
@@ -451,6 +454,10 @@ func _spawn_chunk_node(
 		node.max_health = 1.0
 		node.drop_min_amount = 1
 		node.drop_max_amount = 3
+	elif type == WorldResourceNode3D.ResourceType.COPPER_ORE:
+		node.max_health = 4.0
+		node.drop_min_amount = 2
+		node.drop_max_amount = 4
 	node.position = GridManager.map_to_world_3d(cell, 0.0)
 	node.set_cell(cell)
 	chunk_node.add_child(node)

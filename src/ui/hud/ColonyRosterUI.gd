@@ -285,6 +285,16 @@ func _create_colonist_card(colonist: Node) -> PanelContainer:
 	prof_badge.add_theme_color_override("font_color", Color(0.7, 0.85, 0.95))
 	top_line.add_child(prof_badge)
 
+	var needs_lbl := Label.new()
+	needs_lbl.name = "NeedsLabel"
+	var e_val: int = int(colonist.get("current_energy")) if colonist.get("current_energy") != null else 100
+	var h_val: int = int(colonist.get("current_hunger")) if colonist.get("current_hunger") != null else 100
+	var t_val: int = int(colonist.get("current_thirst")) if colonist.get("current_thirst") != null else 100
+	needs_lbl.text = "⚡%d 🍖%d 💧%d" % [e_val, h_val, t_val]
+	needs_lbl.add_theme_font_size_override("font_size", 9)
+	needs_lbl.add_theme_color_override("font_color", Color(0.8, 0.85, 0.7))
+	top_line.add_child(needs_lbl)
+
 	# Рядок статусу завдання
 	var status_text: String = ""
 	if colonist.has_method("get_status_text") and colonist.get_status_text() != "":
@@ -362,6 +372,13 @@ func _update_active_statuses() -> void:
 			else:
 				st_val = "☕ Вільний"
 			status_lbl.text = st_val
+
+		var needs_lbl := card.find_child("NeedsLabel", true, false) as Label
+		if needs_lbl != null:
+			var e: int = int(col.get("current_energy")) if col.get("current_energy") != null else 100
+			var h: int = int(col.get("current_hunger")) if col.get("current_hunger") != null else 100
+			var t: int = int(col.get("current_thirst")) if col.get("current_thirst") != null else 100
+			needs_lbl.text = "⚡%d 🍖%d 💧%d" % [e, h, t]
 
 		var follow_lbl := card.find_child("FollowIcon", true, false) as Label
 		var btn_follow := card.find_child("BtnFollow", true, false) as Button

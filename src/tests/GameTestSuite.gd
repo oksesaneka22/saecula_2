@@ -25,6 +25,8 @@ const Job = preload("res://src/systems/jobs/Job.gd")
 const Colonist3DScene = preload("res://src/entities3d/colonist/Colonist3D.tscn")
 const Colonist3DScript = preload("res://src/entities3d/colonist/Colonist3D.gd")
 const StorageUIScene = preload("res://src/ui/storage/StorageUI.tscn")
+const ColonistCraftState3DScript = preload("res://src/entities3d/colonist/states/ColonistCraftState3D.gd")
+const ColonistHarvestState3DScript = preload("res://src/entities3d/colonist/states/ColonistHarvestState3D.gd")
 
 
 var main_node: Node = null
@@ -207,6 +209,18 @@ func run_all_tests(p_main: Node = null) -> void:
 
 	# 51. Валідація системи збереження та завантаження 3D світу (SaveManager JSON)
 	_test_save_load_system()
+
+	# 52. Валідація системи потреб колоністів (енергія, голод, спрага, їжа зі складу, вода біля берега та сон у приміщенні)
+	_test_colonist_needs_and_indoor_rest()
+
+	# 53. Валідація ліміту населення поселення та демографічного спавну нових мешканців (Campfire 4 + 2 за кімнату/хатину)
+	_test_colony_housing_and_demographics()
+
+	# 54. Валідація ремісничих замовлень на верстаку (JobType.CRAFT) для нових технологій Енеоліту (глиняний глечик, мідь)
+	_test_workbench_craft_orders_and_new_recipes()
+
+	# 55. Валідація жил мідної руди (COPPER_ORE), видобутку кайлом та авто-екіпірування copper_axe лісорубом
+	_test_copper_ore_and_copper_axe()
 
 
 
@@ -3750,3 +3764,259 @@ func _test_save_load_system() -> void:
 	assert(SaveManager.has_save(test_slot) == false, "Test save slot 99 must be deleted")
 
 	print("[Main] Save & Load System unit tests passed successfully!")
+
+
+func _test_colonist_needs_and_indoor_rest() -> void:
+	print("[Main] Testing Colonist Needs System (Energy, Hunger, Thirst, Berries stockpile consumption, Shore water & Indoor rest)...")
+	var col = Colonist3DScene.instantiate()
+	add_child(col)
+	col.global_position = Vector3(10, 0, 10)
+	col.setup_colonist("Тестовий Поселенець", &"settler")
+
+	# 1. Перевірка базових параметрів потреб
+	assert(col.max_energy == 100.0, "max_energy must be 100.0")
+	assert(col.current_energy == 100.0, "current_energy must start at 100.0")
+	assert(col.max_hunger == 100.0, "max_hunger must be 100.0")
+	assert(col.current_hunger == 100.0, "current_hunger must start at 100.0")
+	assert(col.max_thirst == 100.0, "max_thirst must be 100.0")
+	assert(col.current_thirst == 100.0, "current_thirst must start at 100.0")
+
+	# 2. Споживання їжі (ягід) зі складу при голоді
+	col.current_hunger = 20.0
+	col.current_energy = 50.0
+	var ate_fail = col.consume_food()
+	assert(ate_fail == false, "consume_food should fail when no berries in stockpile")
+
+	LogisticsManager.deposit_item(&"berries", 10)
+	var ate_success = col.consume_food()
+	assert(ate_success == true, "consume_food should succeed when berries are available")
+	assert(col.current_hunger == 55.0, "current_hunger must be restored by +35 (20 -> 55)")
+	assert(col.current_energy == 65.0, "current_energy must be restored by +15 (50 -> 65)")
+
+	# 3. Споживання води (з берегової лінії або запасів)
+	col.current_thirst = 25.0
+	var drank = col.consume_water()
+	assert(drank == true, "consume_water should succeed with shore cells or stock available")
+	assert(col.current_thirst == 65.0, "current_thirst must be restored by +40 (25 -> 65)")
+
+	# 4. Швидкість відновлення енергії під час відпочинку у закритому приміщенні
+	ModularManager.clear_all()
+	var room_pos = Vector2i(40, 40)
+	for x in range(39, 42):
+		for y in range(39, 42):
+			ModularManager.place_piece(&"modular_floor", Vector2i(x, y), true)
+			ModularManager.place_piece(&"modular_roof", Vector2i(x, y), true)
+	for x in range(39, 42):
+		ModularManager.place_piece(&"modular_wall", Vector2i(x, 38), true)
+		ModularManager.place_piece(&"modular_wall", Vector2i(x, 42), true)
+	for y in range(39, 42):
+		ModularManager.place_piece(&"modular_wall", Vector2i(38, y), true)
+		if y == 40:
+			ModularManager.place_piece(&"modular_door", Vector2i(42, y), true)
+		else:
+			ModularManager.place_piece(&"modular_wall", Vector2i(42, y), true)
+
+	assert(ModularManager.is_cell_indoors(room_pos) == true, "Cell (40, 40) must be indoors")
+
+	col.global_position = GridManager.map_to_world_3d(room_pos, 0.0)
+	col.current_energy = 50.0
+	col.state_machine.change_state("Rest")
+	col.state_machine.current_state.physics_update(1.0)
+	assert(col.current_energy == 58.0, "Energy restore rate indoors must be 8.0/sec (50 + 8 = 58)")
+
+	ModularManager.clear_all()
+	col.queue_free()
+	print("[Main] Colonist Needs & Indoor Rest unit tests passed successfully!")
+
+
+func _test_colony_housing_and_demographics() -> void:
+	print("[Main] Testing Colony Housing Capacity & Demographics (Settler spawning)...")
+	assert(JobManager != null, "JobManager autoload must be available")
+	assert(ModularManager != null, "ModularManager autoload must be available")
+
+	# 1. Початковий розрахунок ліміту житла без додаткових споруд
+	var initial_capacity = JobManager.get_max_population_capacity()
+
+	# 2. Додавання Campfire дає +4 до ліміту
+	var cf_data = BuildingPlacementController.get_building(&"campfire")
+	assert(cf_data != null, "Campfire building data must exist")
+	var campfire = BuildingEntity3DScript.new()
+	add_child(campfire)
+	campfire.setup_building(cf_data, Vector2i(70, 70), 0)
+
+	var capacity_with_campfire = JobManager.get_max_population_capacity()
+	assert(capacity_with_campfire == initial_capacity + 4, "Campfire must add +4 population capacity")
+
+	# 3. Додавання замкненої кімнати додає +2 місця
+	ModularManager.clear_all()
+	for x in range(80, 83):
+		for y in range(80, 83):
+			ModularManager.place_piece(&"modular_floor", Vector2i(x, y), true)
+			ModularManager.place_piece(&"modular_roof", Vector2i(x, y), true)
+	for x in range(80, 83):
+		ModularManager.place_piece(&"modular_wall", Vector2i(x, 79), true)
+		ModularManager.place_piece(&"modular_wall", Vector2i(x, 83), true)
+	for y in range(80, 83):
+		ModularManager.place_piece(&"modular_wall", Vector2i(79, y), true)
+		if y == 81:
+			ModularManager.place_piece(&"modular_door", Vector2i(83, y), true)
+		else:
+			ModularManager.place_piece(&"modular_wall", Vector2i(83, y), true)
+
+	var capacity_with_room = JobManager.get_max_population_capacity()
+	assert(capacity_with_room == capacity_with_campfire + 2, "Enclosed room must add +2 to population capacity")
+
+	# 4. Спавн нового колоніста: гарантуємо, що ліміт перевищує поточне населення
+	var pop_before = JobManager.get_colonists_count()
+	var extra_cfs: Array = []
+	var needed_cfs: int = maxi(0, int(ceil(float(pop_before + 1 - capacity_with_room) / 4.0)))
+	for i in range(needed_cfs):
+		var ecf = BuildingEntity3DScript.new()
+		add_child(ecf)
+		ecf.setup_building(cf_data, Vector2i(72 + i * 2, 72), 0)
+		extra_cfs.append(ecf)
+
+	var spawn_cap = JobManager.get_max_population_capacity()
+	assert(spawn_cap > pop_before, "Capacity must exceed population to spawn settler")
+
+	var new_settler = JobManager.check_and_spawn_settler()
+	assert(new_settler != null, "check_and_spawn_settler must spawn a settler when capacity > population")
+	assert(new_settler.colonist_name != "", "Settler must have a Slavic name")
+	assert(new_settler.profession == &"settler", "Settler profession must be 'settler'")
+	assert(JobManager.get_colonists_count() == pop_before + 1, "Colonist count must increase by 1")
+	new_settler.queue_free()
+
+	# Очищення
+	for ecf in extra_cfs:
+		ecf.demolish()
+	ModularManager.clear_all()
+	campfire.demolish()
+	print("[Main] Colony Housing Capacity & Demographics unit tests passed successfully!")
+
+
+func _test_workbench_craft_orders_and_new_recipes() -> void:
+	print("[Main] Testing Workbench Craft Orders (JobType.CRAFT) & Eneolithic/Bronze Tech Content...")
+	# 1. Валідація нових предметів в ItemDatabase
+	assert(ItemDatabase.has_item(&"clay_pot"), "Item 'clay_pot' must be loaded in ItemDatabase")
+	assert(ItemDatabase.has_item(&"copper_ore"), "Item 'copper_ore' must be loaded in ItemDatabase")
+	assert(ItemDatabase.has_item(&"copper_ingot"), "Item 'copper_ingot' must be loaded in ItemDatabase")
+	assert(ItemDatabase.has_item(&"copper_axe"), "Item 'copper_axe' must be loaded in ItemDatabase")
+
+	var copper_axe = ItemDatabase.get_item(&"copper_axe")
+	assert(copper_axe.category == ItemDataScript.Category.TOOL, "copper_axe category must be TOOL")
+	assert(copper_axe.tool_type == ItemDataScript.ToolType.AXE, "copper_axe tool_type must be AXE")
+	assert(copper_axe.tier == 2, "copper_axe tier must be 2")
+	assert(copper_axe.tool_efficiency == 3.5, "copper_axe tool_efficiency must be 3.5")
+
+	# 2. Валідація нових рецептів у CraftingManager
+	assert(CraftingManager.get_recipe(&"craft_clay_pot") != null, "Recipe craft_clay_pot must be loaded")
+	assert(CraftingManager.get_recipe(&"craft_copper_ingot") != null, "Recipe craft_copper_ingot must be loaded")
+	assert(CraftingManager.get_recipe(&"craft_copper_axe") != null, "Recipe craft_copper_axe must be loaded")
+
+	# 3. Валідація прив'язки рецептів до технологій в EraManager
+	var clay_tech = EraManager.get_tech_data(&"clay_pottery")
+	assert(clay_tech != null, "Technology 'clay_pottery' must exist")
+	assert(&"craft_clay_pot" in clay_tech.unlocks_recipes, "Technology 'clay_pottery' must unlock craft_clay_pot")
+
+	var copper_tech = EraManager.get_tech_data(&"copper_smelting")
+	assert(copper_tech != null, "Technology 'copper_smelting' must exist")
+	assert(&"craft_copper_ingot" in copper_tech.unlocks_recipes, "Technology 'copper_smelting' must unlock craft_copper_ingot")
+	assert(&"craft_copper_axe" in copper_tech.unlocks_recipes, "Technology 'copper_smelting' must unlock craft_copper_axe")
+
+	# 4. Повний цикл крафту на верстаку для craft_clay_pot
+	var wb_data = BuildingPlacementController.get_building(&"workbench")
+	assert(wb_data != null, "Workbench building data must exist")
+	var wb_ent = BuildingEntity3DScript.new()
+	add_child(wb_ent)
+	wb_ent.setup_building(wb_data, Vector2i(90, 90), 0)
+
+	# Поповнюємо склад глиною
+	LogisticsManager.deposit_item(&"clay", 10)
+	assert(LogisticsManager.get_item_count_in_all_stockpiles(&"clay") >= 2, "Stockpile must have at least 2 clay")
+
+	# Замовляємо виготовлення 1 глиняного глечика
+	var craft_job = wb_ent.order_craft(&"craft_clay_pot", 1)
+	assert(craft_job != null, "order_craft must create a job")
+	assert(craft_job.type == Job.JobType.CRAFT, "Job type must be CRAFT")
+	assert(craft_job.data.get("recipe_id") == &"craft_clay_pot", "Job recipe_id must be craft_clay_pot")
+
+	var col = Colonist3DScene.instantiate()
+	add_child(col)
+	col.global_position = Vector3(90, 0, 90)
+	col.setup_colonist("Гончар", &"settler")
+
+	# Призначаємо завдання
+	JobManager.assign_job_to_colonist(craft_job, col)
+	assert(col.state_machine.current_state is ColonistCraftState3DScript, "Colonist must enter ColonistCraftState3D")
+	assert(col.inventory.get_item_count(&"clay") == 2, "Colonist must have taken 2 clay from stockpile")
+
+	# Завершуємо процес крафту через physics_update
+	col.state_machine.current_state.physics_update(3.1)
+	assert(col.inventory.get_item_count(&"clay") == 0, "Clay must be consumed during craft")
+	assert(col.inventory.get_item_count(&"clay_pot") == 1, "Clay pot must be crafted into colonist inventory")
+	assert(craft_job.status == Job.JobStatus.COMPLETED, "Craft job must be COMPLETED")
+
+	# Очищення
+	wb_ent.demolish()
+	col.queue_free()
+	print("[Main] Workbench Craft Orders & Tech unit tests passed successfully!")
+
+
+func _test_copper_ore_and_copper_axe() -> void:
+	print("[Main] Testing Copper Ore Vein (COPPER_ORE) & Copper Axe Harvest...")
+	# 1. Створення та видобуток вузла WorldResourceNode3D з ResourceType.COPPER_ORE
+	var ore_node = WorldResourceNode3DScene.instantiate()
+	ore_node.resource_type = WorldResourceNode3D.ResourceType.COPPER_ORE
+	ore_node.position = Vector3(150, 0, 150)
+	add_child(ore_node)
+	assert(ore_node.max_health == 4.0, "Copper ore max_health must be 4.0")
+	assert(ore_node.drop_item_id == &"copper_ore", "Copper ore drop_item_id must be 'copper_ore'")
+
+	# Видобуток кайлом (tool_type = 2) дає подвійну шкоду (1.0 * 2.0 = 2.0)
+	var drop_received: Array[bool] = [false]
+	var drop_amount: Array[int] = [0]
+	var on_drop = func(item_id: StringName, amount: int, _pos = null):
+		if item_id == &"copper_ore":
+			drop_received[0] = true
+			drop_amount[0] = amount
+	EventBus.item_dropped.connect(on_drop)
+
+	ore_node.harvest(1.0, 2)
+	assert(ore_node.current_health == 2.0, "Current health must be 2.0 after 1 pickaxe strike")
+
+	# Другий удар кайлом знищує жилу і викликає дроп copper_ore
+	ore_node.harvest(1.0, 2)
+	EventBus.item_dropped.disconnect(on_drop)
+	assert(drop_received[0] == true, "Destruction of COPPER_ORE node must emit drop of 'copper_ore'")
+	assert(drop_amount[0] >= 2 and drop_amount[0] <= 4, "Copper ore drop amount must be between 2 and 4")
+
+	# 2. Автоматичне взяття copper_axe зі складу лісорубом під час рубки дерева
+	LogisticsManager.deposit_item(&"copper_axe", 1)
+	assert(LogisticsManager.get_available_item_count(&"copper_axe") >= 1, "Stockpile must have at least 1 copper_axe")
+
+	var tree_node = WorldResourceNode3DScene.instantiate()
+	tree_node.resource_type = WorldResourceNode3D.ResourceType.TREE
+	tree_node.position = Vector3(160, 0, 160)
+	add_child(tree_node)
+
+	var col = Colonist3DScene.instantiate()
+	add_child(col)
+	col.global_position = Vector3(160, 0, 160)
+	col.setup_colonist("Тестовий Дроворуб", &"lumberjack")
+
+	var harvest_job = Job.new(Job.JobType.HARVEST, tree_node.global_position, tree_node, 5)
+	col.assign_job(harvest_job)
+
+	assert(col.inventory.has_item(&"copper_axe", 1) == true, "Lumberjack must have withdrawn copper_axe from stockpile")
+	var harvest_state = col.state_machine.current_state as ColonistHarvestState3DScript
+	assert(harvest_state != null, "Colonist must be in ColonistHarvestState3D")
+	assert(harvest_state._has_copper_axe == true, "Harvest state must have _has_copper_axe == true")
+
+	# Перевірка підвищеної шкоди мідною сокирою (swing_damage = 2.0, помножене на 2.0 за сокиру = 4.0 шкоди)
+	var tree_health_before = tree_node.current_health
+	harvest_state._perform_swing()
+	assert(not is_instance_valid(tree_node) or tree_node.current_health < tree_health_before, "Tree must be heavily damaged or destroyed by copper_axe swing")
+
+	col.queue_free()
+	print("[Main] Copper Ore & Copper Axe unit tests passed successfully!")
+

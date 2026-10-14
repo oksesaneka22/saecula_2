@@ -14,13 +14,16 @@ const MAX_MATERIAL_RETRIES: int = 3
 
 
 func enter(msg: Dictionary = {}) -> void:
-	target_site = msg.get("target_node", null)
-	if target_site == null and actor != null and actor.current_job != null:
-		target_site = actor.current_job.target_node
+	target_site = null
+	var raw_site: Variant = msg.get("target_node", null)
+	if (raw_site == null or not is_instance_valid(raw_site)) and actor != null and actor.current_job != null:
+		raw_site = actor.current_job.target_node
 
-	if target_site == null or not is_instance_valid(target_site) or target_site.is_queued_for_deletion():
+	if raw_site == null or not is_instance_valid(raw_site) or (raw_site is Node and raw_site.is_queued_for_deletion()):
 		_abort_job("Ціль недоступна")
 		return
+
+	target_site = raw_site as Node
 
 	if target_site.get("is_completed") == true or target_site.get("is_built") == true:
 		_finish_job()
@@ -47,9 +50,7 @@ func physics_update(delta: float) -> void:
 		return
 
 	# Гравітація
-	if not actor.is_on_floor():
-		actor.velocity.y -= 19.6 * delta
-		actor.move_and_slide()
+	apply_gravity(delta, true)
 
 	if target_site == null or not is_instance_valid(target_site) or target_site.is_queued_for_deletion():
 		_abort_job("Ціль видалено")
@@ -62,11 +63,7 @@ func physics_update(delta: float) -> void:
 	# Поворот обличчям до будівельного майданчика
 	var site_3d := target_site as Node3D
 	if site_3d != null:
-		var dir := (site_3d.global_position - actor.global_position)
-		dir.y = 0.0
-		if dir.length_squared() > 0.001:
-			var target_angle := atan2(dir.x, dir.z)
-			actor.rotation.y = lerp_angle(actor.rotation.y, target_angle, 10.0 * delta)
+		face_target(site_3d.global_position, delta)
 
 	build_timer -= delta
 	if build_timer <= 0.0:
@@ -241,10 +238,7 @@ func _finish_job() -> void:
 		if actor.current_job != null and JobManager != null:
 			JobManager.complete_job(actor.current_job)
 		actor.current_job = null
-		if actor.has_method("has_items_to_unload") and actor.has_items_to_unload():
-			if actor.start_unloading_to_stockpile():
-				return
-	state_machine.transition_to(&"idle")
+	try_unload_or_idle()
 
 
 func _abort_job(reason: String = "Перервано") -> void:
@@ -253,7 +247,4 @@ func _abort_job(reason: String = "Перервано") -> void:
 		if actor.current_job != null and JobManager != null:
 			JobManager.release_job(actor.current_job, reason)
 		actor.current_job = null
-		if actor.has_method("has_items_to_unload") and actor.has_items_to_unload():
-			if actor.start_unloading_to_stockpile():
-				return
-	state_machine.transition_to(&"idle")
+	try_unload_or_idle()

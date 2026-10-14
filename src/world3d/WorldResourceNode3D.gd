@@ -11,7 +11,8 @@ enum ResourceType {
 	BUSH,       ## Кущ диких ягід -> спавнить berries
 	CLAY,       ## Родовище глини -> спавнить clay (біля водойм)
 	FLINT,      ## Поклади кремнію -> спавнить flint (біля водойм)
-	GRASS       ## Дика трава кучками -> спавнить straw (потрібна коса)
+	GRASS,      ## Дика трава кучками -> спавнить straw (потрібна коса)
+	COPPER_ORE = 6,
 }
 
 const TextureHelper = preload("res://src/core3d/TextureHelper.gd")
@@ -63,9 +64,17 @@ static var _static_flint_shape: BoxShape3D = null
 static var _static_grass_mesh: ArrayMesh = null
 static var _static_grass_shape: BoxShape3D = null
 
+static var _static_copper_ore_mesh: ArrayMesh = null
+static var _static_copper_ore_shape: BoxShape3D = null
+
 
 func _ready() -> void:
 	add_to_group("resource_nodes")
+	if resource_type == ResourceType.COPPER_ORE:
+		max_health = 4.0
+		drop_item_id = &"copper_ore"
+		drop_min_amount = 2
+		drop_max_amount = 4
 	current_health = max_health
 
 	if has_node("VisualRoot"):
@@ -165,6 +174,12 @@ func _setup_visual() -> void:
 			if collision_shape != null:
 				collision_shape.shape = _static_grass_shape
 				collision_shape.position.y = 0.22
+		ResourceType.COPPER_ORE:
+			_mesh_inst.mesh = _static_copper_ore_mesh
+			_mesh_inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			if collision_shape != null:
+				collision_shape.shape = _static_copper_ore_shape
+				collision_shape.position.y = 0.48
 
 
 # ------------------------------------------------------------------------------
@@ -348,6 +363,45 @@ static func _ensure_static_assets() -> void:
 	_static_grass_shape = BoxShape3D.new()
 	_static_grass_shape.size = Vector3(0.7, 0.45, 0.7)
 
+	# 7. Copper ore mesh
+	var copper_rock = BoxMesh.new()
+	copper_rock.size = Vector3(1.3, 0.85, 1.1)
+	var rot_cr = Basis.from_euler(Vector3(deg_to_rad(8), deg_to_rad(30), deg_to_rad(-6)))
+	var st_crock = SurfaceTool.new()
+	st_crock.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st_crock.append_from(copper_rock, 0, Transform3D(rot_cr, Vector3(0, 0.42, 0)))
+
+	var c_nodule = BoxMesh.new()
+	c_nodule.size = Vector3(0.5, 0.4, 0.5)
+	var rot_cn = Basis.from_euler(Vector3(deg_to_rad(-15), deg_to_rad(50), deg_to_rad(12)))
+	var st_copper = SurfaceTool.new()
+	st_copper.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st_copper.append_from(c_nodule, 0, Transform3D(rot_cn, Vector3(0.4, 0.35, 0.2)))
+
+	var m_speckle = PrismMesh.new()
+	m_speckle.size = Vector3(0.35, 0.4, 0.3)
+	var rot_ms = Basis.from_euler(Vector3(deg_to_rad(25), deg_to_rad(-40), deg_to_rad(15)))
+	var st_malachite = SurfaceTool.new()
+	st_malachite.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st_malachite.append_from(m_speckle, 0, Transform3D(rot_ms, Vector3(-0.35, 0.3, -0.2)))
+
+	_static_copper_ore_mesh = ArrayMesh.new()
+	st_crock.commit(_static_copper_ore_mesh)
+	st_copper.commit(_static_copper_ore_mesh)
+	st_malachite.commit(_static_copper_ore_mesh)
+
+	var crock_mat = TextureHelper.create_material(TextureHelper.PATH_RES_ROCK, Color("5A4D41"), 0.75)
+	var copper_mat = TextureHelper.create_material(TextureHelper.PATH_RES_ROCK, Color("B87333"), 0.4)
+	var malachite_mat = TextureHelper.create_material(TextureHelper.PATH_RES_ROCK, Color("48A999"), 0.5)
+
+	_static_copper_ore_mesh.surface_set_material(0, crock_mat)
+	_static_copper_ore_mesh.surface_set_material(1, copper_mat)
+	_static_copper_ore_mesh.surface_set_material(2, malachite_mat)
+
+	_static_copper_ore_shape = BoxShape3D.new()
+	_static_copper_ore_shape.size = Vector3(1.5, 0.95, 1.3)
+
+
 
 # ------------------------------------------------------------------------------
 # Видобуток (Harvest) та анімація удару
@@ -373,7 +427,7 @@ func harvest(damage: float = 1.0, tool_type: int = 0) -> void:
 	var effective_damage: float = damage
 	if resource_type == ResourceType.TREE and tool_type == 1: # AXE
 		effective_damage *= 2.0
-	elif (resource_type == ResourceType.ROCK or resource_type == ResourceType.FLINT) and tool_type == 2: # PICKAXE
+	elif (resource_type == ResourceType.ROCK or resource_type == ResourceType.FLINT or resource_type == ResourceType.COPPER_ORE) and tool_type == 2: # PICKAXE
 		effective_damage *= 2.0
 	elif resource_type == ResourceType.CLAY and (tool_type == 2 or tool_type == 1):
 		effective_damage *= 1.5
@@ -404,7 +458,7 @@ func _play_hit_effect() -> void:
 		var snd: StringName = &"hit_wood"
 		match resource_type:
 			ResourceType.TREE: snd = &"hit_wood"
-			ResourceType.ROCK, ResourceType.FLINT: snd = &"hit_stone"
+			ResourceType.ROCK, ResourceType.FLINT, ResourceType.COPPER_ORE: snd = &"hit_stone"
 			ResourceType.GRASS: snd = &"hit_grass"
 			ResourceType.CLAY: snd = &"hit_clay"
 			ResourceType.BUSH: snd = &"hit_grass"
@@ -438,6 +492,10 @@ func _spawn_debris_particles() -> void:
 		ResourceType.FLINT:
 			p_mesh.size = Vector3(0.07, 0.07, 0.07)
 			p_mat.albedo_color = Color(0.28, 0.30, 0.32)
+			emit_h = 0.5
+		ResourceType.COPPER_ORE:
+			p_mesh.size = Vector3(0.09, 0.09, 0.09)
+			p_mat.albedo_color = Color("B87333")
 			emit_h = 0.5
 		ResourceType.CLAY:
 			p_mesh.size = Vector3(0.12, 0.10, 0.12)

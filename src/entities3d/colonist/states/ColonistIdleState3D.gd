@@ -36,13 +36,20 @@ func physics_update(delta: float) -> void:
 		return
 
 	# Гравітація
-	if not actor.is_on_floor():
-		actor.velocity.y -= 19.6 * delta
-	else:
+	apply_gravity(delta)
+	if actor.is_on_floor():
 		actor.velocity.x = move_toward(actor.velocity.x, 0.0, 10.0 * delta)
 		actor.velocity.z = move_toward(actor.velocity.z, 0.0, 10.0 * delta)
-
 	actor.move_and_slide()
+
+	# Перевірка потреб: їжа та вода для вільного колоніста
+	if not actor.is_following_player and actor.current_job == null:
+		if "current_hunger" in actor and actor.current_hunger < 30.0:
+			if actor.has_method("consume_food") and actor.consume_food():
+				return
+		if "current_thirst" in actor and actor.current_thirst < 30.0:
+			if actor.has_method("consume_water") and actor.consume_water():
+				return
 
 	# Якщо колоніст слідує за гравцем — тримаємо дистанцію до гравця
 	if actor.is_following_player and actor.target_follow_node != null and is_instance_valid(actor.target_follow_node):

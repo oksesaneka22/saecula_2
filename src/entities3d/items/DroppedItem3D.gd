@@ -119,6 +119,32 @@ func _setup_visual() -> void:
 			mesh_instance.rotation_degrees = Vector3(90, 0, 0)
 			fallback_color = Color("F4D03F")
 
+		&"clay_pot":
+			var cyl: CylinderMesh = CylinderMesh.new()
+			cyl.top_radius = 0.14
+			cyl.bottom_radius = 0.16
+			cyl.height = 0.3
+			mesh_instance.mesh = cyl
+			fallback_color = Color("C05621")
+
+		&"copper_ore":
+			var prism: PrismMesh = PrismMesh.new()
+			prism.size = Vector3(0.24, 0.28, 0.2)
+			mesh_instance.mesh = prism
+			fallback_color = Color("B87333")
+
+		&"copper_ingot":
+			var box: BoxMesh = BoxMesh.new()
+			box.size = Vector3(0.28, 0.12, 0.16)
+			mesh_instance.mesh = box
+			fallback_color = Color("E67E22")
+
+		&"copper_axe":
+			var box: BoxMesh = BoxMesh.new()
+			box.size = Vector3(0.22, 0.48, 0.1)
+			mesh_instance.mesh = box
+			fallback_color = Color("D35400")
+
 		_:
 			var box: BoxMesh = BoxMesh.new()
 			box.size = Vector3(0.25, 0.25, 0.25)

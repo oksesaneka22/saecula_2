@@ -17,7 +17,10 @@ func enter(msg: Dictionary = {}) -> void:
 	current_stage = msg.get("stage", 1)
 	carried_item_id = msg.get("item_id", &"")
 	carried_amount = msg.get("amount", 0)
-	target_stockpile = msg.get("stockpile", null)
+	target_stockpile = null
+	var raw_sp: Variant = msg.get("stockpile", null)
+	if raw_sp != null and is_instance_valid(raw_sp) and not (raw_sp is Node and raw_sp.is_queued_for_deletion()) and raw_sp is Node:
+		target_stockpile = raw_sp as Node
 	unload_all = msg.get("unload_all", false)
 
 	if current_stage == 1:

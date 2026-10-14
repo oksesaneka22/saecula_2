@@ -17,16 +17,25 @@ var _is_crafting: bool = false
 
 
 func enter(msg: Dictionary = {}) -> void:
-	current_job = msg.get("job") as Job
-	target_workbench = msg.get("target_node") as Node3D
+	current_job = null
+	var raw_job: Variant = msg.get("job", null)
+	if raw_job != null and is_instance_valid(raw_job) and raw_job is Job:
+		current_job = raw_job as Job
+
+	target_workbench = null
+	var raw_wb: Variant = msg.get("target_node", null)
+	if raw_wb == null:
+		raw_wb = msg.get("workbench", null)
+	if (raw_wb == null or not is_instance_valid(raw_wb)) and current_job != null:
+		raw_wb = current_job.target_node
+
+	if raw_wb != null and is_instance_valid(raw_wb) and not (raw_wb is Node and raw_wb.is_queued_for_deletion()) and raw_wb is Node3D:
+		target_workbench = raw_wb as Node3D
 
 	if current_job != null:
 		_recipe_id = current_job.data.get("recipe_id", &"")
 		_craft_amount = current_job.data.get("amount", 1)
 		_craft_time = current_job.data.get("craft_time", 2.5)
-
-	if target_workbench == null and current_job != null and current_job.target_node is Node3D:
-		target_workbench = current_job.target_node as Node3D
 
 	_craft_timer = 0.0
 	_work_sound_timer = 0.0

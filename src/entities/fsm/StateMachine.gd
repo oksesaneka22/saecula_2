@@ -33,6 +33,10 @@ func _init_states() -> void:
 		transition_to(first_key)
 
 
+func change_state(target_state_name: StringName, msg: Dictionary = {}) -> void:
+	transition_to(target_state_name, msg)
+
+
 func transition_to(target_state_name: StringName, msg: Dictionary = {}) -> void:
 	var key := StringName(target_state_name.to_lower())
 	if not states.has(key):

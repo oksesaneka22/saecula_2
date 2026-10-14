@@ -45,6 +45,12 @@ func enter(msg: Dictionary = {}) -> void:
 				dest_str = "Вогнище"
 			actor.set_status_display("🏃 Йде до: %s" % dest_str)
 
+	# Перевірка валідності цільового вузла перед початком руху
+	var raw_target: Variant = next_state_msg.get("target_node", null)
+	if raw_target != null and (not is_instance_valid(raw_target) or (raw_target is Node and raw_target.is_queued_for_deletion())):
+		_abort_unreachable_job("Ціль видалено до початку руху")
+		return
+
 	# Якщо колоніст вже знаходиться в радіусі взаємодії — миттєве прибуття
 	if actor != null:
 		var init_h: float = Vector2(actor.global_position.x - target_position.x, actor.global_position.z - target_position.z).length()
@@ -296,6 +302,11 @@ func _reach_destination() -> void:
 		actor.velocity.x = 0.0
 		actor.velocity.z = 0.0
 		actor.stop_walk_animation()
+
+	var raw_target: Variant = next_state_msg.get("target_node", null)
+	if raw_target != null and (not is_instance_valid(raw_target) or (raw_target is Node and raw_target.is_queued_for_deletion())):
+		_abort_unreachable_job("Ціль видалено під час руху")
+		return
 
 	state_machine.transition_to(next_state_name, next_state_msg)
 

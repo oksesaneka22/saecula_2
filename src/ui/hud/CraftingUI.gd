@@ -19,6 +19,8 @@ func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	_setup_ui()
 	_connect_player_inventory()
+	if EventBus != null and EventBus.has_signal("crafting_ui_requested"):
+		EventBus.crafting_ui_requested.connect(open_crafting)
 
 
 func _setup_ui() -> void:
@@ -228,5 +230,40 @@ func _create_recipe_row(recipe: Resource) -> Control:
 			_refresh_recipes_ui()
 	)
 	hbox.add_child(craft_btn)
+
+	# Кнопка замовлення виготовлення на верстаку для колоністів
+	var workbenches = get_tree().get_nodes_in_group("workbenches")
+	var active_workbench: Node = null
+	for wb in workbenches:
+		if is_instance_valid(wb) and not wb.is_queued_for_deletion():
+			active_workbench = wb
+			break
+	if active_workbench != null and is_unlocked:
+		var order_btn := Button.new()
+		order_btn.name = "OrderBtn"
+		order_btn.text = "🔨 Замовити"
+		order_btn.custom_minimum_size = Vector2(110, 36)
+		var can_order_bench: bool = true
+		if LogisticsManager != null:
+			for cost in ingredients:
+				var cost_item: Resource = cost.get("item")
+				var cost_amt: int = cost.get("amount") if cost.get("amount") != null else 1
+				if cost_item != null:
+					var itm_id: StringName = StringName(cost_item.get("id"))
+					if LogisticsManager.get_total_item_count(itm_id) < cost_amt:
+						can_order_bench = false
+						break
+		order_btn.disabled = not can_order_bench
+		order_btn.tooltip_text = "Колоніст візьме матеріали зі складу та виготовить предмет на верстаку"
+		order_btn.pressed.connect(func():
+			if active_workbench != null and is_instance_valid(active_workbench):
+				var r_id: StringName = StringName(recipe.get("id"))
+				if JobManager != null:
+					JobManager.create_craft_job(active_workbench, r_id, 1)
+					if FloatingTextManager != null and active_workbench is Node3D:
+						FloatingTextManager.spawn_info((active_workbench as Node3D).global_position + Vector3(0, 1.8, 0), "🔨 Замовлення створено!", Color(0.4, 0.8, 1.0))
+					close_crafting()
+		)
+		hbox.add_child(order_btn)
 
 	return panel

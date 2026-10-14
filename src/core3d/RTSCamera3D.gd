@@ -425,6 +425,7 @@ func _handle_order_harvest_at_mouse() -> bool:
 			WorldResourceNode3D.ResourceType.CLAY: res_name = "Глину"
 			WorldResourceNode3D.ResourceType.FLINT: res_name = "Кремінь"
 			WorldResourceNode3D.ResourceType.GRASS: res_name = "Траву"
+			WorldResourceNode3D.ResourceType.COPPER_ORE: res_name = "Мідну руду"
 	elif "display_name" in target:
 		res_name = str(target.display_name)
 

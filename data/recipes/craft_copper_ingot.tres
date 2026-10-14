@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="RecipeData" load_steps=6 format=3 uid="uid://saecula_recipe_copper_ingot"]
+
+[ext_resource type="Script" path="res://src/data/schemas/RecipeData.gd" id="1_recipe"]
+[ext_resource type="Script" path="res://src/data/schemas/ItemCost.gd" id="2_cost"]
+[ext_resource type="Resource" path="res://data/items/copper_ore.tres" id="3_ore"]
+[ext_resource type="Resource" path="res://data/items/wood.tres" id="4_wood"]
+[ext_resource type="Resource" path="res://data/items/copper_ingot.tres" id="5_ingot"]
+
+[sub_resource type="Resource" id="Cost_ore"]
+script = ExtResource("2_cost")
+item = ExtResource("3_ore")
+amount = 2
+
+[sub_resource type="Resource" id="Cost_wood"]
+script = ExtResource("2_cost")
+item = ExtResource("4_wood")
+amount = 2
+
+[resource]
+script = ExtResource("1_recipe")
+id = &"craft_copper_ingot"
+display_name = "Мідний зливок"
+description = "Виплавка мідного зливку у високотемпературній печі з 2 шматків руди та 2 деревини."
+ingredients = [SubResource("Cost_ore"), SubResource("Cost_wood")]
+required_era = 2
+craft_time = 4.0
+result_item = ExtResource("5_ingot")
+result_amount = 1

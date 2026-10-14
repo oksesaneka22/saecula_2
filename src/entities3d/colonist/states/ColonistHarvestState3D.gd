@@ -12,26 +12,32 @@ var target_node: Node = null
 var swing_timer: float = 0.0
 var swing_interval: float = 0.6
 var _has_scythe: bool = false
+var _has_copper_axe: bool = false
 
 
 func enter(msg: Dictionary = {}) -> void:
-	target_node = msg.get("target_node", null)
-	if target_node == null and actor != null and actor.current_job != null:
-		target_node = actor.current_job.target_node
+	target_node = null
+	var raw_node: Variant = msg.get("target_node", null)
+	if (raw_node == null or not is_instance_valid(raw_node)) and actor != null and actor.current_job != null:
+		raw_node = actor.current_job.target_node
 
-	if target_node == null or not is_instance_valid(target_node):
+	if raw_node == null or not is_instance_valid(raw_node) or (raw_node is Node and raw_node.is_queued_for_deletion()):
 		_abort_job("Ресурс не знайдено")
 		return
+
+	target_node = raw_node as Node
 
 	if actor != null:
 		actor.velocity = Vector3.ZERO
 		var res_type = target_node.get("resource_type")
 		match res_type:
 			WorldResourceNode3D.ResourceType.TREE:
-				actor.set_status_display("🪓 Рубає дерево")
-				actor.show_hand_tool(&"stone_axe")
+				_setup_tree_harvest()
 			WorldResourceNode3D.ResourceType.ROCK:
 				actor.set_status_display("⛏️ Довбає камінь")
+				actor.show_hand_tool(&"stone_pickaxe")
+			WorldResourceNode3D.ResourceType.COPPER_ORE:
+				actor.set_status_display("⛏️ Довбає мідну руду")
 				actor.show_hand_tool(&"stone_pickaxe")
 			WorldResourceNode3D.ResourceType.BUSH:
 				actor.set_status_display("🍓 Збирає ягоди")
@@ -55,6 +61,7 @@ func exit() -> void:
 	if actor != null:
 		actor.hide_hand_items()
 	_has_scythe = false
+	_has_copper_axe = false
 
 
 func physics_update(delta: float) -> void:
@@ -90,7 +97,13 @@ func _perform_swing() -> void:
 	var tool_type: int = 1 # Axe default
 	var swing_damage: float = 1.0
 	var res_type = target_node.get("resource_type")
-	if res_type == WorldResourceNode3D.ResourceType.ROCK or res_type == WorldResourceNode3D.ResourceType.CLAY or res_type == WorldResourceNode3D.ResourceType.FLINT:
+	if res_type == WorldResourceNode3D.ResourceType.TREE:
+		if _has_copper_axe:
+			swing_damage = 2.0
+		else:
+			swing_damage = 1.0
+		tool_type = 1
+	elif res_type == WorldResourceNode3D.ResourceType.ROCK or res_type == WorldResourceNode3D.ResourceType.CLAY or res_type == WorldResourceNode3D.ResourceType.FLINT or res_type == WorldResourceNode3D.ResourceType.COPPER_ORE:
 		tool_type = 2 # Pickaxe
 	elif res_type == WorldResourceNode3D.ResourceType.GRASS:
 		if _has_scythe:
@@ -129,6 +142,9 @@ func _perform_swing() -> void:
 			5:
 				icon = "🌾"
 				res_name = "траву (коса)" if _has_scythe else "траву вручну"
+			6:
+				icon = "⛏️"
+				res_name = "мідну руду"
 			_:
 				icon = "⛏️"
 				res_name = "ресурс"
@@ -189,6 +205,30 @@ func _collect_nearby_drops() -> void:
 							d.set_item(drop_id, rem)
 						else:
 							d.set("amount", rem)
+
+
+func _setup_tree_harvest() -> void:
+	if actor == null:
+		return
+	var has_copper: bool = false
+	if actor.inventory != null and actor.inventory.has_item(&"copper_axe", 1):
+		has_copper = true
+	elif LogisticsManager != null and LogisticsManager.has_item(&"copper_axe"):
+		var taken: int = LogisticsManager.withdraw_item(&"copper_axe", 1)
+		if taken > 0:
+			if actor.inventory != null:
+				actor.inventory.add_item_by_id(&"copper_axe", 1)
+			has_copper = true
+			if FloatingTextManager != null:
+				FloatingTextManager.spawn_info(actor.global_position + Vector3(0, 1.8, 0), "🪓 Взяв мідну сокиру зі складу")
+
+	_has_copper_axe = has_copper
+	if _has_copper_axe:
+		actor.set_status_display("🪓 Рубає дерево (мідна сокира)")
+		actor.show_hand_tool(&"copper_axe")
+	else:
+		actor.set_status_display("🪓 Рубає дерево")
+		actor.show_hand_tool(&"stone_axe")
 
 
 func _setup_grass_harvest() -> void:

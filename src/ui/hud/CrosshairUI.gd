@@ -140,6 +140,19 @@ func _check_interact_target() -> void:
 				_interact_label.visible = true
 				return
 
+			# 2.5. Верстак (BuildingEntity3D workbench)
+			var is_wb := false
+			if collider.is_in_group("workbenches"):
+				is_wb = true
+			elif "building_data" in collider and collider.building_data != null and collider.building_data.id == &"workbench":
+				is_wb = true
+
+			if is_wb:
+				_interact_label.text = "🔨 Верстак • %.1fм\n[E] Верстак (Ремісничі замовлення)  |  [X] Знести" % hit_dist
+				_interact_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.45, 0.98))
+				_interact_label.visible = true
+				return
+
 			# 3. Інші споруди колонії (склади, скрині тощо)
 			if collider.is_in_group("buildings") or collider.has_method("interact_storage") or "building_data" in collider:
 				var bld_name: String = "Споруда"
@@ -198,6 +211,8 @@ func _check_interact_target() -> void:
 						5:
 							res_name = "Дика трава"
 							is_grass = true
+						6:
+							res_name = "Мідна руда"
 						_: res_name = "Природний ресурс"
 				elif "display_name" in collider:
 					res_name = str(collider.display_name)

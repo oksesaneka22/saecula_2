@@ -11,15 +11,20 @@ var _zzz_timer: float = 2.0
 
 
 func enter(msg: Dictionary = {}) -> void:
-	target_campfire = msg.get("campfire", null) as Node3D
-	if target_campfire == null:
+	target_campfire = null
+	var raw_cf: Variant = msg.get("campfire", null)
+	if raw_cf != null and is_instance_valid(raw_cf) and not (raw_cf is Node and raw_cf.is_queued_for_deletion()) and raw_cf is Node3D:
+		target_campfire = raw_cf as Node3D
+	elif target_campfire == null and get_tree() != null:
 		var campfires = get_tree().get_nodes_in_group("campfires")
-		if not campfires.is_empty() and campfires[0] is Node3D:
-			target_campfire = campfires[0] as Node3D
+		for cf in campfires:
+			if is_instance_valid(cf) and not cf.is_queued_for_deletion() and cf is Node3D:
+				target_campfire = cf as Node3D
+				break
 
 	var is_indoors: bool = false
-	if ModularManager != null and actor != null:
-		var cell := Vector2i(int(floor(actor.global_position.x / 2.0)), int(floor(actor.global_position.z / 2.0)))
+	if ModularManager != null and actor != null and GridManager != null:
+		var cell: Vector2i = GridManager.world_to_map_3d(actor.global_position)
 		is_indoors = ModularManager.is_cell_indoors(cell)
 
 	if actor != null:
@@ -47,11 +52,16 @@ func physics_update(delta: float) -> void:
 	apply_gravity(delta, true)
 
 	var is_in_room: bool = false
-	if ModularManager != null and actor != null:
-		var cell := Vector2i(int(floor(actor.global_position.x / 2.0)), int(floor(actor.global_position.z / 2.0)))
+	if ModularManager != null and actor != null and GridManager != null:
+		var cell: Vector2i = GridManager.world_to_map_3d(actor.global_position)
 		is_in_room = ModularManager.is_cell_indoors(cell)
 	var heal_amt: float = 4.0 if is_in_room else 1.5
 	actor.heal(heal_amt * delta)
+
+	# Відновлення енергії: у закритому приміщенні удвічі швидше (8.0 vs 4.0)
+	var energy_rate: float = 8.0 if is_in_room else 4.0
+	if "current_energy" in actor and "max_energy" in actor:
+		actor.current_energy = minf(actor.max_energy, actor.current_energy + energy_rate * delta)
 
 	# Якщо гравець дав наказ слідувати або розбудив — виходимо
 	if actor.is_following_player:
@@ -65,11 +75,7 @@ func physics_update(delta: float) -> void:
 
 	# Плавний поворот обличчям до вогнища
 	if target_campfire != null and is_instance_valid(target_campfire):
-		var dir: Vector3 = target_campfire.global_position - actor.global_position
-		dir.y = 0.0
-		if dir.length_squared() > 0.01:
-			var target_angle := atan2(dir.x, dir.z)
-			actor.rotation.y = lerp_angle(actor.rotation.y, target_angle, 5.0 * delta)
+		face_target(target_campfire.global_position, delta, 5.0)
 
 	# Легка анімація дихання уві сні
 	_breath_timer += delta * 2.5

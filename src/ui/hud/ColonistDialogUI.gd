@@ -367,7 +367,10 @@ func _update_colonist_status_labels() -> void:
 	if _hp_label != null:
 		var cur_hp: int = int(_target_colonist.get("current_health")) if "current_health" in _target_colonist else 100
 		var max_hp: int = int(_target_colonist.get("max_health")) if "max_health" in _target_colonist else 100
-		_hp_label.text = "❤️ %d/%d HP" % [cur_hp, max_hp]
+		var energy: int = int(_target_colonist.get("current_energy")) if "current_energy" in _target_colonist else 100
+		var hunger: int = int(_target_colonist.get("current_hunger")) if "current_hunger" in _target_colonist else 100
+		var thirst: int = int(_target_colonist.get("current_thirst")) if "current_thirst" in _target_colonist else 100
+		_hp_label.text = "❤️ %d/%d HP  •  ⚡ %d%%  •  🍖 %d%%  •  💧 %d%%" % [cur_hp, max_hp, energy, hunger, thirst]
 
 
 func _update_colonist_info() -> void:

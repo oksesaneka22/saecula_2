@@ -240,6 +240,9 @@ func _serialize_colonists() -> Array:
 				"name": c.colonist_name if "colonist_name" in c else "Житель",
 				"profession": String(c.profession) if "profession" in c else "settler",
 				"health": c.current_health if "current_health" in c else 100.0,
+				"energy": c.current_energy if "current_energy" in c else 100.0,
+				"hunger": c.current_hunger if "current_hunger" in c else 100.0,
+				"thirst": c.current_thirst if "current_thirst" in c else 100.0,
 				"position": {"x": c.global_position.x, "y": c.global_position.y, "z": c.global_position.z},
 				"inventory": inv_data
 			})
@@ -366,6 +369,12 @@ func _deserialize_colonists(data: Array) -> void:
 		col.setup_colonist(col_name, col_prof)
 		if c_dict.has("health") and "current_health" in col:
 			col.current_health = float(c_dict["health"])
+		if c_dict.has("energy") and "current_energy" in col:
+			col.current_energy = float(c_dict["energy"])
+		if c_dict.has("hunger") and "current_hunger" in col:
+			col.current_hunger = float(c_dict["hunger"])
+		if c_dict.has("thirst") and "current_thirst" in col:
+			col.current_thirst = float(c_dict["thirst"])
 
 		if c_dict.has("inventory") and col.inventory != null:
 			for itm in c_dict["inventory"]:

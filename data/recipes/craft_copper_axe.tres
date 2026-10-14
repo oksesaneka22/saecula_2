@@ -1,0 +1,34 @@
+[gd_resource type="Resource" script_class="RecipeData" load_steps=7 format=3 uid="uid://saecula_recipe_copper_axe"]
+
+[ext_resource type="Script" path="res://src/data/schemas/RecipeData.gd" id="1_recipe"]
+[ext_resource type="Script" path="res://src/data/schemas/ItemCost.gd" id="2_cost"]
+[ext_resource type="Resource" path="res://data/items/copper_ingot.tres" id="3_ingot"]
+[ext_resource type="Resource" path="res://data/items/wood.tres" id="4_wood"]
+[ext_resource type="Resource" path="res://data/items/rope.tres" id="5_rope"]
+[ext_resource type="Resource" path="res://data/items/copper_axe.tres" id="6_axe"]
+
+[sub_resource type="Resource" id="Cost_ingot"]
+script = ExtResource("2_cost")
+item = ExtResource("3_ingot")
+amount = 2
+
+[sub_resource type="Resource" id="Cost_wood"]
+script = ExtResource("2_cost")
+item = ExtResource("4_wood")
+amount = 1
+
+[sub_resource type="Resource" id="Cost_rope"]
+script = ExtResource("2_cost")
+item = ExtResource("5_rope")
+amount = 1
+
+[resource]
+script = ExtResource("1_recipe")
+id = &"craft_copper_axe"
+display_name = "Мідна сокира"
+description = "Кування гострої мідної сокири з 2 зливків, держака та зв'язки міцної мотузки."
+ingredients = [SubResource("Cost_ingot"), SubResource("Cost_wood"), SubResource("Cost_rope")]
+required_era = 2
+craft_time = 5.0
+result_item = ExtResource("6_axe")
+result_amount = 1

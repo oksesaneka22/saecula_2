@@ -216,6 +216,12 @@ func is_night() -> bool:
 	return h >= 21 or h < 6
 
 
+func get_max_population_capacity() -> int:
+	if JobManager != null and JobManager.has_method("get_max_population_capacity"):
+		return JobManager.get_max_population_capacity()
+	return 4
+
+
 # ------------------------------------------------------------------------------
 # Допоміжні методи та ініціалізація
 # ------------------------------------------------------------------------------
